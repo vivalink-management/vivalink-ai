@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <title>Vivalink Management AI</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
 <style>
 :root{--bg:#f5f6f8;--card:#fff;--tx:#1d2733;--mut:#6a7686;--bd:#e1e5ea;--ac:#0f766e;--act:#fff;--ok:#1b7a43;--warn:#a15c00;--bad:#b42318;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 @media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10151c;--card:#19212b;--tx:#e8edf3;--mut:#93a0b0;--bd:#2a3542;--ok:#4cc27f;--warn:#e0a03a;--bad:#f07b70}}
@@ -43,172 +45,14 @@ nav button{flex:1;border:0;border-radius:0;background:none;color:var(--mut);font
 <nav id="nav"></nav>
 <div class="sheet" id="sheet" hidden></div>
 <div id="toast"></div>
-<script>
-const CATS=['Ziele','Geschäftsmodell','Entscheidung','Meetup','Marketing','Instagram','App','Webseite','Finanzen','Kennzahl','Problem'];
-const GAPS=['Ziele','Geschäftsmodell','Finanzen','Meetup','Marketing','Instagram','App','Webseite'];
-const STL={confirmed:'✅ Bestätigt',estimate:'💭 Einschätzung',unknown:'❓ Unbekannt'};
-const PR={hoch:0,mittel:1,niedrig:2};
-let S,tab='home',mf={cat:'',q:'',hist:false},editId=null,showDone=false;
-const $=s=>document.querySelector(s),val=id=>$('#'+id).value;
-const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const today=()=>new Date().toLocaleDateString('sv-SE');
-const fmt=d=>d?new Date(d+'T12:00').toLocaleDateString('de-DE'):'';
-const ago=d=>Math.floor((new Date(today())-new Date(d))/864e5);
-const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
-function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>e.style.display='none',2600)}
-
-/* Speicher: IndexedDB, nur auf diesem Gerät */
-const idb=()=>new Promise((ok,no)=>{const r=indexedDB.open('vivalink',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)});
-async function load(){try{const d=await idb();return await new Promise(ok=>{const q=d.transaction('kv').objectStore('kv').get('state');q.onsuccess=()=>ok(q.result);q.onerror=()=>ok(null)})}catch(e){return null}}
-async function save(){try{const d=await idb();d.transaction('kv','readwrite').objectStore('kv').put(JSON.parse(JSON.stringify(S)),'state')}catch(e){toast('Speichern auf diesem Gerät nicht möglich')}}
-const touch=o=>{o.updatedAt=Date.now()};
-
-/* Empfehlungen aus echten Daten */
-function recs(){const r=[],t=today(),open=S.tasks.filter(x=>!x.done),act=S.memory.filter(m=>m.active);
-const od=open.filter(x=>x.due&&x.due<t);
-if(od.length)r.push(['bad',od.length+' Aufgabe(n) überfällig: '+od.slice(0,2).map(x=>x.title).join(', '),'tasks']);
-const hi=open.filter(x=>x.prio==='hoch'&&!od.includes(x));
-if(hi.length)r.push(['warn',hi.length+' Aufgabe(n) mit hoher Priorität offen','tasks']);
-const miss=GAPS.filter(c=>!act.some(m=>m.cat===c));
-if(miss.length)r.push(['warn','Im Gedächtnis fehlt noch: '+miss.join(', '),'memory']);
-const unk=act.filter(m=>m.status==='unknown').length;
-if(unk)r.push(['warn',unk+' Eintrag/Einträge mit unbekanntem Status. Kannst du sie klären?','memory']);
-const nr=act.filter(m=>m.cat==='Entscheidung'&&!m.result&&ago(m.date)>14);
-if(nr.length)r.push(['warn',nr.length+' Entscheidung(en) ohne Ergebnis nach über 14 Tagen. Was ist daraus geworden?','memory']);
-if((S.memory.length||S.tasks.length)&&(!S.lastBackup||ago(S.lastBackup)>7))r.push(['bad','Letztes Backup älter als 7 Tage. Bitte unter „Mehr“ sichern.','more']);
-if(!r.length)r.push(['ok','Aktuell kein Handlungsbedarf erkannt.','']);return r}
-
-/* Ansichten */
-function vHome(){const open=S.tasks.filter(x=>!x.done),act=S.memory.filter(m=>m.active),t=today();
-return `<h1>Vivalink Management AI</h1><div class="mut">${new Date().toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long'})}</div>
-<div class="stats"><div class="stat"><b>${open.length}</b><span>offen</span></div><div class="stat"><b>${open.filter(x=>x.due&&x.due<t).length}</b><span>überfällig</span></div><div class="stat"><b>${act.length}</b><span>Wissen</span></div><div class="stat"><b>${act.filter(m=>m.cat==='Entscheidung').length}</b><span>Entscheidungen</span></div></div>
-<h2>Empfehlungen</h2>`+recs().map(x=>`<div class="card rec ${x[0]}" ${x[2]?`data-a="tab" data-id="${x[2]}"`:''}>${esc(x[1])}</div>`).join('')+
-`<h2>Als Nächstes</h2><div class="row"><button class="p" data-a="newMem">Wissen eintragen</button><button data-a="newTask">Aufgabe anlegen</button><button data-a="tab" data-id="ai">Arbeitsauftrag</button></div>
-<p class="mut">Die KI-Beratung und das Instagram-Studio folgen in den nächsten Schritten.</p>`}
-
-function vTasks(){const o=S.tasks.filter(x=>!x.done).sort((a,b)=>PR[a.prio]-PR[b.prio]||(a.due||'9').localeCompare(b.due||'9')),d=S.tasks.filter(x=>x.done).sort((a,b)=>b.doneAt-a.doneAt);
-const card=x=>`<div class="card row sp"><div style="flex:1"><div class="${x.done?'done':''}">${esc(x.title)}</div><div class="mut">${esc(x.prio)} · ${esc(x.area)}${x.due?' · Frist '+fmt(x.due):''}${x.due&&!x.done&&x.due<today()?' · überfällig':''}</div></div><button class="s" data-a="toggle" data-id="${x.id}">${x.done?'Wieder öffnen':'Erledigt'}</button></div>`;
-return `<div class="row sp"><h1>Aufgaben</h1><button class="p" data-a="newTask">Neu</button></div>`+(o.length?o.map(card).join(''):'<p class="mut">Keine offenen Aufgaben. Lege die erste an.</p>')+
-`<h2><span data-a="doneToggle">Erledigt (${d.length}) ${showDone?'▾':'▸'}</span></h2>`+(showDone?d.map(card).join(''):'')}
-
-function chain(id){let m=S.memory.find(x=>x.id===id);while(m&&m.supersedes){const p=S.memory.find(x=>x.id===m.supersedes);if(!p)break;m=p}const out=[];while(m){out.push(m);m=S.memory.find(x=>x.id===m.supersededBy)}return out}
-function mCard(m){const v=m.supersedes||m.supersededBy;return `<div class="card ${m.active?'':'old'}"><div class="row sp"><b>${esc(m.title)}</b><span class="chip">${esc(m.cat)}</span></div>
-<div class="mut">${STL[m.status]} · ${fmt(m.date)}${m.active?'':' · ersetzt'}${m.private?' · 🔒 vertraulich':''}</div>${m.text?`<p>${esc(m.text)}</p>`:''}
-${m.reason?`<div><span class="mut">Begründung:</span> ${esc(m.reason)}</div>`:''}${m.result?`<div><span class="mut">Ergebnis:</span> ${esc(m.result)}</div>`:''}
-${m.changeReason?`<div><span class="mut">Grund der Änderung:</span> ${esc(m.changeReason)}</div>`:''}
-<div class="row" style="margin-top:8px">${m.active?`<button class="s" data-a="editMem" data-id="${m.id}">Ändern</button>`:''}${v?`<button class="s" data-a="hist" data-id="${m.id}">Verlauf</button>`:''}</div></div>`}
-function memList(){const q=mf.q.toLowerCase();const l=S.memory.filter(m=>(mf.hist||m.active)&&(!mf.cat||m.cat===mf.cat)&&(!q||(m.title+' '+m.text+' '+m.reason+' '+m.result).toLowerCase().includes(q))).sort((a,b)=>b.createdAt-a.createdAt);
-return l.length?l.map(mCard).join(''):'<p class="mut">Keine Einträge gefunden. Trage Wissen über Vivalink ein, damit die KI später darauf aufbauen kann.</p>'}
-function vMem(){return `<div class="row sp"><h1>Gedächtnis</h1><button class="p" data-a="newMem">Neu</button></div>
-<input id="q" placeholder="Suchen" value="${esc(mf.q)}">
-<div class="chips"><button class="${mf.cat?'':'on'}" data-a="cat" data-id="">Alle</button>${CATS.map(c=>`<button class="${mf.cat===c?'on':''}" data-a="cat" data-id="${c}">${c}</button>`).join('')}</div>
-<label><input type="checkbox" id="hist" ${mf.hist?'checked':''} style="width:auto;margin-right:6px">Auch ersetzte Einträge zeigen</label><div id="list">${memList()}</div>`}
-
-function vMore(){const gpu='gpu' in navigator;
-return `<h1>Mehr</h1><h2>Backup</h2><div class="card"><div class="mut">Letztes Backup: ${S.lastBackup?fmt(S.lastBackup):'noch keines'}</div>
-<p>Kopiere dein Backup und füge es in eine Notiz oder Datei ein. So kannst du es auch auf das andere Gerät übertragen.</p>
-<div class="row"><button class="p" data-a="exp">Backup kopieren</button></div>
-<label style="display:block;margin-top:12px">Backup einfügen und zusammenführen</label><textarea id="imp" placeholder="Backup-Text hier einfügen"></textarea><button data-a="imp">Zusammenführen</button></div>
-<h2>Gerätetest für lokale KI</h2><div class="card">WebGPU: <b>${gpu?'verfügbar':'nicht verfügbar'}</b><p class="mut">${gpu?'Dein Gerät kann voraussichtlich ein kleines lokales KI-Modell ausführen. Den echten Leistungstest bauen wir im nächsten Schritt.':'Ohne WebGPU läuft keine lokale KI im Browser. Prüfe unter iOS Einstellungen › Apps › Safari › Erweitert › Funktionen, ob WebGPU aktiv ist.'}</p></div>
-<h2>KI-Test</h2><div class="card"><p>Teste ein lokales KI-Modell auf diesem Gerät und halte die Ergebnisse fest. Deine Unternehmensdaten werden dabei nicht verändert.</p><button class="p" data-a="aiTest">KI-Test öffnen</button></div><h2>Gestaltung</h2><div class="card"><label>Akzentfarbe (später deine Markenfarbe)</label><input type="color" id="ac" value="${S.accent||'#0f766e'}" style="height:48px;padding:4px"></div>
-<h2>Datenschutz</h2><p class="mut">Alle Daten liegen nur auf diesem Gerät. Nichts wird an einen Server gesendet.</p>`}
-
-function render(){const v={home:vHome,tasks:vTasks,memory:vMem,ai:vAi,more:vMore}[tab]();$('#app').innerHTML=v;document.documentElement.style.setProperty('--ac',S.accent||'#0f766e');
-$('#nav').innerHTML=[['home','Start'],['tasks','Aufgaben'],['memory','Gedächtnis'],['ai','Aufträge'],['more','Mehr']].map(x=>`<button class="${tab===x[0]?'on':''}" data-a="tab" data-id="${x[0]}">${x[1]}</button>`).join('')}
-const sheet=h=>{const s=$('#sheet');s.innerHTML='<div>'+h+'</div>';s.hidden=false};
-const close=()=>{$('#sheet').hidden=true};
-const opts=(l,s)=>l.map(x=>`<option ${x===s?'selected':''}>${x}</option>`).join('');
-
-function taskForm(){sheet(`<h1>Neue Aufgabe</h1><label>Was ist zu tun?</label><input id="t-t"><label>Priorität</label><select id="t-p">${opts(['hoch','mittel','niedrig'],'mittel')}</select><label>Bereich</label><select id="t-a">${opts(CATS,'App')}</select><label>Frist (optional)</label><input type="date" id="t-d"><div class="row"><button class="p" data-a="saveTask">Speichern</button><button data-a="close">Abbrechen</button></div>`)}
-function memForm(o){editId=o?o.id:null;o=o||{cat:'Ziele',status:'confirmed',date:today()};
-sheet(`<h1>${editId?'Eintrag ändern':'Neuer Eintrag'}</h1>${editId?`<div class="card rec warn">Der alte Eintrag bleibt als Vorgänger erhalten. Du siehst später, was sich wann und warum geändert hat.</div>`:''}
-<label>Kategorie</label><select id="f-cat">${opts(CATS,o.cat)}</select><label>Titel</label><input id="f-title" value="${esc(o.title)}"><label>Inhalt</label><textarea id="f-text">${esc(o.text)}</textarea>
-<label>Wie sicher ist das?</label><select id="f-st">${Object.keys(STL).map(k=>`<option value="${k}" ${k===o.status?'selected':''}>${STL[k]}</option>`).join('')}</select>
-<label>Datum</label><input type="date" id="f-date" value="${o.date}"><label>Begründung (warum?)</label><textarea id="f-re">${esc(o.reason)}</textarea><label>Ergebnis (was kam heraus?)</label><textarea id="f-res">${esc(o.result)}</textarea><label><input type="checkbox" id="f-pv" ${o.private?'checked':''} style="width:auto;margin-right:6px">Vertraulich oder personenbezogen (wird nie in Arbeitsaufträge übernommen)</label>
-${editId?`<label>Warum änderst du das? (Pflicht)</label><textarea id="f-cr"></textarea>`:''}<div class="row"><button class="p" data-a="saveMem">Speichern</button><button data-a="close">Abbrechen</button></div>`)}
-function histView(id){const c=chain(id).reverse();sheet(`<h1>Verlauf</h1><div class="tl">${c.map((m,i)=>`<div class="card ${m.active?'':'old'}"><b>${m.active?'Aktuell':'Früher'}: ${esc(m.title)}</b><div class="mut">${fmt(m.date)} · ${STL[m.status]}</div>${m.text?`<p>${esc(m.text)}</p>`:''}${m.reason?`<div><span class="mut">Begründung:</span> ${esc(m.reason)}</div>`:''}${m.result?`<div><span class="mut">Ergebnis:</span> ${esc(m.result)}</div>`:''}${m.changeReason?`<div><span class="mut">Warum geändert:</span> ${esc(m.changeReason)}</div>`:''}</div>`).join('')}</div><button data-a="close">Schließen</button>`)}
-
-function merge(inc){let n=0;for(const k of ['memory','tasks']){for(const r of (inc[k]||[])){const i=S[k].findIndex(x=>x.id===r.id);if(i<0){S[k].push(r);n++}else if((r.updatedAt||0)>(S[k][i].updatedAt||0)){S[k][i]=r;n++}}}return n}
-
-document.addEventListener('click',async e=>{const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a,id=b.dataset.id;
-if(a==='tab'){tab=id;render();scrollTo(0,0)}
-else if(a==='close')close();
-else if(a==='newTask')taskForm();
-else if(a==='saveTask'){const t=val('t-t').trim();if(!t)return toast('Bitte eine Aufgabe eingeben');const x={id:uid(),title:t,prio:val('t-p'),area:val('t-a'),due:val('t-d'),done:false,dev:S.dev};touch(x);S.tasks.push(x);close();await save();tab='tasks';render()}
-else if(a==='toggle'){const x=S.tasks.find(y=>y.id===id);x.done=!x.done;x.doneAt=x.done?Date.now():null;touch(x);await save();render()}
-else if(a==='doneToggle'){showDone=!showDone;render()}
-else if(a==='newMem')memForm();
-else if(a==='editMem')memForm(S.memory.find(m=>m.id===id));
-else if(a==='saveMem'){const t=val('f-title').trim();if(!t)return toast('Bitte einen Titel eingeben');
-const n={id:uid(),cat:val('f-cat'),title:t,text:val('f-text'),status:val('f-st'),date:val('f-date')||today(),reason:val('f-re'),result:val('f-res'),private:$('#f-pv').checked,active:true,createdAt:Date.now(),dev:S.dev};
-if(editId){const cr=val('f-cr').trim();if(!cr)return toast('Bitte den Grund der Änderung angeben');const o=S.memory.find(m=>m.id===editId);n.supersedes=o.id;n.changeReason=cr;o.active=false;o.supersededBy=n.id;touch(o)}
-if(!n.private&&pw(n.title+' '+n.text+' '+n.reason+' '+n.result)){n.private=true;toast('Personenbezogene Daten erkannt. Eintrag als vertraulich markiert.')}touch(n);S.memory.push(n);close();await save();tab='memory';render()}
-else if(a==='hist')histView(id);
-else if(a==='cat'){mf.cat=id;render()}
-else if(a==='tpl'){ai.k=id;ai.extra='';ai.cats=[...TC[id]];render();scrollTo(0,0)}
-else if(a==='acat'){const i=ai.cats.indexOf(id);if(i<0)ai.cats.push(id);else ai.cats.splice(i,1);render()}
-else if(a==='discard'){$('#ans').value='';toast('Antwort verworfen. Es wurde nichts gespeichert.')}
-else if(a==='aiBack'){ai.k=null;render()}
-else if(a==='cpPv'){const t=$('#pv');try{await navigator.clipboard.writeText(t.value);toast('Auftrag kopiert')}catch(x){t.select();toast('Markiert. Bitte manuell kopieren.')}}
-else if(a==='saveAns'){const r=val('ans').trim();if(!r)return toast('Bitte zuerst die Antwort einfügen');if(id==='confirmed'&&!$('#ok').checked)return toast('Bitte zuerst bestätigen, dass du den Inhalt geprüft hast');const T=TPL.find(t=>t.k===ai.k);const n={id:uid(),cat:val('s-cat'),title:'KI-Antwort: '+T.name+' ('+fmt(today())+')',text:r+' (Quelle: '+val('s-src')+')',status:id,private:pw(r)!=='',date:today(),reason:'',result:'',active:true,createdAt:Date.now(),dev:S.dev};touch(n);S.memory.push(n);await save();ai.k=null;tab='memory';render();toast(id==='confirmed'?'Als bestätigt übernommen':'Als Einschätzung gespeichert')}
-else if(a==='aiTest')aiSheet();
-else if(a==='cpy'){const t=$('#pt'+id);try{await navigator.clipboard.writeText(t.value);toast('Kopiert')}catch(x){t.select();toast('Markiert. Bitte manuell kopieren.')}}
-else if(a==='saveAi'){const x={id:uid(),date:today(),device:val('a-dev'),model:val('a-mod').trim(),load:val('a-load'),ans:val('a-ans'),tps:val('a-tps'),r:RL.map((_,i)=>val('a-r'+i)),note:val('a-note').trim()};const l=await aiLoad();l.push(x);await aiSave(l);toast('Ergebnis gespeichert');aiSheet()}
-else if(a==='cpAi'){const l=await aiLoad();const t=l.map(x=>`${x.device} | ${x.model} | Laden ${x.load}s | Antwort ${x.ans}s | ${x.tps} Tokens/s | `+RL.map((n,i)=>n+' '+x.r[i]).join(', ')+(x.note?' | '+x.note:'')).join('\n');try{await navigator.clipboard.writeText(t);toast('Kopiert. Füge es im Chat mit Claude ein.')}catch(e){toast('Kopieren nicht möglich')}}
-else if(a==='exp'){S.lastBackup=today();await save();const j=JSON.stringify(S);try{await navigator.clipboard.writeText(j);toast('Backup kopiert. Jetzt in eine Notiz einfügen.')}catch(x){$('#imp').value=j;$('#imp').select();toast('Text markiert. Bitte manuell kopieren.')}}
-else if(a==='imp'){try{const j=JSON.parse(val('imp'));if(!Array.isArray(j.memory)||!Array.isArray(j.tasks))throw 0;const n=merge(j);await save();toast(n+' Einträge übernommen');render()}catch(x){toast('Das ist kein gültiges Backup')}}});
-document.addEventListener('input',e=>{if(e.target.id==='a-x'){ai.extra=e.target.value;gen()}if(e.target.id==='pv')chk();if(e.target.id==='q'){mf.q=e.target.value;$('#list').innerHTML=memList()}
-if(e.target.id==='ac'){S.accent=e.target.value;document.documentElement.style.setProperty('--ac',S.accent);save()}});
-document.addEventListener('change',e=>{if(e.target.id==='a-m'){ai.compact=e.target.value==='k';gen()}if(e.target.id==='a-t'){ai.tasks=e.target.checked;gen()}if(e.target.id==='a-p'){ai.priv=e.target.checked;gen()}if(e.target.id==='hist'){mf.hist=e.target.checked;$('#list').innerHTML=memList()}});
-
-/* Arbeitsauftrag-Generator */
-let ai={k:null,extra:'',compact:false,tasks:true,priv:false,cats:[]};
-const TC={ig:['Instagram','Marketing','Geschäftsmodell','Ziele','Meetup','Kennzahl'],cap:['Instagram','Marketing','Geschäftsmodell'],strat:['Ziele','Geschäftsmodell','Entscheidung','Finanzen','Meetup','Marketing','Kennzahl','Problem','App','Webseite','Instagram'],week:['Ziele','Entscheidung','Meetup','Marketing','App','Problem','Kennzahl'],dec:['Entscheidung','Ziele','Finanzen','Kennzahl','Problem'],prob:['Problem','Meetup','Marketing','Kennzahl','Entscheidung','Instagram'],sum:CATS};
-const TPL=[
-{k:'ig',name:'Instagram-Ideen entwickeln',ext:1,cat:'Instagram',d:'3 neue Beitragsideen mit Caption und Designhinweis',task:'Entwickle 3 neue, deutlich verschiedene Instagram-Beitragsideen für Vivalink. Wiederhole keine bisherigen Beiträge. Sie sollen zu meinem Geschäftsmodell und meinen Zielen passen und mehr Anmeldungen zu Meetups bringen.',fmt:'Pro Idee: Thema, Format (Karussell, Reel oder Einzelbild), Hook-Satz, vollständige Caption (max. 120 Wörter) mit 5 Hashtags, Designidee (Layout, Text auf dem Bild). Danach: warum diese Ideen zu Vivalink passen.'},
-{k:'cap',name:'Caption schreiben',ext:0,cat:'Instagram',d:'Einfache Aufgabe, geeignet für die lokale KI',x:'Worum soll der Beitrag gehen?',task:'Schreibe eine Instagram-Caption (max. 100 Wörter, freundlich, mit 5 Hashtags) für Vivalink.',fmt:'Nur die Caption, keine Erklärung.'},
-{k:'strat',name:'Unternehmensstrategie analysieren',ext:1,cat:'Ziele',d:'Stärken, Schwächen, nächste Schritte',task:'Analysiere die aktuelle Lage von Vivalink: Was läuft gut, was bremst, und was sollte ich in den nächsten 4 Wochen ändern? Vergleiche mindestens zwei Lösungswege und empfehle einen.'},
-{k:'week',name:'Wochenplan: 3 Maßnahmen',ext:1,cat:'Ziele',d:'Drei Prioritäten für die kommende Woche',task:'Empfiehl mir die 3 wichtigsten Maßnahmen für die kommende Woche. Berücksichtige offene und überfällige Aufgaben.'},
-{k:'dec',name:'Entscheidung bewerten',ext:1,cat:'Entscheidung',d:'Frühere oder anstehende Entscheidung prüfen',x:'Welche Entscheidung? (Titel oder Beschreibung)',task:'Bewerte die genannte Entscheidung: War oder ist sie sinnvoll? Nutze Begründung, Ergebnis und Verlauf. Nenne Alternativen.'},
-{k:'prob',name:'Problem lösen',ext:1,cat:'Problem',d:'z. B. Anmeldungen schlechter als erwartet',x:'Beschreibe das Problem',task:'Analysiere das genannte Problem: wahrscheinlichste Ursachen, wie ich jede prüfe, und konkrete Lösungen mit Aufwand und Wirkung.'},
-{k:'sum',name:'Wissen zusammenfassen, Lücken finden',ext:0,cat:'Ziele',d:'Was weiß die KI, was fehlt noch?',task:'Fasse zusammen, was du über Vivalink weißt, und nenne die 5 wichtigsten fehlenden Informationen, die ich nachtragen sollte.'}];
-function buildPrompt(){const T=TPL.find(t=>t.k===ai.k),c=ai.compact,cut=(s,n)=>!s?'':s.length>n?s.slice(0,n)+'…':s,mx=c?6:12;
-const ws=ai.extra.toLowerCase().split(/[^a-zA-ZäöüÄÖÜß0-9]+/).filter(w=>w.length>3),kw=m=>ws.some(w=>(m.title+' '+m.text).toLowerCase().includes(w));
-const act=S.memory.filter(m=>m.active&&(ai.priv||!m.private)&&(ai.cats.includes(m.cat)||kw(m))).sort((a,b)=>b.createdAt-a.createdAt);
-const ln=m=>{let s=`- [${STL[m.status].slice(2)}, ${fmt(m.date)}] ${m.title}: ${cut(m.text,c?150:500)}`;if(!c){if(m.reason)s+=` | Begründung: ${cut(m.reason,300)}`;if(m.result)s+=` | Ergebnis: ${cut(m.result,300)}`;const p=m.supersedes&&S.memory.find(x=>x.id===m.supersedes);if(p)s+=` | Früher: „${p.title}“, geändert weil: ${cut(m.changeReason,300)}`}return s};
-const grp=(h,f)=>{const l=act.filter(f).slice(0,mx);return l.length?`\n${h}\n`+l.map(ln).join('\n')+'\n':''};
-const open=S.tasks.filter(x=>!x.done).sort((a,b)=>PR[a.prio]-PR[b.prio]).slice(0,c?5:15);
-let k=grp('ZAHLEN UND KENNZAHLEN',m=>m.cat==='Kennzahl')+grp('ENTSCHEIDUNGEN (aktueller Stand, mit Verlauf)',m=>m.cat==='Entscheidung')+grp('BISHERIGE INSTAGRAM-BEITRÄGE UND -IDEEN (nicht wiederholen)',m=>m.cat==='Instagram')+grp('WEITERES WISSEN ÜBER VIVALINK',m=>!['Kennzahl','Entscheidung','Instagram'].includes(m.cat));
-if(ai.tasks&&open.length)k+='\nOFFENE AUFGABEN\n'+open.map(x=>`- [${x.prio}] ${x.title} (${x.area}${x.due?', Frist '+fmt(x.due):''}${x.due&&x.due<today()?', ÜBERFÄLLIG':''})`).join('\n')+'\n';
-if(!k.trim())k='\n(Im Unternehmensgedächtnis sind noch keine Einträge vorhanden. Frage mich zuerst nach den wichtigsten Grundlagen.)\n';
-const rules=c?'Antworte auf Deutsch, kurz und konkret. Erfinde nichts. Wenn Infos fehlen, schreibe „Das weiß ich nicht“.':'REGELN\n- Stütze dich auf das Unternehmenswissen unten. Unterscheide „Bestätigt“ (Fakten), „Einschätzung“ (Annahmen) und „Unbekannt“.\n- Erfinde keine Zahlen oder Fakten. Nenne fehlende Informationen ausdrücklich.\n- Berücksichtige frühere Entscheidungen und die Gründe für Änderungen.\n- Bevorzuge kostenlose oder sehr günstige Maßnahmen.\n- Vergleiche bei Strategiefragen mindestens zwei Lösungswege.';
-const ex=ai.extra.trim();
-return `Du bist mein ${c?'Assistent':'strategischer Berater'} für mein Unternehmen „Vivalink“. Ich bin Gründer, arbeite allein, habe keine Programmierkenntnisse und ein kleines Budget.\n\nAUFGABE\n${T.task}${ex?'\nZusatzinfo von mir: '+ex:''}\n\n${rules}\n\nAUSGABEFORMAT\n${T.fmt||'1. Kurzfazit (max. 3 Sätze)\n2. Empfehlungen (nummeriert, jeweils mit Begründung und nächstem Schritt)\n3. Annahmen und Unsicherheiten\n4. Fehlende Informationen und Rückfragen an mich'}\n\nUNTERNEHMENSWISSEN (Stand ${fmt(today())})${k}`}
-const pw=t=>/[\w.+-]+@[\w-]+\.[\w.]+|(\+|00)\d[\d ()\/-]{7,}\d|\b0\d{2,4}[ \/-]?\d{5,}\b/.test(t)?'<div class="card rec bad">Achtung: Der Text enthält vermutlich eine E-Mail-Adresse oder Telefonnummer. Entferne personenbezogene Daten, bevor du ihn kopierst.</div>':'';
-function chk(){$('#warn').innerHTML=pw($('#pv').value)}
-function gen(){$('#pv').value=buildPrompt();chk()}
-function vAi(){if(!ai.k)return `<h1>Arbeitsaufträge</h1><p class="mut">Tippe auf eine Aufgabe. Die App stellt Wissen, Entscheidungen, Zahlen und Aufgaben zu einem fertigen Auftrag zusammen.</p>`+TPL.map(t=>`<div class="card" data-a="tpl" data-id="${t.k}"><div class="row sp"><b>${t.name}</b><span class="chip">${t.ext?'Claude / ChatGPT':'lokal möglich'}</span></div><div class="mut">${t.d}</div></div>`).join('')+`<p class="mut">Tipp: Zahlen (z. B. Anmeldungen) trägst du im Gedächtnis mit der Kategorie „Kennzahl“ ein. Trage keine Namen oder Kontaktdaten von Teilnehmern ein.</p>`;
-const T=TPL.find(t=>t.k===ai.k),p=buildPrompt();
-return `<div class="row sp"><h1>${T.name}</h1><button class="s" data-a="aiBack">Zurück</button></div><label>${T.x||'Zusatzinfo (optional)'}</label><input id="a-x" value="${esc(ai.extra)}"><label>Für welche KI?</label><select id="a-m"><option value="v" ${ai.compact?'':'selected'}>Claude oder ChatGPT (ausführlich)</option><option value="k" ${ai.compact?'selected':''}>Lokale KI (kompakt)</option></select><label><input type="checkbox" id="a-t" ${ai.tasks?'checked':''} style="width:auto;margin-right:6px">Offene Aufgaben mitsenden</label><label><input type="checkbox" id="a-p" ${ai.priv?'checked':''} style="width:auto;margin-right:6px">Auch vertrauliche Einträge einbeziehen (${S.memory.filter(m=>m.active&&m.private).length} vorhanden, standardmäßig ausgeschlossen)</label><label>Berücksichtigte Kategorien (antippen zum Ändern)</label><div class="chips" style="flex-wrap:wrap">${CATS.map(c=>`<button class="${ai.cats.includes(c)?'on':''}" data-a="acat" data-id="${c}">${c}</button>`).join('')}</div>
-<h2>Fertiger Arbeitsauftrag</h2><div id="warn">${pw(p)}</div><textarea id="pv" style="min-height:260px">${esc(p)}</textarea>
-<div class="row"><button class="p" data-a="cpPv">Kopieren</button><a class="lnk" href="https://claude.ai/new" target="_blank" rel="noopener">Claude</a><a class="lnk" href="https://chatgpt.com/" target="_blank" rel="noopener">ChatGPT</a></div>
-<h2>Antwort speichern</h2><label>Quelle</label><select id="s-src"><option>Claude</option><option>ChatGPT</option><option>Lokale KI</option></select><label>Kategorie</label><select id="s-cat">${opts(CATS,T.cat)}</select><label>Antwort der KI hier einfügen</label><textarea id="ans" style="min-height:140px"></textarea><label><input type="checkbox" id="ok" style="width:auto;margin-right:6px">Ich habe den Inhalt geprüft (nötig für „bestätigt“)</label><div class="row"><button data-a="saveAns" data-id="estimate">Als Einschätzung speichern</button><button class="p" data-a="saveAns" data-id="confirmed">Als bestätigt übernehmen</button><button data-a="discard">Verwerfen</button></div><p class="mut">Nichts wird automatisch als Fakt gespeichert. Einschätzungen (💭) kennzeichnet die App in späteren Aufträgen als Annahme.</p>`}
-/* KI-Test: eigener Speicherplatz, berührt keine Unternehmensdaten */
-const RL=['Lief stabil','Tempo','Deutsch','Instagram-Ideen','Problemanalyse','Gedächtnis'];
-const PROMPTS=[['Deutsch und Stil','Erkläre in 4 einfachen deutschen Sätzen, was ein Meetup-Organisator tun sollte, damit neue Teilnehmer wiederkommen.'],['Instagram-Ideen','Du bist Social-Media-Berater für „Vivalink“, ein Unternehmen, das Meetups organisiert. Entwickle 5 verschiedene Instagram-Beitragsideen auf Deutsch. Für jede: Thema, Format (Karussell, Reel oder Einzelbild), ein Hook-Satz und eine kurze Caption. Die Ideen sollen sich deutlich voneinander unterscheiden.'],['Problemanalyse','Problem: Die Anmeldungen für unser nächstes Meetup liegen 40 % unter dem Plan. Nenne die 3 wahrscheinlichsten Ursachen, wie ich jede prüfen kann, und eine konkrete Maßnahme pro Ursache für die nächste Woche. Antworte auf Deutsch.']];
-function memPrompt(){const act=S.memory.filter(m=>m.active);const ctx=(act.length?act.map(m=>`- [${m.cat}, ${STL[m.status].slice(2)}, ${m.date}] ${m.title}: ${m.text}${m.reason?' Begründung: '+m.reason:''}${m.result?' Ergebnis: '+m.result:''}`).join('\n'):'(noch keine Einträge)').slice(0,3000);return `Du bist der Unternehmensassistent von Vivalink. Nutze NUR die folgenden Informationen. Wenn etwas fehlt, sage ausdrücklich „Das weiß ich nicht“. Unterscheide bestätigte Fakten von Einschätzungen.\n\nUnternehmensgedächtnis:\n${ctx}\n\nAufgabe: Fasse zusammen, was du über Vivalink weißt, und nenne 3 Dinge, die dir noch fehlen. Danach: Was sollte ich als Nächstes verbessern? Begründe es mit den Einträgen oben.`}
-const aiLoad=async()=>{try{const d=await idb();return await new Promise(ok=>{const q=d.transaction('kv').objectStore('kv').get('aitest');q.onsuccess=()=>ok(q.result||[]);q.onerror=()=>ok([])})}catch(e){return[]}};
-const aiSave=async l=>{try{const d=await idb();d.transaction('kv','readwrite').objectStore('kv').put(l,'aitest')}catch(e){}};
-async function gpuInfo(){if(!('gpu' in navigator))return 'WebGPU nicht verfügbar';try{const a=await navigator.gpu.requestAdapter();if(!a)return 'WebGPU ohne Grafikadapter';return 'WebGPU ok · f16: '+(a.features.has('shader-f16')?'ja':'nein')+' · max. Puffer: '+Math.round(a.limits.maxBufferSize/1048576)+' MB'}catch(e){return 'WebGPU-Fehler'}}
-async function aiSheet(){const g=await gpuInfo(),l=await aiLoad(),P=PROMPTS.concat([['Unternehmensgedächtnis',memPrompt()]]);
-sheet(`<h1>KI-Test</h1><div class="card">${esc(g)}</div><p class="mut">Öffne chat.webllm.ai in Safari, lade ein Modell, kopiere die vier Testfragen von hier hinein und trage unten dein Ergebnis ein.</p>`+
-P.map((p,i)=>`<div class="card"><b>${i+1}. ${p[0]}</b><textarea id="pt${i}" readonly>${esc(p[1])}</textarea><button class="s" data-a="cpy" data-id="${i}">Kopieren</button></div>`).join('')+
-`<h2>Ergebnis festhalten</h2><label>Gerät</label><select id="a-dev">${opts(['iPhone 16 Pro','iPad (A16)'])}</select><label>Modellname (wie in der Auswahl angezeigt)</label><input id="a-mod"><label>Sekunden bis das Modell geladen war</label><input id="a-load" inputmode="decimal"><label>Sekunden bis die Instagram-Antwort komplett war</label><input id="a-ans" inputmode="decimal"><label>Tokens pro Sekunde (falls angezeigt)</label><input id="a-tps" inputmode="decimal">`+
-RL.map((n,i)=>`<label>${n} (1 schlecht, 5 sehr gut)</label><select id="a-r${i}">${opts(['–','1','2','3','4','5'])}</select>`).join('')+
-`<label>Notizen</label><textarea id="a-note"></textarea><div class="row"><button class="p" data-a="saveAi">Ergebnis speichern</button><button data-a="close">Schließen</button></div><h2>Gespeicherte Ergebnisse</h2>`+
-(l.length?l.map(x=>`<div class="card"><b>${esc(x.device)} · ${esc(x.model)}</b><div class="mut">Laden ${esc(x.load)} s · Antwort ${esc(x.ans)} s · ${esc(x.tps)} Tokens/s</div><div>${RL.map((n,i)=>n+' '+esc(x.r[i])).join(' · ')}</div>${x.note?`<div class="mut">${esc(x.note)}</div>`:''}</div>`).join('')+'<button data-a="cpAi">Alle Ergebnisse kopieren</button>':'<p class="mut">Noch keine Ergebnisse.</p>'))}
-if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
-(async()=>{S=await load()||{v:1,dev:uid(),memory:[],tasks:[],accent:'',lastBackup:''};render()})();
-</script>
+<script src="js/core.js"></script>
+<script src="js/data.js"></script>
+<script src="js/metrics.js"></script>
+<script src="js/rules.js"></script>
+<script src="js/prompts.js"></script>
+<script src="js/aitest.js"></script>
+<script src="js/views.js"></script>
+<script src="js/diag.js"></script>
+<script src="js/app.js"></script>
 </body>
 </html>
