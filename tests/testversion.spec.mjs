@@ -77,8 +77,9 @@ test("Echte App zeigt keinen Testhinweis und keine Demodaten-Funktionen", async 
   await expect(page.locator(".testbar")).toHaveCount(0);
   await page.click('nav button[data-id="more"]');
   await expect(page.locator('button[data-a="demoLoad"]')).toHaveCount(0);
-  await page.evaluate(() => demoAction("demoLoad"));
-  await page.evaluate(() => demoAction("demoLoad"));
+  // Demofunktionen sind in der produktiven App gar nicht enthalten
+  expect(await page.evaluate(() => [typeof demoAction, typeof demoState, typeof demoCard, window.VL_CHANNEL, window.VL_DB])).toEqual(["undefined", "undefined", "undefined", "prod", undefined]);
+  expect(await page.evaluate(() => [...document.scripts].map((s) => s.src).filter((s) => /demo/.test(s)))).toEqual([]);
   expect((await state(page)).tasks).toHaveLength(0);
 });
 

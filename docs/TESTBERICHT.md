@@ -13,8 +13,10 @@ Stand: 23.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · **nicht veröffe
 | Sichtprüfung der neuen Ansichten auf iPhone-Breite (Bildschirmfotos) | ✅ kein seitliches Scrollen, Darstellung angepasst |
 | GitHub Actions, Lauf 1 (Chromium + WebKit, 5 Varianten) | ❌ 243/245. Nur der Offline-Test in WebKit (iPhone, iPad) schlug fehl, siehe unten |
 | GitHub Actions, Lauf 3 nach Korrektur (Chromium + WebKit, 5 Varianten) | ✅ 245/245 |
-| Getrennte Testversion: 4 zusätzliche Tests (Speicher, Demodaten, Offline-Speicher-Trennung inkl. Gegenprobe) | ✅ lokal; CI siehe Pull Request #1 |
-| Echte Geräte (iPhone, iPad) | ⏳ **ausstehend**, siehe `TESTVERSION.md` |
+| Getrennte Testversion: 4 zusätzliche Tests (Speicher, Demodaten, Offline-Speicher-Trennung inkl. Gegenprobe) | ✅ GitHub Actions Lauf 5/6: 265/265 |
+| **Freigabeprüfung:** 3 Tests mit dem **originalen Code von Version 1** (Update, Rückbau, V1-Backups) | ✅ lokal; CI siehe Pull Request #1 |
+| Gesamt lokal nach Freigabeprüfung: 56 Tests × 3 Varianten, 2× wiederholt | ✅ 336/336 |
+| Echte Geräte (iPhone, iPad) in der getrennten Testversion | ✅ vom Gründer gemeldet: iPad (Demodaten, Backups, Import, Konflikte, Rückgängig, Diagnose), iPhone (Demodaten, Empfehlungen, Kennzahlen, Offline im Flugmodus, Diagnose); bestehende App unverändert |
 | Produktive Freigabe | ⏳ ausstehend, nur durch den Gründer |
 
 Alle Tests verwenden ausschließlich künstliche Daten (`tests/fixtures.mjs`). Jeder Test prüft zusätzlich, dass keine JavaScript-Fehler auftreten. Die meisten Tests prüfen außerdem, dass keine Anfrage an fremde Server geht.
@@ -105,6 +107,37 @@ Alle Tests verwenden ausschließlich künstliche Daten (`tests/fixtures.mjs`). J
    - unmaskierte IDs
    - veralteter Hinweistext
    - parallele Änderungen ohne Hinweis
+
+## Freigabeprüfung (vor der Veröffentlichung)
+
+Durchsicht des gesamten Pull Requests auf technische Fehler, Sicherheit, unbeabsichtigte Änderungen und Datenverlust. Ergebnis und Maßnahmen:
+
+1. **Behoben – veraltete Dateien direkt nach einem Update.**
+   - GitHub Pages erlaubt Browsern bis zu 10 Minuten Zwischenspeicherung. Der Service Worker hätte dadurch die alte Startseite in den neuen Offline-Speicher übernehmen oder alte und neue Programmdateien mischen können.
+   - Jetzt: Vorabspeicherung mit `cache: "reload"`, Netzabrufe mit `cache: "no-cache"`, Versionsnummer in den Skript-Adressen (`?v=2.1.0`).
+   - Die automatische Prüfung erzwingt einheitliche Versionsnummern.
+2. **Behoben – Demofunktionen in der produktiven App.**
+   - Sie waren bisher enthalten, aber inaktiv. Jetzt liegen sie nur noch in `test-build/demo.js` und werden ausschließlich in die Testversion eingebaut.
+   - Automatisch geprüft: In der produktiven App gibt es keine Demofunktion, keinen Testkanal und keinen geänderten Speichernamen.
+3. **Behoben – mögliche Umwandlung durch Jekyll.** `.nojekyll` ergänzt: GitHub Pages liefert die Dateien unverändert aus.
+4. **Geprüft, kein Befund – Maskierung.** Alle Stellen, an denen Daten in die Oberfläche gelangen, sind maskiert. Zusätzlich blockiert die Content-Security-Policy eingeschleuste Skripte.
+5. **Geprüft – Aktualisierung mit dem originalen Code von Version 1** (`tests/fixtures/legacy-v1` = `main`, Stand `f32f745`). In Version 1 werden über die Oberfläche angelegt:
+   - eine Aufgabe
+   - ein Gedächtnis-Eintrag, danach geändert (mit Verlauf)
+   - ein KI-Testergebnis
+   - ein Backup
+
+   Danach liefert derselbe Server Version 2.1 aus. Ergebnis:
+   - alle Datensätze unverändert, Datenversion 3
+   - geprüfte Sicherheitskopie und KI-Tests erhalten
+   - alter Offline-Speicher entfernt, neuer enthält die neue Startseite
+   - das Version-1-Backup ist lesbar und bereits vollständig enthalten
+   - offline lauffähig
+6. **Geprüft – Rückbau.** 2.1 → Version 1 → 2.1: Kennzahlen, Meetup, Ausblendungen und Gedächtnis bleiben unverändert. Eine während des Rückbaus angelegte Aufgabe bleibt erhalten.
+7. **Geprüft – Backups aus Version 1** (mit originalem Code erzeugt) lassen sich auf einem anderen Gerät mit 2.1 übernehmen.
+8. **Nicht vermeidbar:**
+   - Der auf den Geräten installierte Service Worker von Version 1 nutzt den Zwischenspeicher. Direkt nach der Veröffentlichung kann daher bis zu etwa 10 Minuten noch Version 1 erscheinen. Das ist harmlos und in `VEROEFFENTLICHUNG.md` beschrieben.
+   - Ab 2.1 tritt das nicht mehr auf.
 
 ## Befund aus GitHub Actions (WebKit)
 Lauf 1: Alle 49 Tests bestanden in Chromium. In WebKit bestanden alle Tests außer „App startet offline“.

@@ -17,7 +17,7 @@ Interne Management-App für Vivalink. Statische Web-App (PWA) für iPhone und iP
 | `js/diag.js` | Diagnose, Konfliktanzeige, Backup-Dialoge |
 | `js/app.js` | Bedienlogik und Start |
 | `js/config.js` | Ausgabekanal (echte App oder Testversion) |
-| `js/demo.js` | Künstliche Demodaten, nur in der Testversion sichtbar |
+| `test-build/demo.js` | Künstliche Demodaten, wird nur in die Testversion eingebaut |
 | `sw.js` | Service Worker (Offline-Betrieb, Home-Bildschirm) |
 
 Die Skripte sind klassische Skripte mit gemeinsamem Gültigkeitsbereich und werden in der Reihenfolge aus `index.html` geladen.
@@ -47,6 +47,7 @@ Veröffentlichung nur im separaten Repository `vivalink-ai-test` (siehe `docs/TE
 
 - Keine Unternehmenskennzahlen, personenbezogenen Daten oder Zugangsdaten im Code. Werte gehören in die App-Daten.
 - Änderungen nur über einen Entwicklungszweig und einen Pull Request. `main` wird über GitHub Pages veröffentlicht.
+- Bei jeder neuen Version `APP_VERSION` (js/core.js), `VERSION` (sw.js), `version` (package.json) und `?v=` in index.html gemeinsam erhöhen (automatisch geprüft).
 - Vor Änderungen am Datenformat: `SCHEMA` erhöhen, Migration ergänzen und Tests für alle älteren Versionen ergänzen. Die App legt vor jeder Migration automatisch eine geprüfte Sicherheitskopie an.
 
-Weitere Unterlagen: [`docs/PROJEKT.md`](docs/PROJEKT.md) · [`docs/TESTBERICHT.md`](docs/TESTBERICHT.md) · [`docs/GERAETETEST.md`](docs/GERAETETEST.md) · [`docs/TESTVERSION.md`](docs/TESTVERSION.md) · [`CHANGELOG.md`](CHANGELOG.md)
+Weitere Unterlagen: [`docs/PROJEKT.md`](docs/PROJEKT.md) · [`docs/TESTBERICHT.md`](docs/TESTBERICHT.md) · [`docs/GERAETETEST.md`](docs/GERAETETEST.md) · [`docs/TESTVERSION.md`](docs/TESTVERSION.md) · [`docs/VEROEFFENTLICHUNG.md`](docs/VEROEFFENTLICHUNG.md) · [`CHANGELOG.md`](CHANGELOG.md)

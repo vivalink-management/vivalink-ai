@@ -8,6 +8,7 @@ const out = process.argv[2] || "dist-test";
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out + "/js", { recursive: true });
 for (const f of readdirSync("js")) cpSync("js/" + f, `${out}/js/${f}`);
+cpSync("test-build/demo.js", `${out}/js/demo.js`); // Demodaten nur in der Testversion
 cpSync("test-build/icon-180.png", `${out}/icon-180.png`);
 cpSync("test-build/icon-512.png", `${out}/icon-512.png`);
 
@@ -21,9 +22,11 @@ let html = readFileSync("index.html", "utf8");
 html = must(html, "<title>Vivalink Management AI</title>", "<title>Vivalink TEST</title>");
 html = must(html, '<meta name="apple-mobile-web-app-title" content="Vivalink">', '<meta name="apple-mobile-web-app-title" content="VL Test">');
 html = must(html, '<meta name="theme-color" content="#0f766e">', '<meta name="theme-color" content="#b45309">');
+html = must(html, '<script src="js/app.js', '<script src="js/demo.js?v=' + (html.match(/js\/app\.js\?v=([^"]+)"/) || [])[1] + '"></script>\n<script src="js/app.js');
 writeFileSync(`${out}/index.html`, html);
 
-const sw = must(readFileSync("sw.js", "utf8"), 'const CH = "vivalink-";', 'const CH = "vivalink-test-";');
+let sw = must(readFileSync("sw.js", "utf8"), 'const CH = "vivalink-";', 'const CH = "vivalink-test-";');
+sw = must(sw, '  "js/app.js",\n', '  "js/demo.js",\n  "js/app.js",\n');
 writeFileSync(`${out}/sw.js`, sw);
 
 const man = JSON.parse(readFileSync("manifest.webmanifest", "utf8"));

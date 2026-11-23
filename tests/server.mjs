@@ -19,7 +19,8 @@ http
     const file = normalize(join(root, path === "/" ? "index.html" : path));
     if (!file.startsWith(root)) return res.writeHead(403).end();
     try {
-      const body = await readFile(file);
+      // Testvorlagen (z. B. Version 1) liegen als .txt im Repository, damit GitHub Pages sie nicht als App ausliefert.
+      const body = await readFile(file).catch(() => readFile(file + ".txt"));
       res.writeHead(200, { "content-type": types[extname(file)] || "application/octet-stream", "cache-control": "no-store" });
       res.end(body);
     } catch {

@@ -35,6 +35,11 @@ Zusammenführung von Version 1 (GitHub Pages) und Version 2 (Claude-Artefakt). G
   - eigener Speicher, eigener Offline-Speicher, eigenes Symbol
   - künstliche Demodaten
   - Die echte App und die Testversion löschen gegenseitig keine Offline-Speicher.
+  - Demofunktionen sind nur in der Testversion enthalten.
+- Freigabeprüfung:
+  - Service Worker umgeht den Browser-Zwischenspeicher; Versionsnummer in den Skript-Adressen
+  - `.nojekyll`
+  - Tests für Update und Rückbau mit dem originalen Code von Version 1
 
 ## 2.0 (Claude-Artefakt, 23.11.2026)
 Kennzahlen, nächstes Meetup, Regelmotor, Sicherheitskopie.
