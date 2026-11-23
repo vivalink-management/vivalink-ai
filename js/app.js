@@ -380,7 +380,8 @@ document.addEventListener("click", async (e) => {
       render();
       toast("Konflikt entschieden");
     }
-  } else if (a === "diag") diagSheet();
+  } else if (a.startsWith("demo")) demoAction(a);
+  else if (a === "diag") diagSheet();
   else if (a === "cpDiag") {
     const t = $("#diagTxt");
     try {

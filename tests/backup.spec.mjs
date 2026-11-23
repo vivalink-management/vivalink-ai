@@ -51,8 +51,7 @@ test("Zwischenablage gesperrt: Backup gilt NICHT als erledigt, bis es geprüft w
   await expect(page.locator("#impRes")).toContainText("Prüfsumme korrekt");
   await expect(page.locator("#impRes")).toContainText("Alle Einträge dieses Backups sind auf diesem Gerät vorhanden");
   await expect.poll(async () => (await state(page)).lastBackup).toBe(new Date().toLocaleDateString("sv-SE"));
-  const log = await kv(page, "log");
-  expect(log.some((e) => e.code === "backup.clipboard")).toBe(true);
+  await expect.poll(async () => ((await kv(page, "log")) || []).some((e) => e.code === "backup.clipboard")).toBe(true);
 });
 
 test("Selbsttest wie bisher: eigenes Backup zusammenführen ergibt „0 Einträge übernommen“", async ({ page }) => {

@@ -41,6 +41,7 @@ Zuständigkeit: CC = Claude Code, R = Rork, G = Gründer.
 | F-14 | Home-Bildschirm-Installation, Offline-Betrieb | vorhanden (aus V1) | I, AT (Chromium); WebKit über CI | P0 | – | CC | 0 |
 | F-15 | Sicherheitsrichtlinie (CSP) und Eingangsprüfung | **neu in 2.1** | I, AT | P0 | – | CC | 0 |
 | F-16 | WebGPU-Prüfung und KI-Test-Protokoll | vorhanden | I, AT | – | – | CC | 0 |
+| F-18 | Getrennte Testversion (GitHub Pages im eigenen Repository, Demodaten) | **neu in 2.1** | I, AT | P0 | Repository `vivalink-ai-test` (G) | CC | 0 |
 | F-17 | Backup optional verschlüsselt (Passwort) | offen | – | P2 | – | CC | 0 |
 | E-1 | **Instagram-Studio lokal**: Themenpool, Redaktionsplan, Captions, Bildvorlagen, Freigabestatus, Ergebniserfassung | geplant, **nächster Schritt** | – | P1 | 2.1 freigegeben | CC | 0 |
 | C-1 | Lesende Kennzahlen-Schnittstelle mit Geräte-Kopplung | geplant (Rork-Auftrag) | – | P1 | Testumgebung | R | ggf. Rork-Credits |
@@ -67,7 +68,7 @@ Zuständigkeit: CC = Claude Code, R = Rork, G = Gründer.
   - Backend-Herzschlag für Hintergrundprozesse
 
 ## Offene Entscheidungen des Gründers
-1. Freigabe von Version 2.1 nach dem Gerätetest (`docs/GERAETETEST.md`).
+1. Repository `vivalink-ai-test` anlegen und für Claude freigeben (`docs/TESTVERSION.md`, Teil A). Danach Gerätetest und Freigabe von Version 2.1.
 2. Optional: `main` in den GitHub-Einstellungen schützen (kostenlos). Dann sind Änderungen nur noch über Pull Requests möglich.
 3. Später: Supabase-Tarif und Projektanzahl (für Synchronisierung und Testumgebung), Rork-Auftrag als PDF, Instagram-Kontotyp und Markenvorgaben.
 

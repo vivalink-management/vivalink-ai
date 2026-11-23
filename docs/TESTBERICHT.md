@@ -12,8 +12,9 @@ Stand: 23.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · **nicht veröffe
 | Stabilität: Gesamtlauf 5× wiederholt | ✅ 735/735, keine instabilen Tests |
 | Sichtprüfung der neuen Ansichten auf iPhone-Breite (Bildschirmfotos) | ✅ kein seitliches Scrollen, Darstellung angepasst |
 | GitHub Actions, Lauf 1 (Chromium + WebKit, 5 Varianten) | ❌ 243/245. Nur der Offline-Test in WebKit (iPhone, iPad) schlug fehl, siehe unten |
-| GitHub Actions, Lauf 2 nach Korrektur | siehe Pull Request #1 |
-| Echte Geräte (iPhone, iPad) | ⏳ **ausstehend**, siehe `GERAETETEST.md` |
+| GitHub Actions, Lauf 3 nach Korrektur (Chromium + WebKit, 5 Varianten) | ✅ 245/245 |
+| Getrennte Testversion: 4 zusätzliche Tests (Speicher, Demodaten, Offline-Speicher-Trennung inkl. Gegenprobe) | ✅ lokal; CI siehe Pull Request #1 |
+| Echte Geräte (iPhone, iPad) | ⏳ **ausstehend**, siehe `TESTVERSION.md` |
 | Produktive Freigabe | ⏳ ausstehend, nur durch den Gründer |
 
 Alle Tests verwenden ausschließlich künstliche Daten (`tests/fixtures.mjs`). Jeder Test prüft zusätzlich, dass keine JavaScript-Fehler auftreten. Die meisten Tests prüfen außerdem, dass keine Anfrage an fremde Server geht.

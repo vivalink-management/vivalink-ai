@@ -31,6 +31,10 @@ Zusammenführung von Version 1 (GitHub Pages) und Version 2 (Claude-Artefakt). G
   - alle IDs in der Oberfläche maskiert
 - Service Worker: versionierter Offline-Speicher, speichert nur erfolgreiche Antworten der eigenen Seite.
 - Automatische Tests (Playwright) und GitHub-Actions-Ablauf. Prüfung auf vertrauliche Inhalte.
+- Getrennte Testversion (`scripts/build-test.mjs`, Anleitung `docs/TESTVERSION.md`):
+  - eigener Speicher, eigener Offline-Speicher, eigenes Symbol
+  - künstliche Demodaten
+  - Die echte App und die Testversion löschen gegenseitig keine Offline-Speicher.
 
 ## 2.0 (Claude-Artefakt, 23.11.2026)
 Kennzahlen, nächstes Meetup, Regelmotor, Sicherheitskopie.

@@ -3,7 +3,8 @@ import http from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize, resolve } from "node:path";
 
-const root = resolve(new URL("..", import.meta.url).pathname);
+const repo = resolve(new URL("..", import.meta.url).pathname);
+const root = process.env.ROOT ? resolve(repo, process.env.ROOT) : repo; // ROOT=dist-test für die Testversion
 const port = Number(process.env.PORT || 4173);
 const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".json": "application/json", ".webmanifest": "application/manifest+json", ".png": "image/png" };
 const allowed = /^\/(index\.html|sw\.js|manifest\.webmanifest|icon-\d+\.png|js\/[a-z]+\.js)?$/;
