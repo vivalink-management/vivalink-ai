@@ -19,7 +19,7 @@
 - **Selbstständig erkannt:**
   - Meetup ohne Ankündigung → fertiger Entwurf nur aus Fakten
   - Regelmotor-Hinweise: Freigabe nötig, Veröffentlichung fällig, Plan für den nächsten Monat fehlt, Ergebnisse fehlen, Markenprofil unvollständig
-- **Markenprofil:** Region, Anmeldeweg, Konto, feste Hashtags, Tabus, Farben bestätigen, Rhythmus. Liegt in den App-Daten, nicht im Code.
+- **Markenprofil:** Farben (bestätigt) und Anmeldung über vivalink.me sind voreingestellt. Region, Konto, feste Hashtags, Tabus und Rhythmus sind einstellbar und liegen in den App-Daten, nicht im Code.
 - **Reels** (Skript und Szenenliste) sind vorbereitet, standardmäßig 0 pro Monat.
 
 **Sicherung**
