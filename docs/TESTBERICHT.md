@@ -11,7 +11,8 @@ Stand: 23.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · **nicht veröffe
 | Automatische Tests: 49 Tests × 3 Varianten (Chromium Desktop, iPhone-Bildschirm, iPad-Bildschirm) | ✅ 147/147 |
 | Stabilität: Gesamtlauf 5× wiederholt | ✅ 735/735, keine instabilen Tests |
 | Sichtprüfung der neuen Ansichten auf iPhone-Breite (Bildschirmfotos) | ✅ kein seitliches Scrollen, Darstellung angepasst |
-| WebKit (Safari-Technik), iPhone und iPad | ⏳ **noch nicht gelaufen.** Läuft in GitHub Actions, sobald der Zweig gepusht werden kann. |
+| GitHub Actions, Lauf 1 (Chromium + WebKit, 5 Varianten) | ❌ 243/245. Nur der Offline-Test in WebKit (iPhone, iPad) schlug fehl, siehe unten |
+| GitHub Actions, Lauf 2 nach Korrektur | siehe Pull Request #1 |
 | Echte Geräte (iPhone, iPad) | ⏳ **ausstehend**, siehe `GERAETETEST.md` |
 | Produktive Freigabe | ⏳ ausstehend, nur durch den Gründer |
 
@@ -103,6 +104,14 @@ Alle Tests verwenden ausschließlich künstliche Daten (`tests/fixtures.mjs`). J
    - unmaskierte IDs
    - veralteter Hinweistext
    - parallele Änderungen ohne Hinweis
+
+## Befund aus GitHub Actions (WebKit)
+Lauf 1: Alle 49 Tests bestanden in Chromium. In WebKit bestanden alle Tests außer „App startet offline“.
+- Beim Neuladen meldete Playwright „WebKit encountered an internal error“, also einen Fehler der Testumgebung.
+- Direkt davor war im selben Test nachweislich der Service Worker aktiv und der Offline-Speicher gefüllt. Die App meldete keinen Fehler.
+- Ursache: die Offline-Simulation `context.setOffline` von Playwright in WebKit.
+
+Korrektur: Der Test simuliert „offline“ jetzt realistischer. Er startet einen eigenen Testserver, beendet ihn, prüft, dass dieser wirklich nicht mehr erreichbar ist, und lädt die App erst dann neu. Der Test wurde nicht übersprungen oder abgeschwächt.
 
 ## Nicht automatisch prüfbar
 - Teilen-Menü und Dateien-App auf iOS (`navigator.share`). Getestet ist nur der Download-Weg.

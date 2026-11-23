@@ -1,6 +1,7 @@
 // Home-Bildschirm-Installation (PWA) und Offline-Betrieb.
 import { test, expect } from "@playwright/test";
-import { guard, open, ready, seed, state } from "./helpers.mjs";
+import { open, ready, state } from "./helpers.mjs";
+import { spawn } from "node:child_process";
 import { v1State } from "./fixtures.mjs";
 import { readFileSync } from "node:fs";
 
@@ -34,20 +35,33 @@ test.describe("Installation", () => {
 
 test.describe("Offline", () => {
   test.use({ serviceWorkers: "allow" });
-  test("Service Worker wird aktiv, App startet offline mit allen Daten", async ({ page, context, browserName }) => {
-    const g = await guard(page);
-    await seed(page, { state: v1State() });
+  // Echter Ausfall statt Browser-Simulation: eigener Testserver, der während des Tests beendet wird.
+  // (Die Offline-Simulation von Playwright ist in WebKit für Seitenaufrufe nicht zuverlässig.)
+  let srv;
+  test("Service Worker wird aktiv, App startet ohne Server vollständig aus dem Offline-Speicher", async ({ page, context }, info) => {
+    const port = 4180 + info.parallelIndex;
+    const base = `http://127.0.0.1:${port}/`;
+    srv = spawn(process.execPath, ["tests/server.mjs"], { env: { ...process.env, PORT: String(port) }, stdio: "ignore" });
+    await expect.poll(async () => (await fetch(base).catch(() => null))?.status ?? 0, { timeout: 10_000 }).toBe(200);
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    await page.goto(base);
+    await ready(page);
+    await page.evaluate(async (s) => kvPut("state", s), v1State());
     await page.evaluate(() => navigator.serviceWorker.ready);
     await page.reload();
     await ready(page);
     await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
     await expect.poll(() => page.evaluate(async () => (await caches.keys()).includes("vivalink-2.1.0"))).toBe(true);
-    await context.setOffline(true);
+    // Server beenden und prüfen, dass er wirklich nicht mehr erreichbar ist
+    srv.kill();
+    await expect.poll(async () => (await fetch(base).then(() => "online", () => "offline")), { timeout: 10_000 }).toBe("offline");
     await page.reload();
     await ready(page);
-    expect((await state(page)).tasks).toHaveLength(2);
     await expect(page.locator("h1")).toHaveText("Vivalink Management AI");
-    await context.setOffline(false);
-    expect(g.errors.filter((e) => !/ERR_INTERNET_DISCONNECTED|Failed to load resource/.test(e))).toEqual([]);
+    expect((await state(page)).tasks).toHaveLength(2);
+    expect((await state(page)).v).toBe(3);
+    expect(errors).toEqual([]);
   });
+  test.afterEach(() => srv && srv.kill());
 });
