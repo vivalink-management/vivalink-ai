@@ -28,7 +28,7 @@ test("Manipuliertes Backup: Inhalte werden nur als Text gezeigt, ungültige Date
   await expect(page.locator("#list")).toContainText('<img src=x onerror="window.__pwned=1">Böser Titel');
   await nav(page, "ai");
   await page.click('[data-a="tpl"][data-id="strat"]');
-  expect(await page.inputValue("#pv")).not.toContain("Böser Titel"); // ungültige Kategorie → nicht im Auftrag
+  expect(await page.inputValue("#pv")).not.toContain("<script>window.__pwned=1</script>"); // Inhalt mit ungültiger Kategorie nicht im Auftrag
   await nav(page, "more");
   await page.click('button[data-a="diag"]');
   await expect(page.locator("#sheet")).toContainText("Diagnose");

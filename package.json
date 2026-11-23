@@ -1,6 +1,6 @@
 {
   "name": "vivalink-management-ai",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "private": true,
   "description": "Interne Management-App für Vivalink (statische Web-App, kein Build-Schritt)",
   "scripts": {

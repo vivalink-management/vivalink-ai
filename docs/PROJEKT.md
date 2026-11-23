@@ -68,9 +68,11 @@ Zuständigkeit: CC = Claude Code, R = Rork, G = Gründer.
   - Backend-Herzschlag für Hintergrundprozesse
 
 ## Offene Entscheidungen des Gründers
-1. **Freigabe von Version 2.1** zur Veröffentlichung (Ablauf: `docs/VEROEFFENTLICHUNG.md`). Gerätetests in der Testversion sind erfolgreich abgeschlossen.
-2. Optional: `main` in den GitHub-Einstellungen schützen (kostenlos). Dann sind Änderungen nur noch über Pull Requests möglich.
-3. Später: Supabase-Tarif und Projektanzahl (für Synchronisierung und Testumgebung), Rork-Auftrag als PDF, Instagram-Kontotyp und Markenvorgaben.
+1. **Version 2.2 (Instagram-Studio):** Gerätetest in „VL Test“, danach Freigabe zur Veröffentlichung.
+2. Markenfarben bestätigen (aus dem Logo ermittelt: Pink #FA0372, Violett #6203DD, Orange #FE6603) und genauen Anmeldeweg angeben.
+3. Speicher für die Synchronisierung wählen: Supabase Free oder Cloudflare (beide kostenlos). Danach starten geplante Claude-Aufgaben.
+4. Optional: `main` in den GitHub-Einstellungen schützen (kostenlos). Dann sind Änderungen nur noch über Pull Requests möglich.
+5. Später: Supabase-Tarif und Projektanzahl (für Synchronisierung und Testumgebung), Rork-Auftrag als PDF, Instagram-Kontotyp und Markenvorgaben.
 
 ## Bekannte Grenzen
 - Lokal wird nur Chromium getestet. WebKit (Safari-Technik) läuft in GitHub Actions. Echte iPhone- und iPad-Tests ersetzt beides nicht.

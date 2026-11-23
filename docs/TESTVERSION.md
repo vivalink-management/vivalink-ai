@@ -53,6 +53,20 @@ Das kann nur der Inhaber des GitHub-Kontos erledigen. Claude ändert keine Zugri
 | 13 | **Flugmodus an** → App ganz schließen (nach oben wischen) → „VL Test“ öffnen | App startet, Daten sind da. Danach Flugmodus aus. |
 | 14 | Deine echte „Vivalink“ öffnen | unverändert (alte Version, deine Daten) |
 
+## C2. Instagram-Studio (Version 2.2, ca. 10 Minuten)
+
+| # | Schritt | Erwartet |
+|---|---|---|
+| S1 | **Mehr → Testdaten → Studio-Demo laden** | Bereich „Studio“ öffnet sich mit Demo-Beiträgen und Vorschaubildern, nach Kalenderwochen |
+| S2 | Einen Karussell-Beitrag öffnen, nach links und rechts wischen, auf **Story** umschalten | Grafiken mit Vivalink-Logo und -Farben, gut lesbar |
+| S3 | Caption und einen Folientitel ändern → **Änderungen speichern** | Vorschau zeigt die Änderung |
+| S4 | **Teilen (Instagram)** → Instagram wählen | Bilder kommen in Instagram an; die Caption lässt sich dort einfügen. Bitte **nicht veröffentlichen**, nur bis zur Vorschau gehen. |
+| S5 | **Bilder speichern** | Bilder liegen in Fotos oder Dateien, Feed 4:5, Story 9:16 |
+| S6 | Zurück → bei einer Woche **Woche freigeben** | Beiträge sind „Freigegeben“ |
+| S7 | **Monatsplan erstellen → Auftrag kopieren** → in Claude einfügen → Antwort komplett kopieren → einfügen → **Beiträge übernehmen** | Neue Entwürfe mit Grafiken. Prüfhinweise erscheinen bei erfundenen Zahlen o. Ä. |
+| S8 | **Markenprofil**: Farben ansehen | Pink, Violett und Orange wie im Logo |
+| S9 | **Mehr → Sicherungspunkte anzeigen** | mindestens ein Sicherungspunkt von heute |
+
 ## D. Rückmeldung an Claude
 Pro Gerät: Nummern 1–14 jeweils „ok“ oder was abweicht. Zusätzlich den **Diagnosebericht** (Mehr → Diagnose → kopieren). Er enthält keine Inhalte.
 Bildschirmfotos nur von der Testversion.

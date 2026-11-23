@@ -9,6 +9,7 @@ rmSync(out, { recursive: true, force: true });
 mkdirSync(out + "/js", { recursive: true });
 for (const f of readdirSync("js")) cpSync("js/" + f, `${out}/js/${f}`);
 cpSync("test-build/demo.js", `${out}/js/demo.js`); // Demodaten nur in der Testversion
+cpSync("brand", `${out}/brand`, { recursive: true });
 cpSync("test-build/icon-180.png", `${out}/icon-180.png`);
 cpSync("test-build/icon-512.png", `${out}/icon-512.png`);
 

@@ -1,5 +1,37 @@
 # Änderungsprotokoll
 
+## 2.2.0 (Entwicklungszweig, noch nicht veröffentlicht) – Instagram-Studio, Stufe 1
+
+**Neu: Bereich „Studio“**
+- **Monatsplan:**
+  - 3 Beiträge pro Woche (Wochentage, Uhrzeit und Reels pro Monat einstellbar)
+  - Die sechs Themenbereiche werden abwechselnd verteilt.
+  - Zu einem Meetup werden Ankündigung und Erinnerung automatisch eingeplant, ohne Doppelungen.
+- **KI-Auftrag:** enthält Zielgruppe, Ziele, Tonalität, Regeln und nur erlaubte Fakten. Die komplette KI-Antwort wird eingefügt und als Entwürfe übernommen.
+- **Faktenprüfung gegen erfundene Angaben:** Zahlen, Daten, Preise, Zitate oder Erfahrungsberichte, Versprechen, Links, Dubletten.
+- **Fertige Grafiken** mit dem offiziellen Logo, den Markenfarben und der Schrift Nunito:
+  - Feed 1080×1350 und Story 1080×1920
+  - 7 Vorlagen (Titel, Tipp, Info, Frage, Meetup-Ankündigung, Rückblick, Abschluss)
+  - Karussells mit Titel- und Abschlussfolie
+- **Wochenfreigabe:** Beiträge mit Prüfhinweis brauchen eine Einzelfreigabe. Bearbeiten, Folien ergänzen, Ablehnen, Löschen.
+- **Export:** „Teilen (Instagram)“ mit Bildern und kopierter Caption samt Hashtags, außerdem „Bilder speichern“.
+- **Auswertung:** Ergebnisse je Beitrag eintragen. Die Planung bevorzugt danach die erfolgreicheren Themenbereiche (als Annahme gekennzeichnet).
+- **Selbstständig erkannt:**
+  - Meetup ohne Ankündigung → fertiger Entwurf nur aus Fakten
+  - Regelmotor-Hinweise: Freigabe nötig, Veröffentlichung fällig, Plan für den nächsten Monat fehlt, Ergebnisse fehlen, Markenprofil unvollständig
+- **Markenprofil:** Region, Anmeldeweg, Konto, feste Hashtags, Tabus, Farben bestätigen, Rhythmus. Liegt in den App-Daten, nicht im Code.
+- **Reels** (Skript und Szenenliste) sind vorbereitet, standardmäßig 0 pro Monat.
+
+**Sicherung**
+- **Automatische lokale Sicherungspunkte:** täglich, die letzten 7 Tage, unter „Mehr“ wiederherstellbar (vorher Rückgängig-Punkt).
+- Der Backup-Hinweis erscheint erst nach 30 Tagen und nur unauffällig unter „Alle Hinweise“.
+
+**Technik**
+- Datenversion 4 mit geprüfter Sicherheitskopie vor dem Update.
+- Studio-Daten sind für die Synchronisierung vorbereitet: Konflikterkennung, Löschvermerke, Backup und Zusammenführen.
+- Tests für das Update 2.1 → 2.2 und den Rückbau mit dem originalen Code von 2.1.
+- Testversion: „Studio-Demo laden“ (künstlicher Monatsplan ohne KI).
+
 ## 2.1.0 (Entwicklungszweig, noch nicht veröffentlicht)
 
 Zusammenführung von Version 1 (GitHub Pages) und Version 2 (Claude-Artefakt). Grundlage ist Version 2.

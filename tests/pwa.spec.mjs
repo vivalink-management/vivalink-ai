@@ -1,5 +1,6 @@
 // Home-Bildschirm-Installation (PWA) und Offline-Betrieb.
 import { test, expect } from "@playwright/test";
+import { APP, SCHEMA, CACHE } from "./version.mjs";
 import { open, ready, state } from "./helpers.mjs";
 import { spawn } from "node:child_process";
 import { v1State } from "./fixtures.mjs";
@@ -51,8 +52,12 @@ test.describe("Offline", () => {
     await page.evaluate(() => navigator.serviceWorker.ready);
     await page.reload();
     await ready(page);
-    await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
-    await expect.poll(() => page.evaluate(async () => (await caches.keys()).includes("vivalink-2.1.0"))).toBe(true);
+    if (!(await page.evaluate(() => !!navigator.serviceWorker.controller))) {
+      await page.reload(); // während der Aktivierung geladen → erst beim nächsten Öffnen kontrolliert
+      await ready(page);
+    }
+    await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller), { timeout: 10_000 }).toBe(true);
+    await expect.poll(() => page.evaluate(async (c) => (await caches.keys()).includes(c), CACHE)).toBe(true);
     // Server beenden und prüfen, dass er wirklich nicht mehr erreichbar ist
     srv.kill();
     await expect.poll(async () => (await fetch(base).then(() => "online", () => "offline")), { timeout: 10_000 }).toBe("offline");
@@ -60,7 +65,7 @@ test.describe("Offline", () => {
     await ready(page);
     await expect(page.locator("h1")).toHaveText("Vivalink Management AI");
     expect((await state(page)).tasks).toHaveLength(2);
-    expect((await state(page)).v).toBe(3);
+    expect((await state(page)).v).toBe(SCHEMA);
     expect(errors).toEqual([]);
   });
   test.afterEach(() => srv && srv.kill());

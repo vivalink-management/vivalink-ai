@@ -1,6 +1,7 @@
 // Getrennte Testversion (dist-test): eigener Speicher, eigener Offline-Speicher, Demodaten.
 // Prüft außerdem, dass echte App und Testversion sich gegenseitig nicht stören.
 import { test, expect } from "@playwright/test";
+import { APP, SCHEMA, CACHE } from "./version.mjs";
 import { spawn, execFileSync } from "node:child_process";
 import { ready, state } from "./helpers.mjs";
 
@@ -42,7 +43,7 @@ test("Testversion: Hinweis, eigener Name, eigener Speicher, Demodaten, Übernahm
   await page.click('button[data-a="demoLoad"]');
   await expect(page.locator("#toast")).toContainText("Demodaten geladen");
   let s = await state(page);
-  expect(s.v).toBe(3);
+  expect(s.v).toBe(SCHEMA);
   expect(s.tasks.length).toBe(3);
   expect(s.metrics.find((m) => m.key === "reg_week").entries).toHaveLength(4);
   await expect(page.locator('#app .card:has(button[data-a="mk"])').first()).toBeVisible();
@@ -62,6 +63,11 @@ test("Testversion: Hinweis, eigener Name, eigener Speicher, Demodaten, Übernahm
   await page.locator('button[data-a="cfx"][data-v="other"]').click();
   s = await state(page);
   expect(s.tasks.find((t) => t.id === "d-t2").title).toBe("Demo: Wichtige Aufgabe ohne Frist");
+  // Studio-Demo: Monatsplan mit Grafiken ohne KI
+  await page.click('nav button[data-id="more"]');
+  await page.click('button[data-a="demoStudio"]');
+  await expect(page.locator("#toast")).toContainText("Demo-Beiträge mit Grafiken im Studio");
+  await expect(page.locator("[data-thumb] canvas").first()).toBeVisible();
   // Eigener Speicher: Datenbank "vivalink-test", keine Datenbank "vivalink"
   const dbs = await page.evaluate(async () => (indexedDB.databases ? (await indexedDB.databases()).map((d) => d.name) : null));
   if (dbs) {
@@ -86,8 +92,8 @@ test("Echte App zeigt keinen Testhinweis und keine Demodaten-Funktionen", async 
 test.describe("Offline-Speicher sind getrennt", () => {
   test.use({ serviceWorkers: "allow" });
   for (const [name, which, mine, stale, foreign] of [
-    ["Testversion löscht keine Offline-Speicher der echten App", "T", "vivalink-test-2.1.0", "vivalink-test-0.9", ["vivalink-v1", "vivalink-2.0.0"]],
-    ["Echte App löscht keine Offline-Speicher der Testversion", "P", "vivalink-2.1.0", "vivalink-v1", ["vivalink-test-1.0.0"]],
+    ["Testversion löscht keine Offline-Speicher der echten App", "T", "vivalink-test-" + APP, "vivalink-test-0.9", ["vivalink-v1", "vivalink-2.0.0"]],
+    ["Echte App löscht keine Offline-Speicher der Testversion", "P", CACHE, "vivalink-v1", ["vivalink-test-1.0.0"]],
   ])
     test(name, async ({ page }) => {
       const base = which === "T" ? T : P;

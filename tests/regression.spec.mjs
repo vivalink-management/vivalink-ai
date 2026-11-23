@@ -1,5 +1,6 @@
 // Regressionstests: alle Funktionen aus Version 1 (GitHub) und Version 2 (Artefakt) über die Oberfläche.
 import { test, expect } from "@playwright/test";
+import { APP, SCHEMA, CACHE } from "./version.mjs";
 import { guard, open, ready, nav, state, stubClipboard, clip, toastText, seed } from "./helpers.mjs";
 import { v2State } from "./fixtures.mjs";
 
@@ -219,7 +220,7 @@ test("Mehr: WebGPU-Hinweis, KI-Test speichern und kopieren, Akzentfarbe, Version
   await open(page);
   await nav(page, "more");
   await expect(page.locator("#app")).toContainText("WebGPU:");
-  await expect(page.locator("#app")).toContainText("Version 2.1.0 · Datenversion 3");
+  await expect(page.locator("#app")).toContainText(`Version ${APP} · Datenversion ${SCHEMA}`);
   await page.click('button[data-a="aiTest"]');
   await expect(page.locator("#sheet textarea[id^=pt]")).toHaveCount(4);
   await page.fill("#a-mod", "Testmodell");
