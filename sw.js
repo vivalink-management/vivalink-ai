@@ -1,4 +1,64 @@
-const C='vivalink-v1',F=['./','index.html','manifest.webmanifest','icon-180.png','icon-512.png'];
-self.addEventListener('install',e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(F)));self.skipWaiting()});
-self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(x=>x!==C).map(x=>caches.delete(x)))));self.clients.claim()});
-self.addEventListener('fetch',e=>{if(e.request.method!=='GET')return;e.respondWith(fetch(e.request).then(r=>{const c=r.clone();caches.open(C).then(x=>x.put(e.request,c));return r}).catch(()=>caches.match(e.request)))});
+/* Service Worker: lädt zuerst aus dem Netz (immer aktuelle Version), offline aus dem Speicher.
+   Alle Netzabrufe umgehen den Browser-Zwischenspeicher (GitHub Pages erlaubt bis zu 10 Minuten),
+   damit nach einem Update nie alte und neue Dateien gemischt oder veraltet offline gespeichert werden. */
+const VERSION = "2.1.0";
+const CH = "vivalink-"; // Test-Build: "vivalink-test-"
+const C = CH + VERSION;
+// Nur eigene, veraltete Offline-Speicher löschen. Die echte App und die Testversion berühren sich nie.
+const own = (k) => k !== C && k.startsWith(CH) && (CH !== "vivalink-" || !k.startsWith("vivalink-test-"));
+const F = [
+  "./",
+  "index.html",
+  "manifest.webmanifest",
+  "icon-180.png",
+  "icon-512.png",
+  "js/config.js",
+  "js/core.js",
+  "js/data.js",
+  "js/metrics.js",
+  "js/rules.js",
+  "js/prompts.js",
+  "js/aitest.js",
+  "js/views.js",
+  "js/diag.js",
+  "js/app.js",
+];
+self.addEventListener("install", (e) => {
+  e.waitUntil(caches.open(C).then((c) => c.addAll(F.map((u) => new Request(u, { cache: "reload" })))));
+  self.skipWaiting();
+});
+self.addEventListener("activate", (e) => {
+  e.waitUntil(
+    caches
+      .keys()
+      .then((k) => Promise.all(k.filter(own).map((x) => caches.delete(x))))
+      .then(() => self.clients.claim()),
+  );
+});
+const fresh = (req) => {
+  try {
+    return new Request(req, { cache: "no-cache" });
+  } catch (e) {
+    return req;
+  }
+};
+self.addEventListener("fetch", (e) => {
+  const req = e.request;
+  if (req.method !== "GET" || new URL(req.url).origin !== self.location.origin) return;
+  e.respondWith(
+    fetch(fresh(req))
+      .then((r) => {
+        if (r.ok && r.type === "basic") {
+          const c = r.clone();
+          e.waitUntil(caches.open(C).then((x) => x.put(req, c)));
+        }
+        return r;
+      })
+      .catch(() =>
+        caches
+          .match(req, { ignoreSearch: true })
+          .then((r) => r || (req.mode === "navigate" ? caches.match("index.html") : undefined))
+          .then((r) => r || new Response("Offline", { status: 503, statusText: "Offline" })),
+      ),
+  );
+});

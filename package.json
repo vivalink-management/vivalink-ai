@@ -1,0 +1,17 @@
+{
+  "name": "vivalink-management-ai",
+  "version": "2.1.0",
+  "private": true,
+  "description": "Interne Management-App für Vivalink (statische Web-App, kein Build-Schritt)",
+  "scripts": {
+    "test": "npm run check:sensitive && npm run check:syntax && playwright test",
+    "test:local": "npm run check:sensitive && npm run check:syntax && playwright test --project=chromium-desktop --project=chromium-iphone --project=chromium-ipad",
+    "check:sensitive": "node scripts/check-sensitive.mjs",
+    "check:syntax": "node scripts/check-syntax.mjs",
+    "serve": "node tests/server.mjs",
+    "build:test": "node scripts/build-test.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}
