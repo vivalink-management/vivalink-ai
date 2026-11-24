@@ -1,6 +1,6 @@
 // Datenübernahme: vorhandene Daten aus Version 1 (GitHub Pages) und Version 2 (Artefakt) bleiben vollständig erhalten.
 import { test, expect } from "@playwright/test";
-import { APP, SCHEMA, CACHE } from "./version.mjs";
+import { APP, SCHEMA, CACHE, METRICS } from "./version.mjs";
 import { guard, seed, ready, nav, state, kv, toastText } from "./helpers.mjs";
 import { v1State, v2State } from "./fixtures.mjs";
 
@@ -18,7 +18,7 @@ test("Version 1 → 3: alle Einträge erhalten, geprüfte Sicherheitskopie, kein
   expect(s.accent).toBe(v1.accent);
   expect(s.lastBackup).toBe(v1.lastBackup);
   expect(s.dev).toBe(v1.dev);
-  expect(s.metrics).toHaveLength(11);
+  expect(s.metrics).toHaveLength(METRICS);
   expect(s.metrics.flatMap((m) => m.entries)).toEqual([]);
   expect(s.conflicts).toEqual([]);
   const safe = await kv(page, "safety-v1");

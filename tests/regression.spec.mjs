@@ -1,6 +1,6 @@
 // Regressionstests: alle Funktionen aus Version 1 (GitHub) und Version 2 (Artefakt) über die Oberfläche.
 import { test, expect } from "@playwright/test";
-import { APP, SCHEMA, CACHE } from "./version.mjs";
+import { APP, SCHEMA, CACHE, METRICS } from "./version.mjs";
 import { guard, open, ready, nav, state, stubClipboard, clip, toastText, seed } from "./helpers.mjs";
 import { v2State } from "./fixtures.mjs";
 
@@ -22,7 +22,7 @@ test("Start: Übersicht, Empfehlungen, Meetup, Kennzahlen, Navigation", async ({
   await expect(page.getByRole("heading", { name: "Nächstes Meetup" })).toBeVisible();
   await expect(page.locator('[data-a="met"]')).toHaveCount(0); // ohne Werte eingeklappt
   await page.click('button[data-a="allMet"]');
-  await expect(page.locator('[data-a="met"]')).toHaveCount(11);
+  await expect(page.locator('[data-a="met"]')).toHaveCount(METRICS);
   for (const id of ["tasks", "memory", "ai", "more", "home"]) {
     await nav(page, id);
     await expect(page.locator(`nav button[data-id="${id}"]`)).toHaveClass(/on/);

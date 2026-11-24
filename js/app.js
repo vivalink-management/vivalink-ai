@@ -383,6 +383,7 @@ document.addEventListener("click", async (e) => {
   } else if (a.startsWith("demo") && IS_TEST && typeof demoAction === "function") demoAction(a);
   else if (a.startsWith("st")) studioAction(a, id, b);
   else if (a === "snaps") snapSheet();
+  else if (a === "sync" || a.startsWith("sy")) syncAction(a);
   else if (a === "msr") {
     const x = startMeasure(id, Number(b.dataset.v));
     if (!x) return toast("Befund nicht mehr aktuell");
@@ -485,6 +486,7 @@ document.addEventListener("change", (e) => {
   await autoSnapshot();
   LASTSNAP = ((await kvGet("snaps")) || [])[0] || null;
   render();
+  syncSoon(1500);
   if ("serviceWorker" in navigator)
     navigator.serviceWorker.register("sw.js").catch((e) => logEvent("warn", "sw.register", (e && e.message) || "Registrierung fehlgeschlagen"));
 })();

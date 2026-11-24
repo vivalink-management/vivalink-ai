@@ -1,5 +1,6 @@
 // Empfehlungen mit Bedeutung, Ursachen (Annahme) und priorisierten Maßnahmen; Maßnahmenkontrolle ohne Kausalbehauptung.
 import { test, expect } from "@playwright/test";
+import { METRICS } from "./version.mjs";
 import { guard, seed, nav, state, expectToast } from "./helpers.mjs";
 import { T0 } from "./fixtures.mjs";
 
@@ -84,5 +85,5 @@ test("Startseite: kompakte Statuszeile, Zielfortschritt, eingeklappte Kennzahlen
   await expect(page.locator(".bar span")).toHaveAttribute("style", /width:20%/);
   await expect(page.locator('#app [data-a="met"]')).toHaveCount(2); // Ziel-Karte + Kennzahl mit Wert
   await page.click('button[data-a="allMet"]');
-  await expect(page.locator('#app [data-a="met"]')).toHaveCount(12);
+  await expect(page.locator('#app [data-a="met"]')).toHaveCount(METRICS + 1);
 });

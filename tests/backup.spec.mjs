@@ -1,6 +1,6 @@
 // Datensicherung: Export, Prüfung, Import alter und neuer Formate, Vorschau, Rückgängig.
 import { test, expect } from "@playwright/test";
-import { APP, SCHEMA, CACHE } from "./version.mjs";
+import { APP, SCHEMA, CACHE, METRICS } from "./version.mjs";
 import { guard, open, seed, ready, nav, state, kv, stubClipboard, waitClip, expectToast } from "./helpers.mjs";
 import { v1State, v2State } from "./fixtures.mjs";
 
@@ -34,7 +34,7 @@ test("Backup kopieren: vollständiges Format mit Prüfsumme und KI-Tests, Datum 
   expect(b.app).toBe(APP);
   expect(b.sha256).toMatch(/^[0-9a-f]{64}$/);
   expect(b.data.memory).toHaveLength(4);
-  expect(b.data.metrics.length).toBe(11);
+  expect(b.data.metrics.length).toBe(METRICS);
   expect(b.aitest).toHaveLength(1);
   expect((await state(page)).lastBackup).toBe(new Date().toLocaleDateString("sv-SE"));
 });

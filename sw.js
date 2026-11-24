@@ -32,6 +32,8 @@ const F = [
   "js/views.js",
   "js/studio-view.js",
   "js/diag.js",
+  "js/sync.js",
+  "js/kpi.js",
   "js/app.js",
 ];
 self.addEventListener("install", (e) => {

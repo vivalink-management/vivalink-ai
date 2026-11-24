@@ -1,7 +1,7 @@
 // Echte Aktualisierung und Rückbau mit dem ORIGINALEN Code von Version 1 (tests/fixtures/legacy-v1 = main, Stand f32f745).
 // Gleiche Web-Adresse wie auf iPhone/iPad: Der Server liefert erst Version 1, dann Version 2.1 (bzw. zurück).
 import { test, expect } from "@playwright/test";
-import { APP, SCHEMA, CACHE } from "./version.mjs";
+import { APP, SCHEMA, CACHE, METRICS } from "./version.mjs";
 import { spawn } from "node:child_process";
 import { ready, state, kv, stubClipboard, waitClip } from "./helpers.mjs";
 import { v2State } from "./fixtures.mjs";
@@ -211,7 +211,10 @@ test("Aktualisierung 2.1 → aktuelle Version: Daten bleiben, Studio wird ergän
   await expect.poll(() => version(page)).toBe(APP);
   const after = await state(page);
   expect(after.v).toBe(SCHEMA);
-  for (const k of ["memory", "tasks", "metrics", "meetup", "suggest", "conflicts", "dev", "accent", "lastBackup"]) expect(after[k], k).toEqual(before[k]);
+  for (const k of ["memory", "tasks", "meetup", "suggest", "conflicts", "dev", "accent", "lastBackup"]) expect(after[k], k).toEqual(before[k]);
+  // bisherige Kennzahlen (inkl. Werte) unverändert, neue Kennzahl-Definitionen ergänzt
+  expect(after.metrics.slice(0, before.metrics.length)).toEqual(before.metrics);
+  expect(after.metrics).toHaveLength(METRICS);
   expect(after.studio.posts).toEqual([]);
   expect(after.studio.brand.website).toBe("vivalink.me");
   expect((await kv(page, "safety-v3")).data).toEqual(before);
