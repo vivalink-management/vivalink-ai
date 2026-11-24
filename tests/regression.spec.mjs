@@ -20,6 +20,8 @@ test("Start: Übersicht, Empfehlungen, Meetup, Kennzahlen, Navigation", async ({
   for (const t of ["offen", "überfällig", "Wissen", "Entscheidungen"]) await expect(page.locator(".stat span", { hasText: t })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Empfehlungen" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Nächstes Meetup" })).toBeVisible();
+  await expect(page.locator('[data-a="met"]')).toHaveCount(0); // ohne Werte eingeklappt
+  await page.click('button[data-a="allMet"]');
   await expect(page.locator('[data-a="met"]')).toHaveCount(11);
   for (const id of ["tasks", "memory", "ai", "more", "home"]) {
     await nav(page, id);
@@ -194,7 +196,7 @@ test("Regelmotor: Befund als Aufgabe, Später, Nicht relevant, Alle Hinweise", a
   const cards = page.locator('#app .card:has(button[data-a="mk"])');
   const n0 = await cards.count();
   expect(n0).toBeGreaterThan(0);
-  await expect(cards.first().locator(".chip")).toHaveText(/Fakt|Annahme/);
+  await expect(cards.first().locator(".row.sp .chip")).toHaveText(/Fakt|Annahme/);
   const before = (await state(page)).tasks.length;
   const mkId = await cards.first().locator('button[data-a="mk"]').getAttribute("data-id");
   await cards.first().locator('button[data-a="mk"]').click();

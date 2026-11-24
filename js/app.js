@@ -383,6 +383,22 @@ document.addEventListener("click", async (e) => {
   } else if (a.startsWith("demo") && IS_TEST && typeof demoAction === "function") demoAction(a);
   else if (a.startsWith("st")) studioAction(a, id, b);
   else if (a === "snaps") snapSheet();
+  else if (a === "msr") {
+    const x = startMeasure(id, Number(b.dataset.v));
+    if (!x) return toast("Befund nicht mehr aktuell");
+    await save();
+    render();
+    toast("Maßnahme freigegeben · Prüfung am " + fmt(x.measure.checkAt) + (x.measure.postId ? " · Instagram-Entwurf im Studio" : ""));
+  } else if (a === "msrOut") {
+    if (finishMeasure(id, b.dataset.v)) {
+      await save();
+      render();
+      toast("Ergebnis festgehalten (im Gedächtnis als Einschätzung)");
+    }
+  } else if (a === "allMet") {
+    showAllMet = !showAllMet;
+    render();
+  }
   else if (a === "snapRestore") snapRestore(id);
   else if (a === "diag") diagSheet();
   else if (a === "cpDiag") {
@@ -467,6 +483,7 @@ document.addEventListener("change", (e) => {
   if (auto.length) (ch = true), logEvent("info", "studio.auto", auto.length + " Entwurf/Entwürfe automatisch erstellt");
   if (ch) await save();
   await autoSnapshot();
+  LASTSNAP = ((await kvGet("snaps")) || [])[0] || null;
   render();
   if ("serviceWorker" in navigator)
     navigator.serviceWorker.register("sw.js").catch((e) => logEvent("warn", "sw.register", (e && e.message) || "Registrierung fehlgeschlagen"));

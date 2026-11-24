@@ -116,6 +116,7 @@ test("Rückbau auf Version 1 und erneutes Update: keine Daten gehen verloren", a
   await page.evaluate(async (s) => kvPut("state", s), v2State());
   await page.reload();
   await ready(page);
+  await page.click('button[data-a="allMet"]');
   await page.click('[data-a="met"][data-id="m_signups"]');
   await page.fill("#v-v", "17");
   await page.click('button[data-a="saveVal"]');

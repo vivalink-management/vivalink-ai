@@ -35,7 +35,8 @@ test("Erwartete Befunde werden erkannt und richtig als Fakt bzw. Annahme gekennz
   await seed(page, { state: scenario() });
   const F = await page.evaluate(() => findings().map((f) => ({ id: f.id, kind: f.kind, sev: f.sev })));
   const ids = F.map((f) => f.id);
-  for (const id of ["t-od", "t-hn", "t-st", "g-gap", "g-un", "g-nr", "m-tr-reg_week", "mt-pace", "bk"]) expect(ids, id).toContain(id);
+  for (const id of ["t-od", "t-hn", "t-st", "g-gap", "g-un", "g-nr", "m-tr-reg_week", "mt-pace"]) expect(ids, id).toContain(id);
+  expect(ids).not.toContain("bk"); // keine Erinnerung an manuelle Backups
   expect(F.find((f) => f.id === "mt-pace")).toMatchObject({ kind: "annahme", sev: 3 });
   expect(F.find((f) => f.id === "t-od")).toMatchObject({ kind: "fakt", sev: 3 });
   expect(F.find((f) => f.id === "m-tr-reg_week")).toMatchObject({ kind: "fakt", sev: 2 });

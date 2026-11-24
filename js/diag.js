@@ -161,6 +161,7 @@ async function diagSheet() {
 
 /* ---------- Automatische lokale Sicherungspunkte (täglich, die letzten 7 Tage) ---------- */
 const SNAP_KEEP = 7;
+let LASTSNAP = null; // Datum des letzten automatischen Sicherungspunkts
 async function autoSnapshot(force = false) {
   const idx = (await kvGet("snaps")) || [];
   const d = today();
@@ -173,6 +174,7 @@ async function autoSnapshot(force = false) {
   const list = [...new Set([d, ...idx])].sort().reverse();
   for (const old of list.slice(SNAP_KEEP)) await kvPut("snap-" + old, null);
   await kvPut("snaps", list.slice(0, SNAP_KEEP));
+  LASTSNAP = d;
   return true;
 }
 async function snapList() {

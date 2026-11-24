@@ -385,19 +385,23 @@ test("Automatische Sicherungspunkte: täglich, höchstens 7, Wiederherstellung m
   expect((await kv(page, "pre-import")).data.tasks.length).toBe(2);
 });
 
-test("Backup-Erinnerung: nur nach 30 Tagen und unauffällig (nicht unter den wichtigsten Hinweisen)", async ({ page }) => {
+test("Keine Erinnerung an manuelle Backups; Ausfall der automatischen Sicherung wird gemeldet", async ({ page }) => {
   const s = brandOk(v2State());
-  s.lastBackup = d(-20);
+  s.lastBackup = "";
   await seed(page, { state: s });
-  expect(await page.evaluate(() => findings().some((f) => f.id === "bk"))).toBe(false);
-  await page.evaluate(() => {
-    S.lastBackup = new Date(Date.now() - 40 * 864e5).toLocaleDateString("sv-SE");
-    return save();
+  let ids = await page.evaluate(() => findings().map((f) => f.id));
+  expect(ids).not.toContain("bk");
+  expect(ids).not.toContain("sys-snap");
+  await nav(page, "more");
+  await expect(page.locator("#app")).not.toContainText("Letztes Backup");
+  // automatische Sicherung seit Tagen ausgefallen → technischer Hinweis
+  ids = await page.evaluate(() => {
+    LASTSNAP = new Date(Date.now() - 5 * 864e5).toLocaleDateString("sv-SE");
+    return findings().map((f) => f.id);
   });
-  const r = await page.evaluate(() => [findings().find((f) => f.id === "bk"), pickTop(findings()).some((f) => f.id === "bk")]);
-  expect(r[0]).toMatchObject({ sev: 0 });
-  expect(r[1]).toBe(false);
+  expect(ids).toContain("sys-snap");
 });
+
 
 test("Keine doppelten Meetup-Ankündigungen: Automatik und Monatsplan kennen sich gegenseitig", async ({ page }) => {
   const s = brandOk(v2State());
