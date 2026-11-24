@@ -22,6 +22,20 @@
 - **Markenprofil:** Farben (bestätigt) und Anmeldung über vivalink.me sind voreingestellt. Region, Konto, feste Hashtags, Tabus und Rhythmus sind einstellbar und liegen in den App-Daten, nicht im Code.
 - **Reels** (Skript und Szenenliste) sind vorbereitet, standardmäßig 0 pro Monat.
 
+**Erweiterungen in diesem Entwicklungsabschnitt**
+- **Studio:**
+  - Status Geplant/Fällig, Filter, „Wichtig“-Markierung
+  - Prüf- und Stilhinweise, Meetup-Ortsprüfung
+  - Captions werden nicht mehr abgeschnitten
+  - Logo-Verlauf, 3 Gestaltungsvarianten
+  - nur freie Termine planen
+  - Änderung nach Freigabe → erneut freigeben
+- **Empfehlungen:** Bedeutung, Ursachen (Annahme), priorisierte Maßnahmen. Maßnahmenkontrolle mit vorher/nachher.
+- **Startseite:** Statuszeile, Ziele, eingeklappte Kennzahlen.
+- **Freigabelogik** (Stufen 0–3) mit Aktionsprotokoll und Veröffentlichungsschutz.
+- **Synchronisierung** (Ende-zu-Ende verschlüsselt) und **Verwaltungs-Schnittstelle**: vorbereitet und getestet, nicht aktiv.
+- **5 neue Kennzahlen.** Keine Erinnerung an manuelle Backups mehr.
+
 **Sicherung**
 - **Automatische lokale Sicherungspunkte:** täglich, die letzten 7 Tage, unter „Mehr“ wiederherstellbar (vorher Rückgängig-Punkt).
 - Der Backup-Hinweis erscheint erst nach 30 Tagen und nur unauffällig unter „Alle Hinweise“.

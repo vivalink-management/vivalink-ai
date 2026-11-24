@@ -480,3 +480,18 @@ test("Status: Entwurf, Geplant, Fällig, Veröffentlicht; Filter und Gestaltungs
   await page.click('button[data-a="stEdit"]');
   expect((await state(page)).studio.posts.find((p) => p.title === "Noch Entwurf").variant).toBe(2);
 });
+
+test("Monatsplan bleibt bearbeitbar: belegte Termine werden nicht doppelt geplant", async ({ page }) => {
+  await seed(page, { state: brandOk(v2State()) });
+  const r = await page.evaluate(() => {
+    const before = planSlots(sm());
+    importPlan(JSON.stringify({ posts: before.slice(0, 4).map((s, i) => ({ ...s, title: "Belegt " + i, slides: [{ template: "frage", title: "x" + i }], caption: "Text vivalink.me" })) }));
+    const after = planSlots(sm());
+    S.studio.posts[0].status = "abgelehnt";
+    return [before.length, after.length, after.some((s) => before.slice(1, 4).some((b) => b.date === s.date)), planSlots(sm()).length];
+  });
+  expect(r).toEqual([13, 9, false, 10]);
+  await nav(page, "studio");
+  await expect(page.locator("#app")).toContainText("10 freie Termine (3 Beiträge geplant)"); // abgelehnter Termin wird wieder frei
+  await expect(page.locator('button[data-a="stPrompt"]')).toHaveText("Freie Termine füllen");
+});

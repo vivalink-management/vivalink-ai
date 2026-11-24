@@ -1,5 +1,7 @@
 # Projektübersicht Vivalink Management AI
 
+> Aktueller Gesamtstand und nächste Schritte: **[`ENTWICKLUNGSSTAND.md`](ENTWICKLUNGSSTAND.md)** (zentrale, fortlaufende Übersicht).
+
 Zentrale, fortlaufend gepflegte Übersicht. Jede neue Funktion wird hier abgeglichen.
 **Enthält bewusst keine Unternehmenszahlen, Orte, Personen oder Zugangsdaten** (öffentliches Repository).
 

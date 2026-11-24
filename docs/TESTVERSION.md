@@ -66,6 +66,10 @@ Das kann nur der Inhaber des GitHub-Kontos erledigen. Claude ändert keine Zugri
 | S7 | **Monatsplan erstellen → Auftrag kopieren** → in Claude einfügen → Antwort komplett kopieren → einfügen → **Beiträge übernehmen** | Neue Entwürfe mit Grafiken. Prüfhinweise erscheinen bei erfundenen Zahlen o. Ä. |
 | S8 | **Markenprofil**: Farben ansehen | Pink, Violett und Orange wie im Logo |
 | S9 | **Mehr → Sicherungspunkte anzeigen** | mindestens ein Sicherungspunkt von heute |
+| S10 | Studio: Filter „Zu prüfen“ und „Geplant“, bei einem Beitrag **Gestaltung** auf „Hell“ stellen | Liste filtert, Grafik ändert sich |
+| S11 | Freigegebenen Beitrag ändern und speichern | Hinweis „bitte erneut freigeben“, Status wieder Entwurf |
+| S12 | **Start**: Empfehlung aufklappen („Details und Maßnahmen“) → **Maßnahme freigeben** | Aufgabe mit Prüftermin, bei Meetup-Maßnahmen ein Entwurf im Studio |
+| S13 | **Mehr → Diagnose** → Aktionsprotokoll | Einträge zu Sicherungspunkt, Freigaben, Maßnahmen |
 
 ## D. Rückmeldung an Claude
 Pro Gerät: Nummern 1–14 jeweils „ok“ oder was abweicht. Zusätzlich den **Diagnosebericht** (Mehr → Diagnose → kopieren). Er enthält keine Inhalte.

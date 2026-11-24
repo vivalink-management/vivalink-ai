@@ -39,8 +39,8 @@ ${miss.length ? `<div class="card rec warn">Markenprofil vervollständigen: ${mi
 <div class="stats"><div class="stat"><b>${cnt("entwurf")}</b><span>Entwürfe</span></div><div class="stat"><b>${cnt("freigegeben")}</b><span>freigegeben</span></div><div class="stat"><b>${cnt("veroeffentlicht")}</b><span>veröffentlicht</span></div><div class="stat"><b>${unrated.length}</b><span>ohne Auswertung</span></div></div>
 <div class="row sp"><button class="s" data-a="stMonth" data-id="-1">‹</button><h2 style="margin:0">${monthName(ym)}</h2><button class="s" data-a="stMonth" data-id="1">›</button></div>
 <div class="chips">${Object.keys(FILTERS).map((k) => `<button class="${stFilter === k ? "on" : ""}" data-a="stFilter" data-id="${k}">${FILTERS[k]}</button>`).join("")}</div>
-<div class="card"><b>Monatsplan</b><div class="mut">${slots} freie Termine (${S.studio.settings.perWeek} pro Woche, ${S.studio.settings.days.map((d) => WD[d]).join("/")}, ${S.studio.settings.time} Uhr). Die KI schreibt alle Beiträge mit Captions, Hashtags und Folientexten; die App gestaltet die Grafiken.</div>
-<div class="row" style="margin-top:8px"><button class="p" data-a="stPrompt">Monatsplan erstellen</button><button data-a="stNew">Einzelner Beitrag</button></div></div>
+<div class="card"><b>Monatsplan</b><div class="mut">${slots ? slots + " freie Termine" : "Alle Termine sind belegt"}${P.filter((p) => p.status !== "abgelehnt").length ? " (" + P.filter((p) => p.status !== "abgelehnt").length + " Beiträge geplant)" : ""} (${S.studio.settings.perWeek} pro Woche, ${S.studio.settings.days.map((d) => WD[d]).join("/")}, ${S.studio.settings.time} Uhr). Die KI schreibt alle Beiträge mit Captions, Hashtags und Folientexten; die App gestaltet die Grafiken.</div>
+<div class="row" style="margin-top:8px"><button class="p" data-a="stPrompt" ${slots ? "" : "disabled"}>${P.length ? "Freie Termine füllen" : "Monatsplan erstellen"}</button><button data-a="stNew">Einzelner Beitrag</button></div></div>
 ${Object.keys(weeks)
   .sort()
   .map((wk) => {

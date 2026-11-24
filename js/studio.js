@@ -100,7 +100,9 @@ function planSlots(ym, T = S) {
   const st = T.studio,
     set = st.settings,
     F = studioFacts(T);
-  const days = monthDays(ym).filter((d) => set.days.includes(new Date(d + "T12:00").getDay()) && d >= today());
+  // Nur freie Termine: Tage mit vorhandenem Beitrag (außer gelöscht/abgelehnt) werden nicht erneut geplant
+  const taken = new Set(st.posts.filter((p) => !p.deleted && p.status !== "abgelehnt" && p.date).map((p) => p.date));
+  const days = monthDays(ym).filter((d) => set.days.includes(new Date(d + "T12:00").getDay()) && d >= today() && !taken.has(d));
   const avail = PILLARS.filter((p) => !p.needs || (p.needs === "meetup" ? false : p.needs === "appfacts" ? hasFacts(F, ["app"]) : hasFacts(F, ["meetup-wissen"])));
   const learned = st.learned && st.learned.order ? st.learned.order : [];
   const order = [...avail].sort((a, b) => (learned.indexOf(a.id) + 1 || 99) - (learned.indexOf(b.id) + 1 || 99));
