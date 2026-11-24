@@ -28,7 +28,7 @@ function answer(slots, extra = []) {
             { template: "tipp", title: "Zweiter Testtipp", text: "Noch eine Erklärung" },
             { template: "abschluss", title: "Lust auf neue Kontakte?", text: "Mehr auf der Website" },
           ]
-        : [{ template: s.pillar === "meetup" ? "ankuendigung" : "frage", title: "Was verbindet dich mit Testregion?", text: "Schreib es in die Kommentare", details: "" }],
+        : [{ template: s.pillar === "meetup" ? "ankuendigung" : "frage", title: "Was verbindet dich mit Testregion?", text: "Schreib es in die Kommentare", details: s.pillar === "meetup" ? "Testort" : "" }],
     caption: `Testcaption für ${s.pillar}. Freundlich und natürlich.\n\nMehr auf vivalink.me`,
     hashtags: ["#Vivalink", "Test Tag", "#NeueLeute"],
     facts: ["F1"],
@@ -416,4 +416,63 @@ test("Keine doppelten Meetup-Ankündigungen: Automatik und Monatsplan kennen sic
   expect(await page.evaluate(() => [runAutomations().length, meetupCoverage()])).toEqual([0, { announce: true, remind: true }]);
   slots = await page.evaluate(() => planSlots(sm()));
   expect(slots.filter((x) => x.pillar === "meetup")).toEqual([]);
+});
+
+test("Qualitätsprüfung: Meetup-Ort, Caption-Limit, Stilhinweise (blockieren nicht), Hinweis auf Grenzen der Prüfung", async ({ page }) => {
+  const s = brandOk(v2State());
+  s.meetup = { date: d(20), place: "Testort am Markt", goal: "", note: "", updatedAt: T0 };
+  await seed(page, { state: s });
+  const r = await page.evaluate(() => {
+    const ok = makePost({ date: "2026-03-09", pillar: "meetup", type: "einzelbild", title: "Ort richtig", slides: [{ template: "ankuendigung", title: "Nächstes Meetup", details: "Testort am Markt" }], caption: "Komm vorbei! Wir freuen uns auf neue Gesichter in entspannter Runde. Das Treffen ist ideal, um neue Kontakte zu knüpfen und gemeinsam eine gute Zeit zu haben. Bring einfach gute Laune mit. Mehr auf vivalink.me", hashtags: ["#a", "#b", "#c"] }, "ki");
+    const wrong = makePost({ date: "2026-03-09", pillar: "meetup", type: "einzelbild", title: "Ort falsch", slides: [{ template: "ankuendigung", title: "Nächstes Meetup", details: "Anderer Ort" }], caption: "Mehr auf vivalink.me" }, "ki");
+    const long = makePost({ date: "2026-03-10", pillar: "tipps", type: "einzelbild", title: "Zu lang", slides: [{ template: "frage", title: "eins zwei drei vier fünf sechs sieben acht neun zehn elf zwölf", text: "" }], caption: "WICHTIGES ANGEBOT 🎉🎉🎉🎉 " + "wort ".repeat(500) }, "ki");
+    return { ok: [ok.warnings, ok.hints], wrong: wrong.warnings, long: [long.warnings, long.hints] };
+  });
+  expect(r.ok).toEqual([[], []]);
+  expect(r.wrong.join(" ")).toContain("Ort des Meetups („Testort am Markt“) fehlt oder weicht ab");
+  expect(r.long[0].join(" ")).toContain("länger als 2.200 Zeichen");
+  const h = r.long[1].join(" | ");
+  for (const x of ["Caption sehr lang", "Titel zu lang", "Emojis", "Großbuchstaben", "Keine Handlungsaufforderung", "Wenige Hashtags"]) expect(h).toContain(x);
+  // Stilhinweise blockieren die Wochenfreigabe nicht, Prüfhinweise schon
+  const n = await page.evaluate(() => {
+    const a = makePost({ date: "2026-03-11", pillar: "community", type: "einzelbild", title: "Nur Stil", slides: [{ template: "frage", title: "Kurz?" }], caption: "Kurz." }, "ki");
+    S.studio.posts.push(a);
+    return [a.warnings.length, a.hints.length > 0, approveWeek(weekKey("2026-03-11"))];
+  });
+  expect(n).toEqual([0, true, 1]);
+  await nav(page, "studio");
+  await page.locator('[data-a="stOpen"]', { hasText: "Nur Stil" }).click();
+  await expect(page.locator("#sheet")).toContainText("Stilhinweise (optional)");
+  await expect(page.locator("#sheet")).toContainText("kann sie nicht auf Wahrheit prüfen");
+});
+
+test("Status: Entwurf, Geplant, Fällig, Veröffentlicht; Filter und Gestaltungsvariante", async ({ page }) => {
+  await seed(page, { state: brandOk(v2State()) });
+  await page.evaluate(() => {
+    const mk = (date, title, status) => {
+      const p = makePost({ date, pillar: "community", type: "einzelbild", title, slides: [{ template: "frage", title }], caption: "x" }, "ki");
+      p.status = status;
+      S.studio.posts.push(p);
+    };
+    mk("2026-03-02", "Heute fällig", "freigegeben");
+    mk("2026-03-06", "Später geplant", "freigegeben");
+    mk("2026-03-04", "Noch Entwurf", "entwurf");
+    mk("2026-03-03", "Schon online", "veroeffentlicht");
+    return save();
+  });
+  await nav(page, "studio");
+  const chip = (t) => page.locator('[data-a="stOpen"]', { hasText: t }).locator(".chip").first();
+  await expect(chip("Heute fällig")).toHaveText("Fällig");
+  await expect(chip("Später geplant")).toHaveText("Geplant");
+  await expect(chip("Noch Entwurf")).toHaveText("Entwurf");
+  await expect(chip("Schon online")).toHaveText("Veröffentlicht");
+  await page.click('button[data-a="stFilter"][data-id="offen"]');
+  await expect(page.locator('[data-a="stOpen"]')).toHaveCount(1);
+  await page.click('button[data-a="stFilter"][data-id="geplant"]');
+  await expect(page.locator('[data-a="stOpen"]')).toHaveCount(2);
+  await page.click('button[data-a="stFilter"][data-id="alle"]');
+  await page.locator('[data-a="stOpen"]', { hasText: "Noch Entwurf" }).click();
+  await page.selectOption("#pe-variant", "2");
+  await page.click('button[data-a="stEdit"]');
+  expect((await state(page)).studio.posts.find((p) => p.title === "Noch Entwurf").variant).toBe(2);
 });
