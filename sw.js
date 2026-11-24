@@ -23,6 +23,7 @@ const F = [
   "js/core.js",
   "js/data.js",
   "js/metrics.js",
+  "js/actions.js",
   "js/rules.js",
   "js/studio.js",
   "js/advice.js",

@@ -387,17 +387,15 @@ function runAutomations(T = S) {
 const livePosts = (T = S) => T.studio.posts.filter((p) => !p.deleted);
 function approveWeek(wk, includeWarned = false, T = S) {
   const L = livePosts(T).filter((p) => p.status === "entwurf" && p.date && weekKey(p.date) === wk && (includeWarned || !p.warnings || !p.warnings.length));
-  for (const p of L) {
-    p.status = "freigegeben";
-    p.approvedAt = Date.now();
-    touch(p);
-  }
+  for (const p of L) approvePost(p); // merkt sich den freigegebenen Inhalt (Änderung → erneute Freigabe nötig)
+  if (L.length) logAction("post.approve", "gruender", true, L.length + " Beiträge (Wochenfreigabe)");
   return L.length;
 }
 function setStatus(p, status) {
+  if (status === "freigegeben") return approvePost(p);
+  if (status === "veroeffentlicht") return markPublishedManually(p);
   p.status = status;
-  if (status === "freigegeben") p.approvedAt = Date.now();
-  if (status === "veroeffentlicht") p.publishedAt = Date.now();
+  if (status === "entwurf") p.approvedHash = null;
   touch(p);
 }
 const engagement = (m) => (m && m.reach > 0 ? ((m.likes || 0) + (m.comments || 0) + (m.saves || 0) + (m.shares || 0)) / m.reach : null);

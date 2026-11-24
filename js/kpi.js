@@ -66,6 +66,7 @@ async function kpiSync() {
   const v = validateKpis(j);
   if (!v.ok) {
     logEvent("error", "kpi.reject", v.error);
+    logAction("kpi.fetch", "auto", false, v.error);
     return v;
   }
   let n = 0;
@@ -74,5 +75,6 @@ async function kpiSync() {
   await kvPut("kpi-config", cfg);
   await save();
   logEvent("info", "kpi.ok", n + " Werte übernommen");
+  logAction("kpi.fetch", "auto", true, n + " Werte");
   return { ok: true, n, ignored: v.ignored };
 }

@@ -173,7 +173,7 @@ function syncSoon(ms = 4000) {
   clearTimeout(syncTimer);
   syncTimer = setTimeout(async () => {
     if (navigator.onLine !== false && (await syncCfg())) {
-      const r = await syncOnce();
+      const r = await act("sync.run", "auto", () => syncOnce());
       if (r.ok && (r.pulled || r.conflicts)) render();
     }
   }, ms);

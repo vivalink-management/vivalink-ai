@@ -134,6 +134,12 @@ function readPostForm(p) {
   if (p.type !== "karussell" && p.slides.length > 1) p.slides = [p.slides[0]];
   if (p.type === "reel") p.reel = { script: $("#pr-script") ? val("pr-script") : (p.reel && p.reel.script) || "", shots: $("#pr-shots") ? val("pr-shots").split("\n").map((s) => s.trim()).filter(Boolean) : (p.reel && p.reel.shots) || [] };
   checkPost(p);
+  // Geänderter Inhalt nach Freigabe → zurück zu Entwurf, damit nur Freigegebenes veröffentlicht wird
+  if (p.status === "freigegeben" && p.approvedHash && p.approvedHash !== postHash(p)) {
+    p.status = "entwurf";
+    p.approvedHash = null;
+    p.reapprove = true;
+  }
   touch(p);
 }
 
@@ -223,17 +229,20 @@ async function studioAction(a, id, b) {
       return toast("Prüfhinweise beachten. Nochmal tippen, um trotzdem freizugeben.");
     }
     window._stw = null;
-    setStatus(p, id);
+    const name = id === "freigegeben" ? "post.approve" : id === "veroeffentlicht" ? "post.publish" : null;
+    const r = name ? await act(name, "gruender", () => setStatus(p, id) || { ok: true }) : (setStatus(p, id), { ok: true });
+    if (r && r.ok === false) return toast(r.error || r.why || "Nicht möglich");
     await save();
     render();
     postSheet(p.id);
-    toast(PSTATUS[id]);
+    toast(postState(p).n);
   } else if (a === "stEdit" && p) {
     readPostForm(p);
     await save();
     render();
     postSheet(p.id);
-    toast("Gespeichert" + (p.warnings.length ? " · " + p.warnings.length + " Prüfhinweis(e)" : ""));
+    toast("Gespeichert" + (p.reapprove ? " · nach der Änderung bitte erneut freigeben" : "") + (p.warnings.length ? " · " + p.warnings.length + " Prüfhinweis(e)" : ""));
+    delete p.reapprove;
   } else if (a === "stAddSlide" && p) {
     readPostForm(p);
     if (p.type !== "karussell") p.type = "karussell";

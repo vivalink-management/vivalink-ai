@@ -297,14 +297,15 @@ async function renderPost(post, story = false) {
   const A = await brandAssets();
   return post.slides.map((_, i) => renderSlide(post, i, A, story));
 }
-const toBlob = (cv) => new Promise((ok) => cv.toBlob((b) => ok(b), "image/png"));
-async function postFiles(post, story = false) {
+const toBlob = (cv, type = "image/png") => new Promise((ok) => cv.toBlob((b) => ok(b), type, 0.92));
+/* type "image/jpeg": für die Instagram-Schnittstelle (verlangt JPEG); Teilen/Speichern nutzt PNG */
+async function postFiles(post, story = false, type = "image/png") {
   const cvs = await renderPost(post, story);
   const base = `vivalink-${post.date || today()}-${(post.title || "beitrag").toLowerCase().replace(/[^a-z0-9äöüß]+/g, "-").replace(/^-|-$/g, "").slice(0, 40)}${story ? "-story" : ""}`;
   const out = [];
   for (let i = 0; i < cvs.length; i++) {
-    const b = await toBlob(cvs[i]);
-    out.push(new File([b], `${base}${cvs.length > 1 ? "-" + (i + 1) : ""}.png`, { type: "image/png" }));
+    const b = await toBlob(cvs[i], type);
+    out.push(new File([b], `${base}${cvs.length > 1 ? "-" + (i + 1) : ""}.${type === "image/jpeg" ? "jpg" : "png"}`, { type }));
   }
   return out;
 }
