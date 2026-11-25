@@ -471,6 +471,7 @@ document.addEventListener("click", async (e) => {
     toast(r.made.length + " Aufgabe(n) angelegt");
   } else if (a === "sync" || a.startsWith("sy")) syncAction(a);
   else if (a === "auto" || a.startsWith("au")) autonomyAction(a, id);
+  else if (a === "kpi" || a.startsWith("kp")) kpiAction(a);
   else if (a === "msr") {
     const x = await act("measure.start", "gruender", () => startMeasure(id, Number(b.dataset.v)));
     if (!x || x.ok === false) return toast((x && x.error) || "Befund nicht mehr aktuell");

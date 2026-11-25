@@ -5,6 +5,17 @@ import { extname, join, normalize, resolve } from "node:path";
 import { handleVault } from "../server/vault-core.mjs";
 import { d1Store } from "../server/d1-store.mjs";
 import { sqliteD1 } from "./sqlite-d1.mjs";
+import { handleKpi, memoryRepo } from "../server/kpi-core.mjs";
+// Nur für Tests: Gegenstelle der Verwaltung (gleiche Logik wie die spätere Edge Function) mit künstlichen Kennzahlen
+const kpiRepo = memoryRepo([
+  { key: "reg_total", date: "2026-03-09", value: 321 },
+  { key: "reg_week", date: "2026-03-09", value: 12 },
+  { key: "active_users", date: "2026-03-09", value: 88 },
+  { key: "invite_rate", date: "2026-03-09", value: 41.456 },
+  { key: "email", date: "2026-03-09", value: 1 },
+  { key: "signups", date: "kaputt", value: 3 },
+]);
+kpiRepo.addCode("135790", Date.now() - 1000);
 
 const repo = resolve(new URL("..", import.meta.url).pathname);
 const root = process.env.ROOT ? resolve(repo, process.env.ROOT) : repo; // ROOT=dist-test für die Testversion
@@ -53,6 +64,17 @@ http
     if (path === "/__store-dump") {
       await vstore.get("init");
       return res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(d1.raw.prepare("SELECT k, v FROM kv").all()));
+    }
+    if (path.startsWith("/kpi-core/")) {
+      // nur Testserver: frischer Einmalcode je Test, Widerruf nur für das eigene Gerät
+      if (path === "/kpi-core/__code") {
+        const code = String(100000 + Math.floor(Math.random() * 899999));
+        await kpiRepo.addCode(code, Date.now() + 600e3);
+        return res.writeHead(200, { "content-type": "text/plain" }).end(code);
+      }
+      if (path === "/kpi-core/__revoke") return await kpiRepo.revokeToken(new URL(req.url, "http://x").searchParams.get("t") || ""), res.writeHead(200).end("ok");
+      const r = await handleKpi({ method: req.method, path, auth: req.headers.authorization, body: req.method === "POST" ? await readBody(req) : null }, kpiRepo);
+      return res.writeHead(r.status, r.headers).end(r.body);
     }
     if (path.startsWith("/kpi/")) {
       if (path.endsWith("/pair") && req.method === "POST") {
