@@ -1,6 +1,6 @@
 {
   "name": "vivalink-management-ai",
-  "version": "2.6.0",
+  "version": "2.7.0",
   "private": true,
   "description": "Interne Management-App für Vivalink (statische Web-App, kein Build-Schritt)",
   "scripts": {
@@ -12,6 +12,7 @@
     "build:test": "node scripts/build-test.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "1.63.0"
+    "@playwright/test": "1.63.0",
+    "postgres": "3.4.9"
   }
 }

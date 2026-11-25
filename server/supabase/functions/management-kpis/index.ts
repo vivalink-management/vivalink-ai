@@ -1,48 +1,27 @@
-// Supabase Edge Function „management-kpis“ – VORLAGE, NICHT BEREITGESTELLT.
-// Umsetzung nur nach gesonderter Freigabe des Gründers, zuerst in der Supabase-Testumgebung.
-// Vor dem Bereitstellen: server/kpi-core.mjs in diesen Ordner kopieren (gleiche, getestete Logik wie in der Management AI).
-// Der Service-Role-Schlüssel bleibt ausschließlich serverseitig (Umgebungsvariable der Funktion), nie im Browser.
-import { createClient } from "jsr:@supabase/supabase-js@2";
-import { handleKpi } from "./kpi-core.mjs";
+// Supabase Edge Function „management-kpis“ – NICHT BEREITGESTELLT.
+// Bereitstellung nur nach gesonderter Freigabe des Gründers, zuerst in einer getrennten Supabase-Testumgebung.
+// Bereitstellungsordner erzeugen (kopiert kpi-core.mjs, kpi-pg.mjs und mapping.json dazu):
+//   node scripts/verwaltung.mjs bundle <mapping.json> <zielordner>
+// Wichtig: ohne JWT-Prüfung des Gateways bereitstellen (verify_jwt = false), denn die Management AI meldet sich
+// mit ihrem widerrufbaren Gerätezugang an, nicht mit einem Supabase-Konto.
+// Datenbankzugang: SUPABASE_DB_URL stellt Supabase der Funktion automatisch bereit (serverseitig, nie im Browser).
+// Jede Abfrage läuft in der eingeschränkten Rolle management_ai (siehe Migration und kpi-pg.mjs).
+import postgres from "npm:postgres@3.4.9";
+import { handleKpi, KPI_KEYS } from "./kpi-core.mjs";
+import { pgRepo } from "./kpi-pg.mjs";
 import mapping from "./mapping.json" with { type: "json" };
 
-const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
-const ORIGIN = "https://vivalink-management.github.io";
-const iso = (t: number) => new Date(t).toISOString();
+const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!, { prepare: false, max: 2, idle_timeout: 20, connect_timeout: 5, onnotice: () => {} });
+const ORIGIN = Deno.env.get("VL_ALLOWED_ORIGIN") ?? "https://vivalink-management.github.io";
+// Fehler einzelner Auswertungen nur als Schlüssel protokollieren (keine Datenbankmeldungen mit Inhalten)
+const repo = pgRepo(sql, mapping, KPI_KEYS, { onError: (key: string) => console.warn("Auswertung nicht lesbar:", key) });
 
-const repo = {
-  pairCode: async (h: string) => {
-    const { data } = await db.from("management_pair_codes").select("expires_at, used_at").eq("code_hash", h).maybeSingle();
-    return data ? { expiresAt: Date.parse(data.expires_at), usedAt: data.used_at } : null;
-  },
-  useCode: async (h: string, now: number) => void (await db.from("management_pair_codes").update({ used_at: iso(now) }).eq("code_hash", h)),
-  addDevice: async ({ name, tokenHash }: { name: string; tokenHash: string }) => void (await db.from("management_devices").insert({ name, token_hash: tokenHash })),
-  device: async (h: string) => {
-    const { data } = await db.from("management_devices").select("revoked_at").eq("token_hash", h).maybeSingle();
-    return data ? { revokedAt: data.revoked_at } : null;
-  },
-  touch: async (h: string, now: number) => void (await db.from("management_devices").update({ last_used_at: iso(now) }).eq("token_hash", h)),
-  calls: async (h: string, since: number) => {
-    const { count } = await db.from("management_calls").select("*", { count: "exact", head: true }).eq("token_hash", h).gt("at", iso(since));
-    return count || 0;
-  },
-  logCall: async (h: string) => void (await db.from("management_calls").insert({ token_hash: h })),
-  // Kennzahlen aus den VORHANDENEN Auswertungen gemäß mapping.json (nur die letzten 30 Tage)
-  aggregates: async () => {
-    const rows: { key: string; date: string; value: number }[] = [];
-    for (const [key, m] of Object.entries(mapping as Record<string, any>)) {
-      if (key.startsWith("_") || !m.source) continue;
-      const { data, error } = await db.from(m.source).select(`${m.date}, ${m.value}`).order(m.date, { ascending: false }).limit(30);
-      if (error) continue;
-      for (const r of data || []) rows.push({ key, date: String(r[m.date]).slice(0, 10), value: Number(r[m.value]) });
-    }
-    return rows;
-  },
-};
-
-Deno.serve(async (req) => {
-  const cors = { "access-control-allow-origin": ORIGIN, "access-control-allow-headers": "authorization, content-type", "access-control-allow-methods": "GET, POST, OPTIONS" };
+Deno.serve(async (req: Request) => {
+  const origin = req.headers.get("origin");
+  const cors: Record<string, string> = { "access-control-allow-origin": ORIGIN, "access-control-allow-headers": "authorization, content-type", "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-max-age": "600", vary: "origin" };
+  if (origin && origin !== ORIGIN) return new Response('{"error":"forbidden"}', { status: 403, headers: { "content-type": "application/json" } });
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
-  const r = await handleKpi({ method: req.method, path: new URL(req.url).pathname, auth: req.headers.get("authorization") ?? "", body: req.method === "POST" ? await req.text() : null }, repo);
-  return new Response(r.body, { status: r.status, headers: { ...r.headers, ...cors } });
+  const body = req.method === "POST" ? (await req.text()).slice(0, 2000) : null;
+  const r = await handleKpi({ method: req.method, path: new URL(req.url).pathname, auth: req.headers.get("authorization") ?? "", body }, repo);
+  return new Response(r.body, { status: r.status, headers: { ...r.headers, ...cors, "x-content-type-options": "nosniff" } });
 });

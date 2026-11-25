@@ -26,7 +26,7 @@ test("Kopplung, Abruf und Speicherung als Historie (Quelle „verwaltung“), ke
   expect(vals(await state(p), "reg_total")).toHaveLength(1);
   // Zugang steht nicht in Backup oder synchronisierten Daten
   const bk = await p.evaluate(async () => JSON.stringify(await makeBackup()));
-  expect(bk).not.toContain("t".repeat(40));
+  expect(bk).not.toContain("ab".repeat(32));
 });
 
 for (const [variant, msg] of [["pii", "Unerwartete Felder in einem Wert"], ["extra", "Unerwartete Felder (users)"]])
