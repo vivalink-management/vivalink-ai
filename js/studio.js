@@ -261,7 +261,7 @@ const cleanTag = (h) => {
     .trim()
     .replace(/^#*/, "")
     .replace(/[^0-9A-Za-zÄÖÜäöüß_]/g, "");
-  return t ? "#" + t : "";
+  return t && /[A-Za-zÄÖÜäöüß]/.test(t) ? "#" + t : ""; // nur Ziffern verlinkt Instagram nicht
 };
 const words = (s) =>
   new Set(
@@ -389,13 +389,22 @@ function importPlan(text, T = S, source = "ki") {
   const r = parsePlanAnswer(text);
   if (!r.ok) return r;
   const added = [];
+  let dupes = 0;
+  const key = (p) => [p.date, p.pillar, (p.hook || "").trim().toLowerCase(), (p.caption || "").trim().toLowerCase()].join("|");
+  const have = new Set(T.studio.posts.filter((p) => !p.deleted).map(key));
   for (const x of r.items) {
     const p = makePost(x, source, T);
     if (!p.caption && !p.slides.some((s) => s.title || s.text)) continue;
+    // Dieselbe Antwort zweimal eingefügt → keine doppelten Beiträge
+    if (have.has(key(p))) {
+      dupes++;
+      continue;
+    }
+    have.add(key(p));
     T.studio.posts.push(p);
     added.push(p);
   }
-  return { ok: true, added, warned: added.filter((p) => p.warnings.length).length };
+  return { ok: true, added, dupes, warned: added.filter((p) => p.warnings.length).length };
 }
 
 /* ---------- Selbstständig erkannte Anlässe: Entwürfe ohne KI, nur aus Fakten ---------- */
@@ -598,7 +607,8 @@ function styleCheck(p, T = S) {
   if (p.type !== "story" && !String(p.caption || "").toLowerCase().includes(site) && !(b.signup && String(p.caption || "").includes(b.signup)))
     H.push("Keine Handlungsaufforderung mit „" + (b.website || "vivalink.me") + "“ – Ziel Nr. 1 sind Registrierungen");
   const low = [p.caption, p.hook, ...(p.slides || []).flatMap((s) => [s.title, s.text])].join(" \n ").toLowerCase();
-  const fl = STOCK.filter((x) => low.includes(x));
+  const word = (x) => new RegExp("(^|[^a-zäöüß])" + x.replace(/[.*+?^${}()|[\]\\!]/g, "\\$&") + "($|[^a-zäöüß])");
+  const fl = STOCK.filter((x) => word(x).test(low));
   if (fl.length) H.push("Floskel: " + fl.slice(0, 3).map((x) => "„" + x + "“").join(", ") + " – konkreter formulieren");
   if (LOUD_EMOJI.test(p.caption || "")) H.push("Laute Emojis (z. B. 🔥 🚀 💯) passen nicht zum ruhigen Ton – lieber 🙂 ☕ 📍");
   const paras = String(p.caption || "").split(/\n+/).filter((x) => x.trim());

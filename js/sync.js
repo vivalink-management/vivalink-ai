@@ -478,6 +478,8 @@ async function syncAction(a) {
     if (!r.ok) return toast(r.error);
     pairBox(`<div class="card"><b>Code für das neue Gerät</b><div style="font-size:30px;font-weight:800;letter-spacing:3px;margin:6px 0" id="syCodeOut">${esc(r.code)}</div><div class="mut">10 Minuten gültig, nur einmal verwendbar. Warte auf das neue Gerät …</div><button class="s" data-a="syPairCancel">Abbrechen</button></div>`);
     pairTimer = setInterval(async () => {
+      // Fenster geschlossen → Kopplung abbrechen, nicht weiter beim Server nachfragen
+      if ($("#sheet").hidden || !$("#syPair")) return stopPairPoll(), pairCancel();
       const s = await pairCheckA();
       if (s.state === "confirm") {
         stopPairPoll();
@@ -504,6 +506,7 @@ async function syncAction(a) {
     if (!r.ok) return toast(r.error);
     pairBox(`<div class="card rec warn"><b>Prüfzahl</b><div style="font-size:30px;font-weight:800;margin:6px 0" id="sySas">${esc(r.sas)}</div><div class="mut">Vergleiche sie mit der Zahl auf dem anderen Gerät und bestätige dort. Warte auf Bestätigung …</div></div>`);
     pairTimer = setInterval(async () => {
+      if ($("#sheet").hidden || !$("#syPair")) return stopPairPoll(), (PAIR = null);
       const s = await pairCheckB();
       if (s.state === "waiting") return;
       stopPairPoll();
@@ -522,11 +525,11 @@ async function syncAction(a) {
     return syncSheet();
   }
   if (a === "syRotate") {
-    if (window._sr !== 1) {
-      window._sr = 1;
+    if (window._srot !== 1) {
+      window._srot = 1;
       return toast("Nochmal tippen: Neuer Schlüssel, alter Tresor wird gesperrt, andere Geräte neu koppeln");
     }
-    window._sr = 0;
+    window._srot = 0;
     const r = await act("sync.rotate", "gruender", () => syncRotate());
     toast(r.ok ? "Schlüssel erneuert – andere Geräte bitte neu koppeln" : r.error);
     return syncSheet(r.ok && r.recovery ? recoveryHtml(r.recovery) : "");

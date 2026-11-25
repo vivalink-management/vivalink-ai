@@ -27,6 +27,29 @@ function migrate(T = S) {
   return ch;
 }
 
+/* ---------- Beschädigte Gerätedaten erkennen und reparieren ----------
+   bad: unbrauchbar (z. B. kein Objekt, Listen fehlen/kein Array) → letzter intakter Sicherungspunkt
+   junk: einzelne kaputte Einträge → werden entfernt (Original bleibt als Kopie erhalten) */
+function checkState(raw) {
+  if (raw == null) return { bad: false, junk: 0 };
+  if (typeof raw !== "object" || Array.isArray(raw)) return { bad: true, junk: 0 };
+  for (const k of ["memory", "tasks"]) if (raw[k] != null && !Array.isArray(raw[k])) return { bad: true, junk: 0 };
+  if (raw.studio != null && (typeof raw.studio !== "object" || (raw.studio.posts != null && !Array.isArray(raw.studio.posts)))) return { bad: true, junk: 0 };
+  if (raw.metrics != null && !Array.isArray(raw.metrics)) return { bad: true, junk: 0 };
+  const bad = (x) => !x || typeof x !== "object" || typeof x.id !== "string";
+  let junk = 0;
+  for (const L of [raw.memory, raw.tasks, raw.metrics, raw.grants, raw.studio && raw.studio.posts]) if (Array.isArray(L)) junk += L.filter(bad).length;
+  for (const m of Array.isArray(raw.metrics) ? raw.metrics : []) if (m && m.entries != null && !Array.isArray(m.entries)) junk++;
+  return { bad: false, junk };
+}
+function repairState(raw) {
+  const ok = (x) => x && typeof x === "object" && typeof x.id === "string";
+  for (const k of ["memory", "tasks", "metrics", "grants"]) if (Array.isArray(raw[k])) raw[k] = raw[k].filter(ok);
+  if (raw.studio && Array.isArray(raw.studio.posts)) raw.studio.posts = raw.studio.posts.filter(ok);
+  for (const m of raw.metrics || []) m.entries = Array.isArray(m.entries) ? m.entries.filter(ok) : [];
+  return raw;
+}
+
 /* ---------- Eingangsprüfung für Backups (schützt vor beschädigten oder manipulierten Daten) ---------- */
 const ID_RE = /^[A-Za-z0-9_-]{1,80}$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;

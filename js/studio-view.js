@@ -410,7 +410,7 @@ async function studioAction(a, id, b) {
     close();
     if (r.added[0] && r.added[0].date) studioMonth = r.added[0].date.slice(0, 7);
     render();
-    toast(`${r.added.length} Beiträge als Entwurf übernommen${r.warned ? ` · ${r.warned} mit Prüfhinweis` : ""}`);
+    toast(`${r.added.length} Beiträge als Entwurf übernommen${r.warned ? ` · ${r.warned} mit Prüfhinweis` : ""}${r.dupes ? ` · ${r.dupes} bereits vorhanden (übersprungen)` : ""}`);
   } else if (a === "stNew") {
     const q = makePost({ date: "", pillar: "community", type: "einzelbild", title: "Neuer Beitrag", slides: [{ template: "frage", title: "", text: "" }] }, "manuell");
     S.studio.posts.push(q);

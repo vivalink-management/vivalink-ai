@@ -489,7 +489,31 @@ document.addEventListener("change", (e) => {
   try {
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   } catch (e) {}
-  const raw = await load();
+  let raw = await load();
+  // Beschädigte Gerätedaten: Original aufbewahren, reparieren oder letzten intakten Sicherungspunkt verwenden
+  const health = checkState(raw);
+  if (health.bad || health.junk) {
+    await kvPut("corrupt-last", { at: Date.now(), raw });
+    if (health.bad) {
+      let restored = null;
+      for (const d of (await kvGet("snaps")) || []) {
+        const s = await kvGet("snap-" + d);
+        if (s && s.data && !checkState(s.data).bad) {
+          raw = repairState(clone(s.data));
+          restored = d;
+          break;
+        }
+      }
+      if (!restored) raw = null;
+      logEvent("error", "storage.corrupt", restored ? "Daten beschädigt – Sicherungspunkt " + restored + " verwendet" : "Daten beschädigt – kein Sicherungspunkt");
+      setTimeout(() => toast(restored ? "Gespeicherte Daten waren beschädigt. Stand vom " + fmt(restored) + " wiederhergestellt (Original aufbewahrt)." : "Gespeicherte Daten waren beschädigt und wurden aufbewahrt. Bitte Diagnose öffnen."), 900);
+    } else {
+      raw = repairState(raw);
+      logEvent("warn", "storage.repair", health.junk + " beschädigte Einträge entfernt");
+      setTimeout(() => toast(health.junk + " beschädigte Einträge entfernt (Original aufbewahrt)"), 900);
+    }
+    if (raw) await kvPut("state", raw);
+  }
   const from = raw ? raw.v || 1 : SCHEMA;
   if (raw && from < SCHEMA) {
     const key = "safety-v" + from;
@@ -520,7 +544,13 @@ document.addEventListener("change", (e) => {
   if (ch) await save();
   await autoSnapshot();
   LASTSNAP = ((await kvGet("snaps")) || [])[0] || null;
-  render();
+  try {
+    render();
+  } catch (e) {
+    // Notfallansicht: Daten bleiben unberührt; Wiederherstellung und Diagnose bleiben erreichbar
+    logEvent("error", "render", (e && e.message) || "Anzeige fehlgeschlagen");
+    $("#app").innerHTML = '<h1>Vivalink Management AI</h1><div class="card rec bad">Die Ansicht konnte nicht angezeigt werden. Deine Daten sind gespeichert.</div><div class="row"><button class="p" data-a="snaps">Sicherungspunkt wiederherstellen</button><button data-a="diag">Diagnose</button></div>';
+  }
   syncSoon(1500);
   // Wieder geöffnet (App lag im Hintergrund): Zyklus höchstens alle 6 Stunden erneut
   document.addEventListener("visibilitychange", async () => {
