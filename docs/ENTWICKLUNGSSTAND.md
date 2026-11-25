@@ -1,7 +1,7 @@
 # Zentrale Entwicklungsübersicht: Vivalink Management AI
 
 **Fortsetzungsdokument für alle weiteren Entwicklungsaufträge.** Bei jedem Auftrag zuerst lesen und am Ende aktualisieren. Arbeitsweise (Tests, Gerätetests, Grenzen): **`CLAUDE.md`**.
-Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Version **2.5.0** in Entwicklung · Produktion: **Version 2.4** (`main`, veröffentlicht am 25.11.2026)
+Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.5** (`main`, veröffentlicht am 25.11.2026; Update 2.4 → 2.5 unter der echten Adresse geprüft)
 
 ## 1. Umgesetzt und getestet (noch nicht veröffentlicht)
 
@@ -44,14 +44,15 @@ Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Version **2.5.0*
 ## 4. Offene Entscheidungen (nur du)
 1. ✅ Version 2.4 freigegeben und veröffentlicht (25.11.2026).
 2. ✅ Synchronisierung: Cloudflare (kostenlos), bestehendes Konto; Server eingerichtet, Webseite unverändert.
-3. **Freigabe von Version 2.5** (Pull Request #3): verbindet die echte App mit dem Server. Gesendet wird erst, wenn du auf einem Gerät „Synchronisierung einrichten“ tippst.
+3. ✅ Version 2.5 freigegeben und veröffentlicht (25.11.2026).
+4. **Einmalig auf den Geräten:** Synchronisierung einrichten und koppeln; Postfach-Schlüssel für die geplante Aufgabe ins sichere Formular.
 3. **Verwaltung:** Freigabe des Auftrags in `AUFTRAG-VERWALTUNG.md` (zuerst Testumgebung).
 4. **Instagram:** Business-Konto bestätigen, Anmeldeweg (Empfehlung: Instagram Login).
 5. Später: ob eine kostenpflichtige KI-API für Echtzeit-Reaktionen gewünscht ist.
 
 ## 5. Nächste Arbeiten (Reihenfolge)
 1. ✅ Server bereitgestellt, Testversion angebunden und live geprüft.
-2. Version 2.5 nach Freigabe veröffentlichen; danach Geräte koppeln.
+2. ✅ Version 2.5 veröffentlicht; Geräte koppeln (Gründer, einmalig).
 3. Postfach-Schlüssel einrichten, geplante Claude-Aufgaben anlegen (Inhalte und Analyse wöchentlich; technische Wartung wöchentlich).
 4. Instagram-Veröffentlichung über den Worker (Berechtigung „automatisch veröffentlichen“ greift dann).
 5. Verwaltungs-Schnittstelle aktivieren, sobald die Gegenstelle existiert.

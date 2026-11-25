@@ -1,6 +1,6 @@
 # Änderungsprotokoll
 
-## 2.5.0 (Entwicklungszweig) – Synchronisierung über Cloudflare vorbereitet, Aufgaben-Postfach für geplante Claude-Aufgaben
+## 2.5.0 (veröffentlicht am 25.11.2026) – Synchronisierung über Cloudflare vorbereitet, Aufgaben-Postfach für geplante Claude-Aufgaben
 
 - **Server:** Cloudflare Worker mit D1-Speicher.
   - atomare Versionsprüfung: gleichzeitiges Schreiben kann nie still überschreiben
