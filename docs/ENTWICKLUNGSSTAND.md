@@ -40,6 +40,7 @@ Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
 - **Über 120 automatische Tests** (lokal über 370 Läufe): Regression V1/V2/2.1, Migration, Backup, Konflikte, Sicherheit, Diagnose, Offline, Testversion, Update und Rückbau, Studio, Grafiken, Bedienung, Management, Empfehlungen, Synchronisierung (inklusive Angreifer, Ablauf, Fehlversuche), Autonomie, Robustheit.
 - Je Test in drei Bildschirmgrößen (Chromium: Desktop, iPhone, iPad), in GitHub Actions zusätzlich WebKit.
 - Nur künstliche Daten. Prüfung auf vertrauliche Inhalte bei jedem Lauf.
+- Live-Prüfung der Synchronisierung (Testversion gegen den echten Worker) bitte über den Workflow „Live-Prüfung“ in GitHub Actions starten, nicht aus einer Claude-Sitzung der Umgebung „Vivalink“: Seit dort der Netzwerkschlüssel für das Aufgaben-Postfach hinterlegt ist, lehnt der Worker Tresor-Anfragen aus dieser Umgebung mit 401 ab (das Postfach selbst funktioniert). Echte Geräte und GitHub Actions sind nicht betroffen; 2.6 dort am 25.11.2026 bestanden (Chromium und WebKit, iPhone und iPad).
 
 ## Stand der Autonomie (2.6, Entwicklungszweig)
 
