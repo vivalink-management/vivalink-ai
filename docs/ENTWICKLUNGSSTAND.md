@@ -77,16 +77,18 @@ Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
 2. ✅ Synchronisierung: Cloudflare (kostenlos), bestehendes Konto; Server eingerichtet, Webseite unverändert.
 3. ✅ Version 2.5 freigegeben und veröffentlicht (25.11.2026).
 4. ✅ Geräte gekoppelt; Postfach-Schlüssel hinterlegt; wöchentliche Aufgaben „technische Wartung“ (Mo 4:43) und „Instagram-Entwürfe und Wochenanalyse“ (Mo 5:17) angelegt.
-3. **Verwaltung:** Freigabe des Auftrags in `AUFTRAG-VERWALTUNG.md` (zuerst Testumgebung).
-4. **Instagram:** Business-Konto bestätigen, Anmeldeweg (Empfehlung: Instagram Login).
-5. Später: ob eine kostenpflichtige KI-API für Echtzeit-Reaktionen gewünscht ist.
+5. **Version 2.6:** Freigabe zur Veröffentlichung (Pull Request vom Entwicklungszweig).
+6. **Verwaltung:** Freigabe des Auftrags in `AUFTRAG-VERWALTUNG.md` (zuerst Testumgebung).
+7. **Instagram:** Business-Konto bestätigen, Anmeldeweg (Empfehlung: Instagram Login).
+8. Später: ob eine kostenpflichtige KI-API für Echtzeit-Reaktionen gewünscht ist.
 
 ## 5. Nächste Arbeiten (Reihenfolge)
 1. ✅ Server bereitgestellt, Testversion angebunden und live geprüft.
 2. ✅ Version 2.5 veröffentlicht; Geräte koppeln (Gründer, einmalig).
-3. Postfach-Schlüssel einrichten, geplante Claude-Aufgaben anlegen (Inhalte und Analyse wöchentlich; technische Wartung wöchentlich).
-4. Instagram-Veröffentlichung über den Worker (Berechtigung „automatisch veröffentlichen“ greift dann).
-5. Verwaltungs-Schnittstelle aktivieren, sobald die Gegenstelle existiert.
+3. ✅ Postfach-Schlüssel eingerichtet, geplante Claude-Aufgaben angelegt (Inhalte und Analyse wöchentlich; technische Wartung wöchentlich).
+4. Nach Freigabe von 2.6: Wartungsaufgabe meldet ihr Ergebnis an die Überwachung (`melden`).
+5. Instagram-Veröffentlichung über den Worker (Berechtigung „automatisch veröffentlichen“ greift dann).
+6. Verwaltungs-Schnittstelle aktivieren, sobald die Gegenstelle existiert.
 
 ## 6. Bekannte Einschränkungen
 - Die Bedienung von 2.3/2.4 ist nur automatisch und per Bildschirmfoto geprüft, nicht auf echten Geräten (Restrisiken siehe Abschnitt 3).
