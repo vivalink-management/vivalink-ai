@@ -70,7 +70,7 @@ test("Wochenbericht: aus den Daten, ohne Ursachenbehauptung, wöchentlich abgele
   await seed(page, { state: s });
   const r = await page.evaluate(() => weeklyReport());
   expect(r.text).toContain("Wochenbericht 4.3.2026 – 10.3.2026");
-  expect(r.text).toContain("- Erledigte Testaufgabe");
+  expect(r.text).toContain("· Erledigte Testaufgabe");
   expect(r.text).toContain("keine Ursachen");
   expect((await kv(page, "reports"))[0].text).toContain("Wochenbericht");
   await page.click('button[data-a="report"]');
@@ -97,4 +97,43 @@ test("Selbstreparatur: verwaiste Verweise und ungültige Fristen beim Start beho
   await page.reload();
   await page.waitForFunction(() => window.VL_READY === true); // Startablauf abgeschlossen
   expect(await kv(page, "pre-import")).toBeNull();
+});
+
+test("Wochenbericht: Vorwochenvergleich, 4-Wochen-Trend, wichtige Entwicklungen, priorisierte Empfehlungen, Erfolgskontrolle", async ({ page }) => {
+  const s = v2State();
+  const old = NOW.getTime() - 40 * 864e5;
+  const e = (id, d, v) => ({ id, date: new Date(NOW.getTime() - d * 864e5).toLocaleDateString("sv-SE"), value: v, status: "confirmed", src: "manual", note: "", updatedAt: old });
+  // Registrierungen pro Woche fallen über 4 Wochen deutlich; Ziel 20
+  s.metrics = [
+    { id: "m_reg_week", key: "reg_week", name: "Neue Registrierungen pro Woche", unit: "", dir: "up", goal: 20, updatedAt: old, entries: [e("r1", 27, 16), e("r2", 20, 14), e("r3", 13, 11), e("r4", 7, 10), e("r5", 0, 6)] },
+    { id: "m_ig_fol", key: "ig_fol", name: "Instagram-Follower", unit: "", dir: "up", goal: "", updatedAt: old, entries: [e("f1", 21, 100), e("f2", 14, 101), e("f3", 7, 100), e("f4", 0, 101)] },
+  ];
+  s.tasks.push({ id: "t-w1", title: "Diese Woche erledigt", prio: "mittel", area: "App", due: "", done: true, doneAt: NOW.getTime() - 1 * 864e5, updatedAt: 1 });
+  s.tasks.push({ id: "t-w2", title: "Vorwoche A", prio: "mittel", area: "App", due: "", done: true, doneAt: NOW.getTime() - 9 * 864e5, updatedAt: 1 });
+  s.tasks.push({ id: "t-w3", title: "Vorwoche B", prio: "mittel", area: "App", due: "", done: true, doneAt: NOW.getTime() - 10 * 864e5, updatedAt: 1 });
+  s.tasks.push({ id: "t-ms", title: "Testmaßnahme", prio: "mittel", area: "Marketing", due: "", done: false, updatedAt: 1, measure: { finding: "x", metric: "reg_week", baseline: { value: 10, date: new Date(NOW.getTime() - 7 * 864e5).toLocaleDateString("sv-SE") }, start: "2026-03-03", checkAt: "2026-03-20", outcome: null } });
+  await seed(page, { state: s });
+  const r = await page.evaluate(() => {
+    const w = weeklyReport();
+    return { text: w.text, n: w.n, key: w.key.map((k) => [k.text, k.bad]), tr: metricTrend(S.metrics.find((m) => m.key === "reg_week")).dir, fol: metricTrend(S.metrics.find((m) => m.key === "ig_fol")).dir };
+  });
+  expect(r.tr).toBe("fallend");
+  expect(r.fol).toBe("stabil");
+  expect(r.n).toMatchObject({ done: 1, doneP: 2 });
+  expect(r.text).toContain("Aufgaben erledigt: 1 (Vorwoche 2, weniger)");
+  expect(r.text).toContain("Neue Registrierungen pro Woche: fallend (16 → 6, 5 Werte)");
+  expect(r.text).toContain("Instagram-Follower: stabil");
+  // Wichtige Entwicklungen: Trend, Zielabstand und Vorwochenänderung, ungünstige markiert
+  const k = r.key.map((x) => x[0]).join(" | ");
+  expect(k).toContain("fallend über 4 Wochen");
+  expect(k).toContain("6 von Ziel 20 (30 %)");
+  expect(k).toContain("-40 % gegenüber der Vorwoche");
+  expect(r.key.every((x) => x[1])).toBe(true);
+  expect(r.text).toContain("PRIORISIERTE EMPFEHLUNGEN");
+  expect(r.text).toMatch(/1\. .+ → .+Priorität/);
+  expect(r.text).toContain("Testmaßnahme: läuft, Prüfung 20.3.2026");
+  // Ziel Nr. 1 (Registrierungen) steht bei den Empfehlungen vorn
+  expect(r.text.split("PRIORISIERTE EMPFEHLUNGEN")[1].split("\n")[1]).toMatch(/Registrierungen/);
+  expect(r.text).toContain("Veränderung -4");
+  expect(r.text).not.toMatch(/weil|verursacht|aufgrund/i); // keine Ursachenbehauptungen
 });

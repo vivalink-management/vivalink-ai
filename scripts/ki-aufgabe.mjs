@@ -8,6 +8,7 @@
 //   node scripts/ki-aufgabe.mjs holen [datei]       Auftrag lesen (Ausgabe JSON) – Exit 3, wenn keiner vorliegt
 //   node scripts/ki-aufgabe.mjs pruefen <ergebnis>  Ergebnis vor dem Abgeben prüfen
 //   node scripts/ki-aufgabe.mjs abgeben <ergebnis>  Ergebnis zurückgeben (die App übernimmt nur Entwürfe/Vorschläge)
+//   node scripts/ki-aufgabe.mjs melden wartung ok|fehler "kurzer Text ohne Unternehmensdaten"   Rückmeldung für die Überwachung
 // Ergebnisformat: {"posts": <Antwort im Format vivalink-studio-plan>, "analysis": {"text": "…", "actions": <vivalink-actions>}}
 import { readFile, writeFile } from "node:fs/promises";
 
@@ -59,7 +60,7 @@ export function pruefen(res) {
     if (an.actions != null && (!ac || ac.format !== "vivalink-actions" || !Array.isArray(ac.tasks))) E.push("analysis.actions: erwartet {\"format\":\"vivalink-actions\",\"tasks\":[…]}");
     else if (ac && ac.tasks.length > 5) E.push("analysis.actions: höchstens 5 Aufgaben");
   }
-  if (res.posts == null && res.analysis == null) E.push("Weder posts noch analysis vorhanden");
+  if (res.posts == null && res.analysis == null && !res.heartbeat) E.push("Weder posts noch analysis vorhanden");
   return E;
 }
 const safe = (t) => {
@@ -69,16 +70,27 @@ const safe = (t) => {
     return null;
   }
 };
+/* Ergebnis zurückgeben. Das Postfach „in“ ist eine Liste: vorhandene, noch nicht abgeholte Einträge bleiben erhalten. */
 export async function abgeben(base, res, packageId = "", token) {
   const A = api(base, token);
-  const id = "r" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-  const body = JSON.stringify({ format: "vivalink-task-result", version: 2, id, packageId, at: new Date().toISOString(), ...res });
-  for (let i = 0; i < 3; i++) {
+  const entry = { id: "r" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8), packageId, at: new Date().toISOString(), ...res };
+  for (let i = 0; i < 5; i++) {
     const cur = await A.get("in");
+    let entries = [];
+    if (cur) {
+      const o = safe(cur.body);
+      entries = o && Array.isArray(o.entries) ? o.entries : o && o.id ? [o] : [];
+    }
+    const body = JSON.stringify({ format: "vivalink-task-result", version: 3, entries: [...entries, entry].slice(-20) });
     const r = await A.put("in", body, cur ? cur.version : 0);
-    if (!r.conflict) return { ok: true, id };
+    if (!r.conflict) return { ok: true, id: entry.id };
   }
   throw new Error("Postfach belegt");
+}
+/* Kurze Rückmeldung einer geplanten Aufgabe (z. B. Wartung) – ohne Unternehmensdaten */
+export async function melden(base, kind, ok, summary, token) {
+  if (!/^[a-z]{3,20}$/.test(kind)) throw new Error("Ungültige Art");
+  return abgeben(base, { heartbeat: { kind, ok: !!ok, summary: String(summary || "").slice(0, 300) } }, "", token);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -112,8 +124,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       if (E.length) throw new Error("Ergebnis fehlerhaft:\n- " + E.join("\n- "));
       const pkg = await holen(base).catch(() => null);
       console.log(JSON.stringify(await abgeben(base, res, pkg ? pkg.id : "")));
+    } else if (cmd === "melden" && file) {
+      const [, , , kind, status, ...text] = process.argv;
+      console.log(JSON.stringify(await melden(base, kind, status === "ok", text.join(" "))));
     } else {
-      console.error("Aufruf: node scripts/ki-aufgabe.mjs holen [datei] | pruefen <ergebnis.json> | abgeben <ergebnis.json>");
+      console.error("Aufruf: node scripts/ki-aufgabe.mjs holen [datei] | pruefen <ergebnis.json> | abgeben <ergebnis.json> | melden <art> <ok|fehler> <kurzer Text>");
       process.exit(2);
     }
   } catch (e) {
