@@ -1,0 +1,21 @@
+# Cloudflare-Worker „vivalink-sync“ (kostenloser Tarif). Enthält keine Geheimnisse.
+# Bereitstellung: siehe docs/SYNCHRONISIERUNG.md (database_id wird beim Einrichten eingetragen).
+name = "vivalink-sync"
+main = "sync-worker.js"
+compatibility_date = "2025-11-01"
+workers_dev = true
+preview_urls = false
+
+[vars]
+ALLOWED_ORIGIN = "https://vivalink-management.github.io"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "vivalink-sync"
+database_id = "00000000-0000-0000-0000-000000000000"
+
+[triggers]
+crons = ["17 3 * * *"]
+
+[observability]
+enabled = false

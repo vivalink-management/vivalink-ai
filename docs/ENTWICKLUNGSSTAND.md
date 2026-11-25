@@ -1,7 +1,7 @@
 # Zentrale Entwicklungsübersicht: Vivalink Management AI
 
 **Fortsetzungsdokument für alle weiteren Entwicklungsaufträge.** Bei jedem Auftrag zuerst lesen und am Ende aktualisieren. Arbeitsweise (Tests, Gerätetests, Grenzen): **`CLAUDE.md`**.
-Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Pull Request #2 (offen, **nicht veröffentlicht**) · Version **2.4.0** · Produktion: Version 2.1 (`main`)
+Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Version **2.5.0** in Entwicklung · Produktion: **Version 2.4** (`main`, veröffentlicht am 25.11.2026)
 
 ## 1. Umgesetzt und getestet (noch nicht veröffentlicht)
 
@@ -22,8 +22,8 @@ Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Pull Request #2 
 
 | Funktion | Stand | Was fehlt |
 |---|---|---|
-| Synchronisierung iPhone ↔ iPad | neues Sicherheitskonzept (Zufallsschlüssel, Kopplung mit Prüfzahl, Wiederherstellung, Schlüsselwechsel), mit simulierten Geräten und Angreifer getestet | **Entscheidung Anbieter** (Empfehlung Cloudflare, kostenlos) → Einrichtung (`SYNCHRONISIERUNG.md`) |
-| Geplante Claude-Aufgaben | Aufgaben-Kanal und Brückenskript fertig und getestet | Synchronisierungs-Server; dann Aufgabe in Claude anlegen (`KI-AUTONOMIE.md`) |
+| Synchronisierung iPhone ↔ iPad | fertig; Cloudflare Worker mit D1, gegen den echten Worker getestet | **Cloudflare-Konto und API-Token des Gründers** (Anleitung `SYNCHRONISIERUNG.md`) → Claude stellt bereit |
+| Geplante Claude-Aufgaben | Aufgaben-Postfach (Instagram, Wochenanalyse, Aufgabenvorschläge) und Brückenskript fertig und gegen den echten Worker getestet | Worker bereitstellen → App 2.5 veröffentlichen (Freigabe) → Postfach-Schlüssel ins sichere Formular → Claude legt Aufgaben an |
 | Kennzahlen aus der Verwaltung | Client fertig und getestet | Gegenstelle in Supabase/Rork laut `AUFTRAG-VERWALTUNG.md` |
 | Automatische Instagram-Veröffentlichung und Statistiken | Schutzregeln, Berechtigung, JPEG-Export | Meta-App und Business-Login, Worker-Erweiterung (`INSTAGRAM-AUTOMATIK.md`) |
 
@@ -42,16 +42,16 @@ Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Pull Request #2 
 - Nur künstliche Daten. Prüfung auf vertrauliche Inhalte bei jedem Lauf.
 
 ## 4. Offene Entscheidungen (nur du)
-1. **Freigabe zur Veröffentlichung** von 2.4 (automatisch geprüft; ein manueller Gerätetest ist nicht mehr nötig, Restrisiken siehe Abschnitt 3).
-2. **Synchronisierung:** Cloudflare (Empfehlung) oder Supabase; danach legst du ein kostenloses Konto an.
+1. ✅ Version 2.4 freigegeben und veröffentlicht (25.11.2026).
+2. ✅ Synchronisierung: Cloudflare (kostenlos). Offen: Konto und API-Token anlegen (`SYNCHRONISIERUNG.md`).
 3. **Verwaltung:** Freigabe des Auftrags in `AUFTRAG-VERWALTUNG.md` (zuerst Testumgebung).
 4. **Instagram:** Business-Konto bestätigen, Anmeldeweg (Empfehlung: Instagram Login).
 5. Später: ob eine kostenpflichtige KI-API für Echtzeit-Reaktionen gewünscht ist.
 
 ## 5. Nächste Arbeiten (Reihenfolge)
-1. Nach deiner Freigabe: 2.4 veröffentlichen (Ablauf wie bei 2.1, `VEROEFFENTLICHUNG.md`).
-2. Synchronisierung einrichten (Worker, CSP, `VL_SYNC_URL`), Test mit „VL Test“, dann Produktion.
-3. Geplante Claude-Aufgabe „Wochenentwürfe“ über den Aufgaben-Kanal.
+1. Worker bereitstellen (sobald das Token vorliegt), Adresse in App und CSP, Test mit „VL Test“ und dem echten Server.
+2. Version 2.5 nach Freigabe veröffentlichen; danach Geräte koppeln.
+3. Postfach-Schlüssel einrichten, geplante Claude-Aufgaben anlegen (Inhalte und Analyse wöchentlich; technische Wartung wöchentlich).
 4. Instagram-Veröffentlichung über den Worker (Berechtigung „automatisch veröffentlichen“ greift dann).
 5. Verwaltungs-Schnittstelle aktivieren, sobald die Gegenstelle existiert.
 

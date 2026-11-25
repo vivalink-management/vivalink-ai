@@ -1,5 +1,23 @@
 # Änderungsprotokoll
 
+## 2.5.0 (Entwicklungszweig) – Synchronisierung über Cloudflare vorbereitet, Aufgaben-Postfach für geplante Claude-Aufgaben
+
+- **Server:** Cloudflare Worker mit D1-Speicher.
+  - atomare Versionsprüfung: gleichzeitiges Schreiben kann nie still überschreiben
+  - Ablaufzeiten und tägliches Aufräumen
+  - Zugriff nur für die eigene App-Adresse (Browser) bzw. mit Token
+- **Aufgaben-Postfach:**
+  - Auftrag mit Instagram-Terminen und Wochenanalyse (ohne Vertrauliches)
+  - Rückgabe von Entwürfen, Analyse und Aufgabenvorschlägen
+  - Zugang über ein Token, das in Claude als geschützter Netzwerkschlüssel liegt
+- **App:**
+  - holt Ergebnisse im Zyklus selbst ab und erneuert den Auftrag
+  - Vorschläge erscheinen unter „Entscheidungen für dich“
+- **Tests:**
+  - Der echte Worker läuft in der Cloudflare-Laufzeit (wrangler dev) bei jeder Änderung mit: Kopplung, Synchronisierung, Konflikt, gleichzeitiges Schreiben, Schlüsselwechsel, Herkunftsprüfung, Aufgaben-Postfach.
+  - Die Speicherlogik wird mit SQLite geprüft.
+- **Veröffentlichung von 2.4:** am 25.11.2026 freigegeben und geprüft (Update von 2.1 mit erhaltenen Daten unter der echten Adresse simuliert).
+
 ## 2.4.0 (Entwicklungszweig, noch nicht veröffentlicht) – Assistenz und automatische Qualitätssicherung
 
 **Neu**

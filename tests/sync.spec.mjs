@@ -296,3 +296,40 @@ test("Alte Kopplung aus dem früheren Entwurf wird entfernt; ohne Freigabe sende
   await expect(b.locator("#sheet")).toContainText("Noch nicht freigegeben");
   expect(await b.evaluate(() => syncOnce())).toMatchObject({ ok: false });
 });
+
+test("D1-Speicher (wie im Cloudflare Worker): atomares Schreiben, kein stilles Überschreiben, Ablauf und Aufräumen", async () => {
+  const { d1Store } = await import("../server/d1-store.mjs");
+  const { sqliteD1 } = await import("./sqlite-d1.mjs");
+  let t = 1_000_000;
+  const st = d1Store(sqliteD1(), () => t);
+  const id = "b".repeat(32),
+    auth = "Bearer " + "1".repeat(64);
+  const put = (blob, expected) => handleVault({ method: "PUT", path: "/v1/vault/" + id, auth, body: JSON.stringify({ blob, expected }), now: t }, st);
+  expect((await put("a", 0)).status).toBe(200);
+  // Zwei Geräte schreiben gleichzeitig auf Basis von Version 1 → genau eines gewinnt, das andere erhält 409
+  const [x, y] = await Promise.all([put("x", 1), put("y", 1)]);
+  expect([x.status, y.status].sort()).toEqual([200, 409]);
+  const g = JSON.parse((await handleVault({ method: "GET", path: "/v1/vault/" + id, auth, now: t }, st)).body);
+  expect(g.version).toBe(2);
+  expect(["x", "y"]).toContain(g.blob);
+  // Doppeltes Anlegen (expected 0) ist ebenfalls ausgeschlossen
+  expect((await put("z", 0)).status).toBe(409);
+  // Ablauf: Einträge mit Ablaufzeit verschwinden, sweep räumt auf
+  await st.put("p:test", { a: 1 }, 60);
+  expect(await st.get("p:test")).toEqual({ a: 1 });
+  t += 61_000;
+  expect(await st.get("p:test")).toBeNull();
+  await st.put("p:test2", { a: 2 }, 60);
+  t += 61_000;
+  expect(await st.sweep()).toBe(1);
+  // Aufgaben-Postfach: Ort hängt am Token, Ablauf 21 Tage
+  const tok = "c".repeat(64);
+  const tp = (body, expected) => handleVault({ method: "PUT", path: "/v1/task/out", taskToken: tok, body: JSON.stringify({ body, expected }), now: t }, st);
+  expect((await tp("eins", 0)).status).toBe(200);
+  expect((await tp("zwei", 0)).status).toBe(409);
+  expect(JSON.parse((await handleVault({ method: "GET", path: "/v1/task/out", taskToken: tok, now: t }, st)).body).body).toBe("eins");
+  expect((await handleVault({ method: "GET", path: "/v1/task/out", taskToken: "d".repeat(64), now: t }, st)).status).toBe(404);
+  expect((await handleVault({ method: "GET", path: "/v1/task/out", taskToken: "kurz", now: t }, st)).status).toBe(401);
+  t += 22 * 24 * 3600e3;
+  expect((await handleVault({ method: "GET", path: "/v1/task/out", taskToken: tok, now: t }, st)).status).toBe(404);
+});

@@ -7,6 +7,9 @@ Zuerst lesen: `docs/ENTWICKLUNGSSTAND.md` (Gesamtstand, offene Entscheidungen, n
    - lokal: `npm run test:local`
    - in GitHub Actions zusätzlich WebKit (Safari-Technik)
 2. **Neue Funktionen** bekommen eigene Tests in Chromium und WebKit, auf iPhone- und iPad-Bildschirmgrößen.
+   - Echter Cloudflare Worker: `tests/worker.spec.mjs` läuft gegen `wrangler dev` (in GitHub Actions automatisch). Lokal:
+     `cd server && npx -y wrangler@4.168.0 dev --local --port 8787 --ip 127.0.0.1 --var ALLOWED_ORIGIN:http://127.0.0.1:4173`,
+     dann `WORKER_URL=http://127.0.0.1:8787 npx playwright test tests/worker.spec.mjs`.
 3. **Oberfläche selbst prüfen.** `tests/layout.spec.mjs` erkennt automatisch:
    - waagerechtes Überlaufen
    - abgeschnittene Texte und Knöpfe
@@ -42,4 +45,6 @@ Zuerst lesen: `docs/ENTWICKLUNGSSTAND.md` (Gesamtstand, offene Entscheidungen, n
   - `?v=` in `index.html`
 - Neue Skriptdateien: in `index.html` **und** in die Offline-Liste von `sw.js` eintragen.
 - Datenformat ändern: `SCHEMA` erhöhen, Migration ergänzen, Update- und Rückbau-Tests ergänzen.
+- Synchronisierung und Aufgaben-Postfach: Cloudflare Worker `server/` (D1). Bereitstellen nur mit `wrangler deploy` aus `server/`;
+  Zugangsdaten nie ins Repository (geschützter Netzwerkschlüssel der Claude-Umgebung).
 - Testversion bauen: `node scripts/build-test.mjs` → Inhalt von `dist-test/` ins Repository `vivalink-ai-test` übernehmen.
