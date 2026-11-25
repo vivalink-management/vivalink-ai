@@ -7,7 +7,7 @@ const iphone = devices["iPhone 15"],
 
 export default defineConfig({
   testDir: "tests",
-  timeout: 30_000,
+  timeout: process.env.CI ? 60_000 : 30_000, // GitHub Actions ist langsamer (zusätzlich WebKit und echter Worker)
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: 0,

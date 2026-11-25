@@ -1,5 +1,35 @@
 # Änderungsprotokoll
 
+## 2.5.0 (Entwicklungszweig) – Synchronisierung über Cloudflare vorbereitet, Aufgaben-Postfach für geplante Claude-Aufgaben
+
+- **Server:** Cloudflare Worker mit D1-Speicher.
+  - atomare Versionsprüfung: gleichzeitiges Schreiben kann nie still überschreiben
+  - Ablaufzeiten und tägliches Aufräumen
+  - Zugriff nur für die eigene App-Adresse (Browser) bzw. mit Token
+- **Aufgaben-Postfach:**
+  - Auftrag mit Instagram-Terminen und Wochenanalyse (ohne Vertrauliches)
+  - Rückgabe von Entwürfen, Analyse und Aufgabenvorschlägen
+  - Zugang über ein Token, das in Claude als geschützter Netzwerkschlüssel liegt
+- **App:**
+  - holt Ergebnisse im Zyklus selbst ab und erneuert den Auftrag
+  - Vorschläge erscheinen unter „Entscheidungen für dich“
+- **Tests:**
+  - Der echte Worker läuft in der Cloudflare-Laufzeit (wrangler dev) bei jeder Änderung mit: Kopplung, Synchronisierung, Konflikt, gleichzeitiges Schreiben, Schlüsselwechsel, Herkunftsprüfung, Aufgaben-Postfach.
+  - Die Speicherlogik wird mit SQLite geprüft.
+- **Server eingerichtet:**
+  - `vivalink-sync` im bestehenden Cloudflare-Konto (kostenlos), D1 in der EU
+  - Webseite vivalink.me nachweislich unverändert
+- **Anbindung:**
+  - Testversion angebunden und live geprüft (Chromium und WebKit)
+  - echte App vorbereitet: Server-Adresse und CSP nur für diesen Server
+  - Es wird nichts gesendet, bevor auf dem Gerät eine Synchronisierung eingerichtet ist (getestet).
+- **Prüfung:**
+  - Zitat- und Erfahrungsberichtsprüfung erkennt Namen nur noch mit Großschreibung (vorher Fehlalarm bei „erzählt und …“).
+  - Meetup-Beiträge aus KI-Antworten werden nicht doppelt angelegt.
+- **Planung:** Blickwinkel werden über den Monatswechsel nicht wiederholt.
+- **Geplante Claude-Aufgabe „technische Wartung“** (wöchentlich) angelegt.
+- **Veröffentlichung von 2.4:** am 25.11.2026 freigegeben und geprüft (Update von 2.1 mit erhaltenen Daten unter der echten Adresse simuliert).
+
 ## 2.4.0 (Entwicklungszweig, noch nicht veröffentlicht) – Assistenz und automatische Qualitätssicherung
 
 **Neu**

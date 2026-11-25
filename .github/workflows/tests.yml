@@ -32,10 +32,19 @@ jobs:
         run: npm run check:syntax
       - name: Browser installieren (Chromium und WebKit/Safari-Technik)
         run: npx playwright install --with-deps chromium webkit
-      - name: Tests (Desktop, iPhone, iPad; Chromium und WebKit)
+      - name: Echten Cloudflare Worker lokal starten (wrangler dev, lokaler D1-Speicher, ohne Konto und ohne Zugangsdaten)
+        working-directory: server
+        env:
+          WRANGLER_SEND_METRICS: "false"
+        run: |
+          npx -y wrangler@4.168.0 dev --local --port 8787 --ip 127.0.0.1 --var ALLOWED_ORIGIN:http://127.0.0.1:4173 > ../wrangler.log 2>&1 &
+          for i in $(seq 1 90); do curl -sf http://127.0.0.1:8787/v1/health && exit 0; sleep 2; done
+          cat ../wrangler.log; exit 1
+      - name: Tests (Desktop, iPhone, iPad; Chromium und WebKit; echter Worker)
         run: npx playwright test
         env:
           CI: "1"
+          WORKER_URL: http://127.0.0.1:8787
       - name: Testbericht bei Fehlern (7 Tage, nur künstliche Testdaten)
         if: failure()
         uses: actions/upload-artifact@v4

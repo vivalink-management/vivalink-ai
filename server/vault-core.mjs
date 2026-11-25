@@ -17,11 +17,20 @@
 //   DELETE /v1/pair/:slot          {own}            → 200 (abbrechen)
 // Der Server sieht nur öffentliche Schlüssel und einen Block, den nur Gerät B entschlüsseln kann.
 // Schutz vor Durchprobieren: Fehlversuche je Absender begrenzt (429).
+//
+// Postfach für geplante KI-Aufgaben (nur öffentliche Fakten und zusammengefasste Kennzahlen, keine Personendaten):
+//   GET    /v1/task/:box   Header x-vl-task-token: <64 hex>  → 200 {version, body, updatedAt} | 404
+//   PUT    /v1/task/:box   body {body, expected}             → 200 {version} | 409 {version} | 413
+//   DELETE /v1/task/:box                                     → 200
+//   box = out (Auftrag der App) | in (Ergebnis der Aufgabe). Ort = Hash des Tokens; Ablauf nach 21 Tagen.
+//   Das Token liegt in der App und als geschützter Netzwerkschlüssel der Claude-Umgebung (nie im Klartext in einer Sitzung).
 
 export const MAX_BLOB = 4 * 1024 * 1024; // 4 MB verschlüsselte Daten
 export const PAIR_TTL = 10 * 60; // Sekunden
 export const RL_MAX = 30; // Fehlversuche je Absender …
 export const RL_WINDOW = 10 * 60; // … in 10 Minuten
+export const TASK_TTL = 21 * 24 * 3600;
+export const MAX_TASK = 512 * 1024;
 const ID_RE = /^[0-9a-f]{32}$/;
 const PUB_RE = /^[A-Za-z0-9+/=]{40,200}$/;
 
@@ -54,9 +63,11 @@ async function fail(store, client, now) {
   await store.put(k, cur, RL_WINDOW);
 }
 
-export async function handleVault({ method, path, auth, body, client, now = Date.now() }, store) {
+export async function handleVault({ method, path, auth, body, client, taskToken, now = Date.now() }, store) {
   if (await limited(store, client, now)) return json(429, { error: "too many attempts" });
-  let m = path.match(/^\/v1\/vault\/([^/]+)$/);
+  let m = path.match(/^\/v1\/task\/(out|in)$/);
+  if (m) return task(m[1], method, taskToken, body, now, store);
+  m = path.match(/^\/v1\/vault\/([^/]+)$/);
   if (m) return vault(m[1], method, auth, body, client, now, store);
   m = path.match(/^\/v1\/pair\/([^/]+?)(\/join|\/bundle)?$/);
   if (m) return pair(m[1], m[2] || "", method, body, client, now, store);
@@ -86,7 +97,13 @@ async function vault(id, method, auth, body, client, now, store) {
     const version = cur ? cur.version : 0;
     if (b.expected !== version) return json(409, { version });
     const next = { th, version: version + 1, blob: b.blob, updatedAt: now };
-    await store.put(key, next);
+    // Atomar, wenn der Speicher es kann (D1): gleichzeitiges Schreiben eines anderen Geräts → 409, nie Überschreiben
+    if (store.cas) {
+      if (!(await store.cas(key, next, version))) {
+        const fresh = await store.get(key);
+        return json(409, { version: fresh ? fresh.version : 0 });
+      }
+    } else await store.put(key, next);
     return json(200, { version: next.version });
   }
   if (method === "DELETE") {
@@ -145,6 +162,30 @@ async function pair(slot, sub, method, body, client, now, store) {
     if (!owner) return json(403, { error: "forbidden" });
     await store.del(key);
     return json(200, { ok: true });
+  }
+  return json(405, { error: "method" });
+}
+
+async function task(box, method, token, body, now, store) {
+  if (!/^[0-9a-f]{64}$/.test(token || "")) return json(401, { error: "unauthorized" });
+  const key = "t:" + (await sha256hex("vivalink-task:" + token)).slice(0, 40) + ":" + box;
+  const cur = await store.get(key);
+  if (method === "GET") return cur ? json(200, { version: cur.version, body: cur.body, updatedAt: cur.updatedAt }) : json(404, { error: "empty" });
+  if (method === "DELETE") {
+    await store.del(key);
+    return json(200, { ok: true });
+  }
+  if (method === "PUT") {
+    const b = parse(body);
+    if (!b || typeof b.body !== "string" || !Number.isInteger(b.expected)) return json(400, { error: "bad body" });
+    if (b.body.length > MAX_TASK) return json(413, { error: "too large" });
+    const version = cur ? cur.version : 0;
+    if (b.expected !== version) return json(409, { version });
+    const next = { version: version + 1, body: b.body, updatedAt: now };
+    if (store.cas) {
+      if (!(await store.cas(key, next, version, TASK_TTL))) return json(409, { version: ((await store.get(key)) || {}).version || 0 });
+    } else await store.put(key, next, TASK_TTL);
+    return json(200, { version: next.version });
   }
   return json(405, { error: "method" });
 }

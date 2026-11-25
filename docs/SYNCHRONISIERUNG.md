@@ -1,6 +1,6 @@
 # Synchronisierung iPhone ↔ iPad: Entscheidungsvorlage und Technik
 
-**Stand:** Technik fertig entwickelt und getestet (`js/sync.js`, `server/vault-core.mjs`, `tests/sync.spec.mjs`). Sicherheitskonzept in Version 2.3 grundlegend überarbeitet.
+**Stand (2.5):** Technik fertig. Getestet mit simulierten Geräten und **gegen den echten Cloudflare Worker in der Cloudflare-Laufzeit** (`tests/worker.spec.mjs`, bei jeder Änderung in GitHub Actions). **Entscheidung des Gründers: Cloudflare, kostenloser Tarif.** Speicher: Cloudflare D1 (atomare Versionsprüfung, 100.000 Schreibvorgänge pro Tag kostenlos).
 **Noch nicht aktiv:** Ein Server ist nicht eingerichtet. Ohne Freigabe sendet die App nichts.
 
 ## Sicherheitskonzept (Version 2.3)
@@ -50,10 +50,33 @@ Grundsatz: Ein kurzer Code darf nie allein die dauerhafte Verschlüsselung trage
 
 Quellen: [Cloudflare Workers Limits](https://developers.cloudflare.com/workers/platform/limits), [Cloudflare KV Limits](https://developers.cloudflare.com/kv/platform/limits), [Cloudflare D1 Free-Tier](https://developers.cloudflare.com/changelog/post/2026-09-01-d1-free-tier-limit-enforcement/), [Supabase Pricing](https://supabase.com/docs/pricing), [Supabase Free Tier 2026](https://automationatlas.io/answers/supabase-free-tier-limits-2026/).
 
-## Einrichtung nach Freigabe (ca. 15 Minuten; Claude erledigt alles außer der Kontoanlage)
-1. Der Gründer legt ein kostenloses Cloudflare-Konto an. Eine Kreditkarte ist für den kostenlosen Tarif nicht nötig, das bitte bei der Anmeldung prüfen.
-2. KV-Namespace `VAULT` anlegen. `server/sync-worker.js` und `server/vault-core.mjs` als Worker veröffentlichen, `ALLOWED_ORIGIN` = `https://vivalink-management.github.io`.
-3. In `js/config.js` `window.VL_SYNC_URL` setzen. In der Content-Security-Policy (`index.html`, `connect-src`) die Worker-Adresse ergänzen. Zuerst in der Testversion, dann per Pull Request.
-4. iPhone: **Mehr › Synchronisierung › Synchronisierung einrichten** → Wiederherstellungsschlüssel sicher aufbewahren (ausgedruckt oder Passwort-Manager).
-5. iPhone: **Weiteres Gerät koppeln** → iPad: Code eingeben → Prüfzahlen vergleichen → auf dem iPhone bestätigen.
-6. Die Kostenlos-Grenzen von Cloudflare prüfen; optional die kostenlose Rate-Limit-Regel für den Worker aktivieren.
+## Einrichtung (erledigt am 25.11.2026)
+- **Konto:** bestehendes Cloudflare-Konto des Gründers (kostenloser Tarif). Die Webseite vivalink.me bleibt unberührt.
+- **Getrennte Ressourcen:**
+  - Worker `vivalink-sync`, erreichbar unter https://vivalink-sync.hidden-art-0326.workers.dev (nicht unter vivalink.me)
+  - eigene D1-Datenbank `vivalink-sync`, **EU-Rechtsraum**
+- **Prüfung vor und nach der Einrichtung:** Der Worker `vivalink-webseite` ist unverändert (Änderungsdatum, Prüfwert, Einstellungen), ebenso die workers.dev-Subdomain. Neu sind nur Worker und Datenbank `vivalink-sync`.
+- **API-Token:** eigenes Token mit nur drei Rechten (Workers Scripts: Edit, D1: Edit, Account Settings: Read), ohne Rechte an Domains bzw. Zonen, DNS oder Routen.
+  - Es liegt nur als geschützter Netzwerkschlüssel in der Claude-Umgebung „Vivalink“.
+  - Gültig bis 2.12.2026; für spätere Aktualisierungen des Workers ein neues Token anlegen (gleiche Anleitung).
+- **Live geprüft:**
+  - Testversion und echter Server, zwei Geräte über die Oberfläche, Chromium und WebKit (Ablauf „Live-Prüfung“ in GitHub Actions)
+  - Einrichten, Wiederherstellungsschlüssel, Kopplung mit Prüfzahl, Synchronisierung in beide Richtungen, Konflikt, Wiederherstellung, Schlüsselwechsel, Aufgaben-Postfach
+  - fremde Webseiten abgewiesen (403)
+
+**Token erstellen (für spätere Aktualisierungen):**
+1. dash.cloudflare.com → Profil → **API Tokens** → **Create Token** → **Custom token**.
+2. Rechte:
+   - Account · Workers Scripts · Edit
+   - Account · D1 · Edit
+   - Account · Account Settings · Read
+
+   Keine Zone-Rechte.
+3. Account Resources: das eigene Konto. TTL: wenige Wochen.
+4. Wert nur in das sichere Formular in Claude eingeben.
+
+**Auf den Geräten (nach Veröffentlichung der App-Version mit Synchronisierung):**
+1. iPhone: **Mehr › Synchronisierung › Synchronisierung einrichten** → Wiederherstellungsschlüssel sicher aufbewahren.
+2. **Weiteres Gerät koppeln** → iPad: Code eingeben → Prüfzahlen vergleichen → auf dem iPhone bestätigen.
+
+**Kosten:** Der kostenlose Tarif reicht deutlich. Bei Überschreitung lehnt Cloudflare Anfragen ab, es entstehen keine Kosten ohne Tarifwechsel.

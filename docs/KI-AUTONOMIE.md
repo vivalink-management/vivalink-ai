@@ -40,22 +40,39 @@ Eine KI, die **jederzeit sofort** auf Ereignisse reagiert, braucht eine API. Die
   - „Freigegebene Beiträge automatisch veröffentlichen“ (wirkt erst nach der Instagram-Anbindung)
 - **Stufe 3 ist nicht erteilbar:** Preise, Zahlungen, Werbung, Produktivsysteme, kostenpflichtige Dienste.
 
-## 3. Geplante Claude-Aufgaben: Aufgaben-Kanal (vorbereitet, getestet, nicht aktiv)
-1. **Voraussetzung:** Der Synchronisierungs-Server ist eingerichtet (`SYNCHRONISIERUNG.md`).
-2. **In der App (einmalig):** „Mehr › Autonomie › Geplante KI-Aufgaben › Einrichten“. Die App zeigt einmalig einen **Aufgaben-Schlüssel**. Er öffnet nur zwei Postfächer (Auftrag und Ergebnis), **nie** den Daten-Tresor.
-3. **Auftrag:** Die App legt verschlüsselt ab:
-   - freie Termine der nächsten 14 Tage
-   - Regeln, Tonalität, Blickwinkel
-   - ausschließlich öffentliche Fakten: keine vertraulichen Einträge, keine Geschäftsmodell-Interna (getestet)
-4. **Geplante Claude-Aufgabe** (Claude Code, im Pro-Abo):
-   - In der Umgebung der Aufgabe als geheime Werte: `VL_SYNC_URL` und `VL_TASK_KEY`.
-   - Ablauf: `node scripts/ki-aufgabe.mjs holen` → Beiträge im Format `vivalink-studio-plan` schreiben → `node scripts/ki-aufgabe.mjs abgeben antwort.json`.
-   - Vorschlag: montags früh.
-5. **Rückweg:** „Ergebnisse abholen“ übernimmt die Antwort **nur als Entwürfe**.
-   - Es gelten dieselben Prüfungen wie bei jeder KI-Antwort.
-   - Jede Antwort wird einmalig übernommen; doppelt eingefügte Beiträge werden übersprungen.
-   - Ohne Berechtigung wird nichts freigegeben.
-6. **Grenzen:** Ist das Pro-Kontingent erschöpft, fällt ein Lauf aus. Die App funktioniert dann wie bisher; der Monatsplan per „Auftrag kopieren“ bleibt jederzeit möglich.
+## 3. Geplante Claude-Aufgaben: Aufgaben-Postfach (fertig und getestet, Aktivierung nach Worker-Einrichtung)
+**Ablauf (wöchentlich, Vorschlag montags früh):**
+1. Die App legt automatisch einen Auftrag ins Postfach „out“ (höchstens alle 20 Stunden erneuert):
+   - **Instagram:** freie Termine der nächsten 14 Tage, Regeln, ausschließlich öffentliche Fakten
+   - **Wochenanalyse:** Wochenbericht, zusammengefasste Kennzahlen, offene Aufgaben, Befunde (ohne vertrauliche Einträge, ohne Geschäftsmodell-Interna, ohne Personendaten)
+2. Die geplante Claude-Aufgabe (Claude Code, im Pro-Abo, Umgebung „Vivalink“):
+   - holt den Auftrag mit `node scripts/ki-aufgabe.mjs holen`
+   - schreibt Instagram-Entwürfe sowie eine Wochenanalyse mit höchstens 5 Aufgabenvorschlägen
+   - prüft mit `pruefen` und gibt mit `abgeben` zurück
+3. Die App holt das Ergebnis beim nächsten Öffnen selbst ab:
+   - Beiträge nur als **Entwürfe** (mit Faktenprüfung)
+   - Analyse als **Einschätzung** im Gedächtnis
+   - Aufgaben als **Vorschläge** unter „Entscheidungen für dich“: Du wählst aus; Preise, Zahlungen, Werbung und Verträge nur als Entscheidung
+
+**Sicherheit:**
+- Ein zufälliges Postfach-Token (256 Bit) öffnet nur die beiden Postfächer, nie den Daten-Tresor.
+- In der Claude-Umgebung ist es ein **geschützter Netzwerkschlüssel**: Der Proxy setzt ihn ein, die Claude-Sitzung sieht ihn nie. Er steht nie im Repository.
+- Ergebnisse werden nach der Übernahme gelöscht; Postfächer laufen nach 21 Tagen ab.
+- **Bewusste Abwägung:** Die Postfach-Inhalte (öffentliche Fakten, zusammengefasste Kennzahlen, Aufgabentitel) sind bei Cloudflare nicht Ende-zu-Ende verschlüsselt, weil die Claude-Sitzung sie lesen muss und dort keine geheimen Schlüssel liegen dürfen. Vertrauliches wird nie übertragen. Der Daten-Tresor bleibt Ende-zu-Ende verschlüsselt.
+
+**Angelegt:**
+- **„Vivalink: technische Wartung (wöchentlich)“** (montags 4:43 Uhr, Umgebung „Vivalink“):
+  - Tests, Abgleich der veröffentlichten Version
+  - Fehlerbehebung auf eigenem Zweig, ohne Veröffentlichung
+  - Hinweis: Geplante Aufgaben haben keinen GitHub-Connector. Die Korrektur liegt dann auf einem Zweig; den Pull Request legt Claude in einer normalen Sitzung an.
+- **Erprobt (Testversion, echter Server):** Auftrag abgeholt, 7 Entwürfe, Wochenanalyse und 3 Aufgabenvorschläge zurückgegeben. Die App hat alles korrekt übernommen und geprüft.
+
+**Einrichtung der Inhalts- und Analyseaufgabe (einmalig, nach Veröffentlichung der App mit Synchronisierung):**
+1. Du tippst in der App **Mehr › Autonomie › Geplante KI-Aufgaben › Einrichten** und kopierst den Schlüssel.
+2. Claude öffnet ein sicheres Formular für die Worker-Adresse (Header `x-vl-task-token`); du fügst den Schlüssel dort ein.
+3. Claude legt die geplanten Aufgaben an:
+   - wöchentliche Inhalte und Analyse
+   - wöchentliche technische Wartung: Tests ausführen, Fehler auf einem eigenen Zweig beheben, Pull Request; ohne Veröffentlichung
 
 ## 4. Lokale KI auf iPhone und iPad
 - **Geräte laut KI-Test:** iPhone 16 Pro (8 GB Arbeitsspeicher), iPad mit A16-Chip.

@@ -9,7 +9,7 @@ import { handleVault, PAIR_TTL, RL_MAX } from "../server/vault-core.mjs";
 const BASE = "http://127.0.0.1:4173";
 async function device(browser, name, withUrl = true) {
   const ctx = await browser.newContext({ serviceWorkers: "block" });
-  if (withUrl) await ctx.addInitScript((u) => (window.VL_SYNC_URL = u), BASE);
+  await ctx.addInitScript((u) => (window.VL_SYNC_URL = u), withUrl ? BASE : ""); // "" = ohne Server
   const p = await ctx.newPage();
   p.errors = [];
   p.on("pageerror", (e) => p.errors.push(name + ": " + e.message));
@@ -295,4 +295,60 @@ test("Alte Kopplung aus dem früheren Entwurf wird entfernt; ohne Freigabe sende
   await b.click('button[data-a="sync"]');
   await expect(b.locator("#sheet")).toContainText("Noch nicht freigegeben");
   expect(await b.evaluate(() => syncOnce())).toMatchObject({ ok: false });
+});
+
+test("D1-Speicher (wie im Cloudflare Worker): atomares Schreiben, kein stilles Überschreiben, Ablauf und Aufräumen", async () => {
+  const { d1Store } = await import("../server/d1-store.mjs");
+  const { sqliteD1 } = await import("./sqlite-d1.mjs");
+  let t = 1_000_000;
+  const st = d1Store(sqliteD1(), () => t);
+  const id = "b".repeat(32),
+    auth = "Bearer " + "1".repeat(64);
+  const put = (blob, expected) => handleVault({ method: "PUT", path: "/v1/vault/" + id, auth, body: JSON.stringify({ blob, expected }), now: t }, st);
+  expect((await put("a", 0)).status).toBe(200);
+  // Zwei Geräte schreiben gleichzeitig auf Basis von Version 1 → genau eines gewinnt, das andere erhält 409
+  const [x, y] = await Promise.all([put("x", 1), put("y", 1)]);
+  expect([x.status, y.status].sort()).toEqual([200, 409]);
+  const g = JSON.parse((await handleVault({ method: "GET", path: "/v1/vault/" + id, auth, now: t }, st)).body);
+  expect(g.version).toBe(2);
+  expect(["x", "y"]).toContain(g.blob);
+  // Doppeltes Anlegen (expected 0) ist ebenfalls ausgeschlossen
+  expect((await put("z", 0)).status).toBe(409);
+  // Ablauf: Einträge mit Ablaufzeit verschwinden, sweep räumt auf
+  await st.put("p:test", { a: 1 }, 60);
+  expect(await st.get("p:test")).toEqual({ a: 1 });
+  t += 61_000;
+  expect(await st.get("p:test")).toBeNull();
+  await st.put("p:test2", { a: 2 }, 60);
+  t += 61_000;
+  expect(await st.sweep()).toBe(1);
+  // Aufgaben-Postfach: Ort hängt am Token, Ablauf 21 Tage
+  const tok = "c".repeat(64);
+  const tp = (body, expected) => handleVault({ method: "PUT", path: "/v1/task/out", taskToken: tok, body: JSON.stringify({ body, expected }), now: t }, st);
+  expect((await tp("eins", 0)).status).toBe(200);
+  expect((await tp("zwei", 0)).status).toBe(409);
+  expect(JSON.parse((await handleVault({ method: "GET", path: "/v1/task/out", taskToken: tok, now: t }, st)).body).body).toBe("eins");
+  expect((await handleVault({ method: "GET", path: "/v1/task/out", taskToken: "d".repeat(64), now: t }, st)).status).toBe(404);
+  expect((await handleVault({ method: "GET", path: "/v1/task/out", taskToken: "kurz", now: t }, st)).status).toBe(401);
+  t += 22 * 24 * 3600e3;
+  expect((await handleVault({ method: "GET", path: "/v1/task/out", taskToken: tok, now: t }, st)).status).toBe(404);
+});
+
+test("Echte App mit eingetragenem Server: ohne eingerichtete Synchronisierung wird nichts gesendet", async ({ browser }) => {
+  const ctx = await browser.newContext({ serviceWorkers: "block" });
+  const p = await ctx.newPage();
+  const sent = [];
+  await p.route((u) => u.hostname.endsWith("workers.dev"), (r) => (sent.push(r.request().url()), r.abort()));
+  await p.goto("/");
+  await ready(p);
+  expect(await p.evaluate(() => VL_SYNC_URL)).toMatch(/^https:\/\/vivalink-sync\.[a-z0-9-]+\.workers\.dev$/);
+  for (const t of ["home", "tasks", "studio", "more"]) await p.click(`nav button[data-id="${t}"]`);
+  await p.evaluate(async () => {
+    S.tasks.push({ id: "x1", title: "lokal", prio: "mittel", area: "App", due: "", done: false, updatedAt: Date.now() });
+    await save();
+    await runCycle("test");
+  });
+  await p.waitForTimeout(5000); // syncSoon wartet 4 Sekunden
+  expect(sent).toEqual([]);
+  await ctx.close();
 });

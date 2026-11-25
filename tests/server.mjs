@@ -3,6 +3,8 @@ import http from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize, resolve } from "node:path";
 import { handleVault } from "../server/vault-core.mjs";
+import { d1Store } from "../server/d1-store.mjs";
+import { sqliteD1 } from "./sqlite-d1.mjs";
 
 const repo = resolve(new URL("..", import.meta.url).pathname);
 const root = process.env.ROOT ? resolve(repo, process.env.ROOT) : repo; // ROOT=dist-test für die Testversion
@@ -11,8 +13,9 @@ const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; ch
 const allowed = /^\/(index\.html|sw\.js|manifest\.webmanifest|icon-\d+\.png|js\/[a-z-]+\.js|brand\/[a-z0-9-]+\.(png|woff2))?$/;
 
 // Nur für Tests: Tresor-Server (gleiche Logik wie der spätere Cloudflare Worker) und eine simulierte Verwaltung.
-const vault = new Map();
-const vstore = { get: async (k) => vault.get(k) || null, put: async (k, o) => void vault.set(k, o), del: async (k) => void vault.delete(k) };
+// Gleicher Speicher-Adapter wie im Cloudflare Worker (D1), hier über SQLite im Arbeitsspeicher
+const d1 = sqliteD1(":memory:");
+const vstore = d1Store(d1);
 const readBody = (req) => new Promise((ok) => { let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => ok(b)); });
 const KPI_TOKEN = "t".repeat(40);
 const kpiBody = (variant) => {
@@ -25,14 +28,32 @@ const kpiBody = (variant) => {
 http
   .createServer(async (req, res) => {
     const path = decodeURIComponent(new URL(req.url, "http://x").pathname);
+    // Nur für Tests: Weiterleitung an den echten Worker (wrangler dev), damit die App ihn unter ihrer eigenen Adresse erreicht
+    if (process.env.WORKER_URL && path.startsWith("/worker/")) {
+      const body = ["PUT", "POST", "DELETE"].includes(req.method) ? await readBody(req) : undefined;
+      const h = {};
+      for (const k of ["authorization", "content-type", "x-vl-task-token", "origin"]) if (req.headers[k]) h[k] = req.headers[k];
+      if (process.env.WORKER_ORIGIN && h.origin) h.origin = process.env.WORKER_ORIGIN; // echter Server: nur die App-Adresse ist erlaubt
+      const r = await fetch(process.env.WORKER_URL + path.slice(7), { method: req.method, headers: h, body });
+      res.writeHead(r.status, { "content-type": r.headers.get("content-type") || "application/json" }).end(Buffer.from(await r.arrayBuffer()));
+      return;
+    }
     if (path.startsWith("/v1/")) {
       // x-test-client: nur im Testserver, um die Begrenzung von Fehlversuchen je Absender zu prüfen
       const client = req.headers["x-test-client"] || ""; // ohne Kennung keine Begrenzung (Tests laufen alle von derselben Adresse)
-      const r = await handleVault({ method: req.method, path, auth: req.headers.authorization, body: ["PUT", "POST", "DELETE"].includes(req.method) ? await readBody(req) : null, client }, vstore);
+      const r = await handleVault({ method: req.method, path, auth: req.headers.authorization, taskToken: req.headers["x-vl-task-token"], body: ["PUT", "POST", "DELETE"].includes(req.method) ? await readBody(req) : null, client }, vstore);
       res.writeHead(r.status, r.headers).end(r.body);
       return;
     }
-    if (path === "/__vault-dump") return res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify([...vault.entries()].filter(([k]) => k.startsWith("v:")).map(([, v]) => v)));
+    if (path === "/__vault-dump") {
+      await vstore.get("init");
+      const rows = d1.raw.prepare("SELECT k, v FROM kv").all();
+      return res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(rows.filter((r) => r.k.startsWith("v:")).map((r) => JSON.parse(r.v))));
+    }
+    if (path === "/__store-dump") {
+      await vstore.get("init");
+      return res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(d1.raw.prepare("SELECT k, v FROM kv").all()));
+    }
     if (path.startsWith("/kpi/")) {
       if (path.endsWith("/pair") && req.method === "POST") {
         const b = JSON.parse((await readBody(req)) || "{}");
