@@ -417,7 +417,7 @@ function syncSoon(ms = 4000) {
 let pairTimer = null;
 const stopPairPoll = () => (clearInterval(pairTimer), (pairTimer = null));
 function recoveryHtml(R) {
-  return `<div class="card rec warn" id="syRec"><b>Dein Wiederherstellungsschlüssel</b><p>Nur damit kommst du an deine Daten, wenn alle Geräte verloren sind. Er wird <b>nur jetzt</b> angezeigt. Bewahre ihn offline auf (z. B. ausgedruckt oder im Passwort-Manager), nicht in einer unverschlüsselten Notiz.</p><input readonly id="syRecKey" value="${esc(R)}" style="font-family:ui-monospace,monospace"><div class="row"><button class="s" data-a="syRecCopy">Kopieren</button><button class="s p" data-a="syRecDone">Ich habe ihn sicher aufbewahrt</button></div></div>`;
+  return `<div class="card rec warn" id="syRec"><b>Dein Wiederherstellungsschlüssel</b><p>Nur damit kommst du an deine Daten, wenn alle Geräte verloren sind. Er wird <b>nur jetzt</b> angezeigt. Bewahre ihn offline auf (z. B. ausgedruckt oder im Passwort-Manager), nicht in einer unverschlüsselten Notiz.</p><textarea readonly id="syRecKey" rows="2" style="font-family:ui-monospace,monospace;font-size:17px;min-height:0;resize:none">${esc(R)}</textarea><div class="row"><button class="s" data-a="syRecCopy">Kopieren</button><button class="s p" data-a="syRecDone">Ich habe ihn sicher aufbewahrt</button></div></div>`;
 }
 async function syncSheet(extra = "") {
   stopPairPoll();

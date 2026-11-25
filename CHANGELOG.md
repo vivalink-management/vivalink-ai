@@ -1,5 +1,63 @@
 # Änderungsprotokoll
 
+## 2.3.0 (Entwicklungszweig, noch nicht veröffentlicht) – Studio-Qualität, Bedienung, Management, Autonomie
+
+**Instagram-Studio**
+- **Grafiken:**
+  - Verlauf entlang des echten Logo-Verlaufs (11 Farbstufen)
+  - 4 Gestaltungen (Logo-Verlauf, Violett, Hell, Dunkel), automatisch abwechselnd
+  - 9 Vorlagen, neu: Meetup-Erinnerung mit Countdown, eigenes Foto
+- **Story:** Inhalte nur im sicheren Bereich, nicht unter Profilbild, Fortschrittsbalken oder Antwortfeld. Die Schutzzonen lassen sich in der Vorschau einblenden.
+- **Eigene Fotos (optional):**
+  - nur mit bestätigten Bildrechten und Einwilligung
+  - verkleinert, bleiben nur auf dem Gerät (nicht im Backup)
+- **Texte:**
+  - Der KI-Auftrag enthält die Vivalink-Besonderheiten sowie Blickwinkel und Beitragsart je Termin.
+  - Abgedroschene Floskeln sind verboten; fehlende Angaben werden als `[BITTE ERGÄNZEN]` markiert statt erfunden.
+- **Prüfung, neu erkannt:**
+  - App-Store- und Download-Behauptungen, Platzhalter, Mitgliederzahlen, unbestätigte Rückblicke
+  - Stilhinweise: Floskeln, laute Emojis, wörtliche Wiederholungen
+- **Planung:**
+  - gleicher Bereich nie direkt hintereinander, seltene Bereiche zuerst
+  - Ankündigung, Erinnerung und Rückblick zum Meetup automatisch und abwechslungsreich formuliert
+  - Der Rückblick bleibt blockiert, bis echte Angaben eingetragen sind.
+- **Schutz vor Demodaten:** Backups der Testversion und Demo-Beiträge werden in der echten App abgelehnt und nie veröffentlicht.
+
+**Bedienung**
+- **Bearbeiten in Bereichen:** Vorschau, Text, Gestaltung, Termin.
+  - feste Aktionsleiste (Speichern, Freigeben, Schließen)
+  - Anzeige „Ungespeichert“, Rückfrage beim Schließen
+  - automatischer Zwischenspeicher, auch nach einem Absturz
+  - Freigeben speichert vorher
+  - auf dem iPad im Querformat zweispaltig
+- **Monatsübersicht:** fertig, zu bearbeiten, zu prüfen, die nächsten 7 Tage.
+
+**Management**
+- **Startseite:**
+  - „Heute zu tun“ (geordnet, mit Begründung)
+  - „Entscheidungen für dich“
+  - „Entwicklungen“ (ohne Ursachenbehauptung)
+- **Aufgaben:** bearbeiten und löschen, „erst nach“-Abhängigkeit mit Reihenfolge und Kreisschutz.
+- **Maßnahmen:** Reihenfolge, Risiko je Maßnahme, Vergleich mit dem Zeitraum davor.
+- **Weniger Wiederholungen:** „Später“ verdoppelt den Abstand; „Nicht relevant“ erscheint nur bei höherer Dringlichkeit wieder.
+
+**Autonomie (Architektur fertig, Anbindungen folgen)**
+- **Zyklus:** erfassen → analysieren → Aufgaben → Maßnahmen → Entwürfe → Freigaben → ausführen → prüfen.
+- **Berechtigungen:** widerrufbar, befristet und begrenzt; Stufe 3 nie.
+- **Synchronisierung, neues Sicherheitskonzept:**
+  - 256-Bit-Zufallsschlüssel
+  - Kopplung per Schlüsselvereinbarung und Prüfzahl
+  - Wiederherstellungsschlüssel
+  - Schlüsselwechsel bei Geräteverlust
+  - Begrenzung von Fehlversuchen
+- **Aufgaben-Kanal für geplante Claude-Aufgaben:** nur öffentliche Fakten, Ergebnisse nur als Entwürfe.
+
+**Robustheit**
+- Beschädigte Gerätedaten: Original aufbewahrt, Reparatur oder letzter intakter Sicherungspunkt; Notfallansicht.
+- Sicherungspunkt des Tages wird beim Start aufgefrischt (älter als 3 Stunden).
+- Unterbrochenes Update: Der halb gefüllte Offline-Speicher wird entfernt, die bisherige Version bleibt lauffähig.
+- Doppelte Übernahme derselben KI-Antwort und Doppeltipps erzeugen nichts doppelt.
+
 ## 2.2.0 (Entwicklungszweig, noch nicht veröffentlicht) – Instagram-Studio, Stufe 1
 
 **Neu: Bereich „Studio“**

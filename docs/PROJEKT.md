@@ -70,7 +70,7 @@ Zuständigkeit: CC = Claude Code, R = Rork, G = Gründer.
   - Backend-Herzschlag für Hintergrundprozesse
 
 ## Offene Entscheidungen des Gründers
-1. **Version 2.2 (Instagram-Studio):** Gerätetest in „VL Test“, danach Freigabe zur Veröffentlichung.
+1. **Version 2.3 (Studio, Bedienung, Management, Autonomie):** Gerätetest in „VL Test“ (TESTVERSION.md, C2 und C3), danach Freigabe zur Veröffentlichung.
 2. ✅ Markenfarben bestätigt (Pink #FA0372, Violett #6203DD, Orange #FE6603). ✅ Anmeldung über vivalink.me. Region einmal im Markenprofil der App eintragen.
 3. Speicher für die Synchronisierung wählen: Supabase Free oder Cloudflare (beide kostenlos). Danach starten geplante Claude-Aufgaben.
 4. Optional: `main` in den GitHub-Einstellungen schützen (kostenlos). Dann sind Änderungen nur noch über Pull Requests möglich.

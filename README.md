@@ -21,8 +21,11 @@ Interne Management-App für Vivalink. Statische Web-App (PWA) für iPhone und iP
 | `js/diag.js` | Diagnose, Konfliktanzeige, Backup-Dialoge |
 | `js/app.js` | Bedienlogik und Start |
 | `js/advice.js` | Empfehlungen, Maßnahmen, Erfolgskontrolle |
+| `js/manage.js` | Heute zu tun, Entscheidungen, Entwicklungen, Aufgaben-Abhängigkeiten, Risiken |
+| `js/autonomy.js` | Autonomie-Zyklus, widerrufbare Berechtigungen, Aufgaben-Kanal für geplante KI-Aufgaben |
 | `js/actions.js` | Freigabelogik (Stufen 0–3), Aktionsprotokoll, Veröffentlichungsschutz |
-| `js/sync.js` | Synchronisierung (Ende-zu-Ende verschlüsselt), vorbereitet |
+| `js/sync.js` | Synchronisierung (Ende-zu-Ende verschlüsselt, Kopplung mit Prüfzahl, Wiederherstellung), vorbereitet |
+| `scripts/ki-aufgabe.mjs` | Brücke für geplante Claude-Aufgaben (Auftrag holen, Entwürfe abgeben), vorbereitet |
 | `js/kpi.js` | Kennzahlen aus der Verwaltung, vorbereitet |
 | `server/` | Tresor-Server (Logik + Cloudflare Worker, nicht eingerichtet) |
 | `js/config.js` | Ausgabekanal (echte App oder Testversion) |

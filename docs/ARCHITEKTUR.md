@@ -2,14 +2,19 @@
 
 Ziel: schrittweise ein weitgehend selbstständiger Management-Assistent. **Geschäftliche und strategische Entscheidungen trifft immer der Gründer.**
 
-## Heute (Version 2.2)
+## Heute (Version 2.3)
 
 ```
 iPhone / iPad (PWA, offline, Daten nur auf dem Gerät)
  ├─ Daten (IndexedDB): Gedächtnis · Aufgaben · Kennzahlen · Meetup · Studio (Beiträge, Markenprofil, Rhythmus)
  ├─ Regelmotor: erkennt Handlungsbedarf (auch Instagram: Freigabe fällig, Plan fehlt, Meetup ohne Ankündigung …)
  ├─ Instagram-Studio: Planung → KI-Auftrag → Prüfung → Grafiken → Freigabe → Teilen → Auswertung → Lernen
- ├─ Sicherungen: tägliche Sicherungspunkte (7 Tage) · Sicherheitskopie vor jedem Datenversions-Update · Rückgängig vor Importen
+ ├─ Management: Heute zu tun · Entscheidungen · Entwicklungen · Aufgaben mit Abhängigkeiten · Maßnahmen mit Risiken
+ ├─ Autonomie (js/autonomy.js): Zyklus erfassen → analysieren → Aufgaben → Maßnahmen → Entwürfe → Freigaben → ausführen → prüfen
+ │    Stufen 0–3 · widerrufbare, befristete, begrenzte Berechtigungen · Aktionsprotokoll · Aufgaben-Kanal für geplante KI-Aufgaben
+ ├─ Synchronisierung (vorbereitet): 256-Bit-Zufallsschlüssel · Kopplung per ECDH + Prüfzahl · Wiederherstellungsschlüssel · Schlüsselwechsel
+ ├─ Sicherungen: tägliche Sicherungspunkte (7 Tage, beim Start aufgefrischt) · Sicherheitskopie vor jedem Datenversions-Update · Rückgängig vor Importen
+ │    beschädigte Daten → Original aufbewahrt, Reparatur oder letzter intakter Sicherungspunkt
  └─ Diagnose: Speichertest, Integrität, technisches Protokoll (ohne Inhalte)
 ```
 
@@ -21,6 +26,9 @@ iPhone / iPad (PWA, offline, Daten nur auf dem Gerät)
 | `values`-Import (`{"values":[{key,date,value,source}]}`) | Kennzahlen per Einfügen | **Anbindung Rork/Supabase**: die lesende Kennzahlen-Schnittstelle liefert dieses Format |
 | Studio-Austauschformat (`STUDIO-FORMAT.md`) | KI-Antwort per Kopieren und Einfügen | **geplante Claude-Aufgabe** schreibt Entwürfe im selben Format |
 | `studioFacts` / `factCheck` | Schutz vor erfundenen Angaben | gleiche Prüfung für automatisch erzeugte Entwürfe |
+| Zyklus `runCycle` und Berechtigungen | läuft auf dem Gerät | derselbe Ablauf zeitgesteuert im Worker bzw. in geplanten Claude-Aufgaben |
+| Aufgaben-Kanal (`taskPackage`, `scripts/ki-aufgabe.mjs`) | vorbereitet, getestet | geplante Claude-Aufgabe liefert Wochenentwürfe |
+| Erweiterbarkeit | neue Handlung = Eintrag in `POLICY` (Stufe), optional in `GRANTABLE`; neue Automatik = Schritt im Zyklus | ohne Umbau der Oberfläche |
 | Status `entwurf → freigegeben → veroeffentlicht` | manuelles Teilen | **automatische Veröffentlichung** freigegebener Beiträge über die Instagram-Schnittstelle |
 | `metrics` je Beitrag, `learn()` | Ergebnisse eintragen | automatisch aus Instagram Insights |
 | Regelmotor `findings()` | in der App | zusätzlich zeitgesteuert im Hintergrund |

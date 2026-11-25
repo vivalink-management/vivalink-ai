@@ -71,6 +71,26 @@ Das kann nur der Inhaber des GitHub-Kontos erledigen. Claude ändert keine Zugri
 | S12 | **Start**: Empfehlung aufklappen („Details und Maßnahmen“) → **Maßnahme freigeben** | Aufgabe mit Prüftermin, bei Meetup-Maßnahmen ein Entwurf im Studio |
 | S13 | **Mehr → Diagnose** → Aktionsprotokoll | Einträge zu Sicherungspunkt, Freigaben, Maßnahmen |
 
+## C3. Version 2.3 (ca. 15 Minuten pro Gerät)
+
+| # | Schritt | Erwartet |
+|---|---|---|
+| N1 | **Mehr → Testdaten → Demodaten laden**, dann **Studio-Demo laden** | Studio mit Monatsübersicht: fertig / zu bearbeiten / zu prüfen, „Als Nächstes (7 Tage)“ |
+| N2 | Mehrere Vorschaubilder ansehen | abwechselnde Gestaltungen (Verlauf, Violett, Hell, Dunkel); Farbverlauf wie im Logo |
+| N3 | Beitrag öffnen → Bereiche **Vorschau / Text / Gestaltung / Termin** durchtippen | Aktionsleiste unten bleibt sichtbar, nichts ist abgeschnitten |
+| N4 | **Text**: Caption ändern | oben erscheint „Ungespeichert“; Wörter- und Zeichenzähler |
+| N5 | **Schließen** tippen, dann erneut **Schließen** | erst Rückfrage, dann verworfen |
+| N5b | Beitrag öffnen, Caption ändern, App ganz schließen (nach oben wischen), neu öffnen, Beitrag öffnen | Angebot „Ungespeicherte Änderungen wiederherstellen“ |
+| N6 | **Vorschau → Story** und **Schutzzonen** einschalten | rote Bereiche oben/unten bleiben frei von Text |
+| N7 | **Gestaltung → Eigenes Foto** wählen (ein eigenes, unkritisches Foto), Einwilligung anhaken, **Speichern** | Vorlage „Eigenes Foto“ zeigt das Foto; ohne Haken wird es nicht verwendet |
+| N8 | **Start**: „Heute zu tun“, „Entscheidungen für dich“, „Entwicklungen“ | Einträge mit Begründung; Antippen öffnet das Ziel |
+| N9 | **Aufgaben**: Aufgabe antippen → bearbeiten, „Erst nach“ wählen → Speichern | „wartet auf …“; nach Erledigen der Voraussetzung frei |
+| N10 | Empfehlung: zweimal **Später** (über mehrere Tage) | Meldung „7 Tage“, dann „14 Tage“ |
+| N11 | **Mehr → Autonomie** | Ablauf mit 8 Schritten, Stufen, Berechtigungen. Testweise Berechtigung „Beiträge ohne Prüfhinweis automatisch freigeben“ erteilen → **Jetzt durchlaufen** → geprüfte Beiträge der nächsten 7 Tage sind freigegeben → **Widerrufen** |
+| N12 | Flugmodus an, App neu starten | alles funktioniert offline |
+
+Die Synchronisierung ist in der Testversion **noch nicht** aktiv (kein Server). Sie wird nach der Einrichtung gesondert getestet.
+
 ## D. Rückmeldung an Claude
 Pro Gerät: Nummern 1–14 jeweils „ok“ oder was abweicht. Zusätzlich den **Diagnosebericht** (Mehr → Diagnose → kopieren). Er enthält keine Inhalte.
 Bildschirmfotos nur von der Testversion.
