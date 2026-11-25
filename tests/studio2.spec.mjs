@@ -280,3 +280,51 @@ test("Monatsübersicht: fertig, zu bearbeiten, zu prüfen und die nächsten Ver�
   await expect(page.locator('[data-a="stOpen"]')).toHaveCount(1);
   await expect(page.locator('[data-a="stOpen"]')).toContainText("Mit Problem");
 });
+
+test("Automatische Feinarbeit an KI-Entwürfen (transparent vermerkt), „Freigabebereit“ und Sammelfreigabe nur ohne Prüfhinweise", async ({ page }) => {
+  await page.clock.setFixedTime(NOW);
+  await seed(page, { state: brandOk(v2State()) });
+  await page.evaluate(() => {
+    const mk = (date, title, caption, tags) => ({ date, time: "18:00", pillar: "community", type: "einzelbild", title, hook: title, slides: [{ template: "frage", title }], caption, hashtags: tags });
+    importPlan(
+      JSON.stringify({
+        posts: [
+          mk("2026-03-04", "Ohne CTA", "Wo triffst du am liebsten neue Leute? 🔥🔥 🙂 ☕ 📍\n\n\n\nErzähl es uns.", ["#Treffen"]),
+          mk("2026-03-05", "Sauber", "Wo führst du die besten Gespräche? Manche mögen ein ruhiges Café, andere einen Spaziergang oder einen Abend mit Spielen. Bei Vivalink geht es um persönliche Begegnungen in kleiner Runde, mit Zeit für echte Gespräche statt endlosem Schreiben. Schreib uns deinen Lieblingsort in die Kommentare und erzähl, was ihn für dich besonders macht. Mehr auf vivalink.me", ["#Vivalink", "#Gespräche", "#Begegnungen", "#NeueLeute", "#Freizeit"]),
+          mk("2026-03-06", "Mit Preis", "Nur 9 € pro Abend. Mehr auf vivalink.me", ["#Vivalink"]),
+          mk("2026-03-30", "Später", "Noch ein Beitrag. Mehr auf vivalink.me", ["#Vivalink"]),
+        ],
+      }),
+    );
+    return save();
+  });
+  const P = await page.evaluate(() => Object.fromEntries(S.studio.posts.map((p) => [p.title, { cap: p.caption, tags: p.hashtags, pol: p.polished || [], ready: postReady(p) }])));
+  const a = P["Ohne CTA"];
+  expect(a.cap).not.toMatch(/🔥/);
+  expect((a.cap.match(/\p{Extended_Pictographic}/gu) || []).length).toBe(2);
+  expect(a.cap).not.toContain("\n\n\n");
+  expect(a.cap.endsWith("Registrierung über die Test-Website.")).toBe(true);
+  expect(a.tags[0]).toBe("#Vivalink");
+  expect(a.pol).toEqual(expect.arrayContaining(["laute Emojis entfernt", "Emojis auf 2 begrenzt", "Anmelde-Hinweis ergänzt", "#Vivalink ergänzt"]));
+  expect(P["Sauber"].pol).toEqual([]);
+  expect(P["Sauber"].ready).toBe(true);
+  expect(P["Mit Preis"].ready).toBe(false);
+  // Anzeige: Kennzeichnung und Hinweis im Editor
+  await nav(page, "studio");
+  await expect(page.locator('[data-a="stOpen"]', { hasText: "Sauber" }).locator(".st-bereit")).toBeVisible();
+  await page.locator('[data-a="stOpen"]', { hasText: "Ohne CTA" }).click();
+  await expect(page.locator("#sheet")).toContainText("Automatisch angepasst: laute Emojis entfernt");
+  await page.click("#sheet .abar button[data-a='stClose']");
+  // Sammelfreigabe: zweimal tippen, nur freigabebereite der nächsten 14 Tage
+  const btn = page.locator('button[data-a="stApproveReady"]');
+  const n = Number((await btn.textContent()).match(/\((\d+)\)/)[1]);
+  await btn.click();
+  await expectToast(page, "Nochmal tippen");
+  await btn.click();
+  await expectToast(page, n + " Beiträge freigegeben");
+  const st = await page.evaluate(() => Object.fromEntries(S.studio.posts.map((p) => [p.title, p.status])));
+  expect(st["Sauber"]).toBe("freigegeben");
+  expect(st["Mit Preis"]).toBe("entwurf");
+  expect(st["Später"]).toBe("entwurf");
+  expect(await page.evaluate(() => ACTIONS.filter((x) => x.name === "post.approve" && x.detail.includes("Sammelfreigabe")).length)).toBe(1);
+});

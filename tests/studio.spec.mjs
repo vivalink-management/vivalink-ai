@@ -346,7 +346,7 @@ test("Manipulierte KI-Antwort: Inhalte werden nur als Text gezeigt, ungültige W
   await page.click('button[data-a="stImport"]');
   await expectToast(page, "1 Beiträge als Entwurf übernommen");
   const p = (await state(page)).studio.posts[0];
-  expect(p).toMatchObject({ date: "", time: "18:00", pillar: "community", type: "einzelbild", hashtags: ["#b", "#ok"] });
+  expect(p).toMatchObject({ date: "", time: "18:00", pillar: "community", type: "einzelbild", hashtags: ["#Vivalink", "#b", "#ok"] }); // #Vivalink: automatische Feinarbeit
   expect(p.slides[0].template).toBe("cover");
   await page.locator('[data-a="stOpen"]').first().click();
   await expect(page.locator("#sheet h1")).toContainText("<img src=x");
