@@ -1,6 +1,27 @@
 # Änderungsprotokoll
 
-## 2.6.0 (Entwicklungszweig, noch nicht veröffentlicht) – Überwachung, bessere Analysen, Studio-Feinarbeit, Verwaltung vorbereitet
+## 2.7.1 – Geräte zusammenführen, Anbindung der Vivalink-Verwaltung
+
+- **Synchronisierung: zwei getrennte Datenspeicher zusammenführen** (wenn beide Geräte „Synchronisierung einrichten“ gewählt haben):
+  - Hinweis „Nur dieses Gerät ist verbunden“ mit Zusammenführen per Code und Prüfzahl
+  - vorher Abgleich des eigenen Speichers, Sicherungspunkt und Rückgängig-Punkt; Daten werden nur ergänzt, nie gelöscht; gleichzeitige Änderungen als Konflikt mit beiden Fassungen
+  - bei Fehlern bleibt die bisherige Kopplung unverändert aktiv
+  - erst nach Erfolg: alter Speicher gesperrt (Inhalt auf dem Server gelöscht), neuer Wiederherstellungsschlüssel ersetzt beide bisherigen
+- **Bestandsaufnahme der Verwaltung:** `docs/bestandsaufnahme-verwaltung.sql` (nur Namen, Spalten, Datentypen; automatisch geprüft)
+
+**Aus 2.7.0:**
+
+- **Gegenstelle der Verwaltung** (Edge Function, nicht bereitgestellt):
+  - liest nur vorhandene Auswertungen laut `mapping.json`, je Kennzahl nur Datum und Zahl
+  - eigene Rolle ohne Zugriff auf Personendaten, READ-ONLY, eigenes Schema, keine Änderung bestehender Objekte
+  - Kopplungscodes (8 Ziffern, 10 Minuten, Sperre nach Fehlversuchen), widerrufbare Gerätezugänge, Begrenzung, CORS, 503 ohne Einzelheiten
+- **Getrennte Testumgebung:** eigenes PostgreSQL + Edge Function unter Deno, künstliche Verwaltung; läuft bei jedem Testlauf
+- **App:** erkennt Widerruf (kein Dauerabruf), wachsende Pause nach Fehlern, Zeitlimit, Hinweis bei gestörter Anbindung, letzter Fehler sichtbar
+- **Werkzeuge:** `scripts/verwaltung.mjs` (lesende Bestandsaufnahme, Rechte-SQL, Bereitstellungsordner)
+- Wartungsaufgabe meldet ihr Ergebnis an die Überwachung; Inhaltsaufgabe meldet Probleme
+- Datenversion unverändert (4)
+
+## 2.6.0 (veröffentlicht am 25.11.2026) – Überwachung, bessere Analysen, Studio-Feinarbeit, Verwaltung vorbereitet
 
 - **Überwachung der geplanten KI-Aufgaben** (Mehr › Autonomie):
   - je Aufgabe Status, Rhythmus, letzter belegter Erfolg, Ergebnis, nächster Termin

@@ -28,7 +28,7 @@ const allowed = /^\/(index\.html|sw\.js|manifest\.webmanifest|icon-\d+\.png|js\/
 const d1 = sqliteD1(":memory:");
 const vstore = d1Store(d1);
 const readBody = (req) => new Promise((ok) => { let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => ok(b)); });
-const KPI_TOKEN = "t".repeat(40);
+const KPI_TOKEN = "ab".repeat(32); // Format wie die echte Gegenstelle (64 Hex-Zeichen)
 const kpiBody = (variant) => {
   const base = { format: "vivalink-kpis", version: 1, generatedAt: "2026-03-10T06:00:00Z", meta: { excludesTestAccounts: true, excludesDemoMeetups: true }, values: [{ key: "reg_total", date: "2026-03-09", value: 321, source: "supabase" }, { key: "active_users", date: "2026-03-09", value: 88 }, { key: "invite_rate", date: "2026-03-09", value: 41.5 }, { key: "zukunft", date: "2026-03-09", value: 1 }] };
   if (variant === "pii") base.values.push({ key: "signups", date: "2026-03-09", value: 3, email: "person@example.invalid" });
@@ -47,6 +47,21 @@ http
       if (process.env.WORKER_ORIGIN && h.origin) h.origin = process.env.WORKER_ORIGIN; // echter Server: nur die App-Adresse ist erlaubt
       const r = await fetch(process.env.WORKER_URL + path.slice(7), { method: req.method, headers: h, body });
       res.writeHead(r.status, { "content-type": r.headers.get("content-type") || "application/json" }).end(Buffer.from(await r.arrayBuffer()));
+      return;
+    }
+    // Nur für Tests: Weiterleitung an die lokale Edge Function der Verwaltungs-Testumgebung (tests/verwaltung/env.mjs),
+    // /kpi-edge/<port>/… → http://127.0.0.1:<port>/functions/v1/management-kpis/… (nur Ports 8700–8799)
+    const ke = path.match(/^\/kpi-edge\/(87\d\d)(\/.*)$/);
+    if (ke) {
+      const h = {};
+      for (const k of ["authorization", "content-type", "origin"]) if (req.headers[k]) h[k] = req.headers[k];
+      const body = req.method === "POST" ? await readBody(req) : undefined;
+      try {
+        const r = await fetch(`http://127.0.0.1:${ke[1]}/functions/v1/management-kpis${ke[2]}`, { method: req.method, headers: h, body });
+        res.writeHead(r.status, { "content-type": r.headers.get("content-type") || "application/json" }).end(Buffer.from(await r.arrayBuffer()));
+      } catch {
+        res.writeHead(502).end("");
+      }
       return;
     }
     if (path.startsWith("/v1/")) {

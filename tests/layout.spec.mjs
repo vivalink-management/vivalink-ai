@@ -146,9 +146,27 @@ for (const small of [false, 375, 320]) {
       await page.click('button[data-a="sync"]');
       await check("Synchronisierung");
       await page.click('#sheet button[data-a="close"]');
+      // gekoppelt, aber nur dieses Gerät im Datenspeicher → Hinweis „Zusammenführen“
+      await page.evaluate(() => kvPut("sync-config", { vid: "a".repeat(32), token: "b".repeat(64), mk: "c", kv: 1, version: 1, last: Date.now(), devices: {}, recoveryAt: Date.now() }));
+      await page.click('button[data-a="sync"]');
+      await expect(page.locator("#syMergeCard")).toBeVisible();
+      await check("Synchronisierung/Zusammenführen");
+      await page.click('#sheet button[data-a="close"]');
+      await page.evaluate(() => kvPut("sync-config", null));
       await page.click('button[data-a="kpi"]');
       await check("Verwaltung");
       await page.click('#sheet button[data-a="close"]');
+      // Verwaltung: Zustände „Problem beim Abruf“ und „Zugang widerrufen“
+      for (const [name, cfg] of [
+        ["Verwaltung/Fehler", { token: "ab".repeat(32), since: 1, last: Date.now() - 3600e3, fails: 2, lastError: { at: Date.now(), msg: "Verwaltung nicht erreichbar (503) – ein recht langer Fehlertext zum Umbrechen" } }],
+        ["Verwaltung/widerrufen", { token: "ab".repeat(32), since: 1, last: 1, fails: 1, revoked: Date.now(), lastError: { at: Date.now(), msg: "Zugang widerrufen – bitte neu koppeln" } }],
+      ]) {
+        await page.evaluate(async (c) => ((window.VL_KPI_URL = "http://127.0.0.1:4173/kpi/ok"), await kvPut("kpi-config", c)), cfg);
+        await page.click('button[data-a="kpi"]');
+        await check(name);
+        await page.click('#sheet button[data-a="close"]');
+      }
+      await page.evaluate(async () => ((window.VL_KPI_URL = ""), await kvPut("kpi-config", null)));
       await page.click('button[data-a="diag"]');
       await page.waitForTimeout(400);
       await check("Diagnose");

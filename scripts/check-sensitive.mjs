@@ -24,9 +24,6 @@ const rules = [
 const emailRe = /[\w.+-]+@([\w-]+\.)+[\w-]+/g;
 const okDomain = /@(example\.(com|invalid|org)|users\.noreply\.github\.com)$/i;
 
-/* Einzige Ausnahme: serverseitige Supabase-Funktionsvorlagen dürfen den Schlüssel aus ihrer Umgebungsvariable LESEN
-   (nie einen Wert enthalten). In der App (js/, index.html) und überall sonst bleibt jede Erwähnung verboten. */
-const allowed = (f, line, name) => name === "Supabase Service-Role" && f.startsWith("server/supabase/functions/") && new RegExp(w('Deno\\.env\\.get\\("SUPABASE_SERVICE', '_ROLE_KEY"\\)')).test(line) && !/eyJ/.test(line);
 let bad = 0;
 for (const f of files) {
   let t;
@@ -36,7 +33,7 @@ for (const f of files) {
     continue;
   }
   t.split("\n").forEach((line, i) => {
-    for (const [name, re] of rules) if (re.test(line) && !allowed(f, line, name)) (bad++, console.error(`${f}:${i + 1}: ${name}`));
+    for (const [name, re] of rules) if (re.test(line)) (bad++, console.error(`${f}:${i + 1}: ${name}`));
     for (const m of line.match(emailRe) || []) if (!okDomain.test(m) && !/^[\w.+-]+@\d/.test(m)) (bad++, console.error(`${f}:${i + 1}: E-Mail-Adresse`));
   });
 }
