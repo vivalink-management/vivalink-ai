@@ -33,6 +33,7 @@ http
       const body = ["PUT", "POST", "DELETE"].includes(req.method) ? await readBody(req) : undefined;
       const h = {};
       for (const k of ["authorization", "content-type", "x-vl-task-token", "origin"]) if (req.headers[k]) h[k] = req.headers[k];
+      if (process.env.WORKER_ORIGIN && h.origin) h.origin = process.env.WORKER_ORIGIN; // echter Server: nur die App-Adresse ist erlaubt
       const r = await fetch(process.env.WORKER_URL + path.slice(7), { method: req.method, headers: h, body });
       res.writeHead(r.status, { "content-type": r.headers.get("content-type") || "application/json" }).end(Buffer.from(await r.arrayBuffer()));
       return;

@@ -12,7 +12,7 @@ ALLOWED_ORIGIN = "https://vivalink-management.github.io"
 [[d1_databases]]
 binding = "DB"
 database_name = "vivalink-sync"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "e7fe02bf-a75d-4b6a-b641-28ae887b75ff"
 
 [triggers]
 crons = ["17 3 * * *"]

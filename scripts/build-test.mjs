@@ -17,13 +17,16 @@ const must = (s, a, b) => {
   if (!s.includes(a)) throw new Error("Build: Stelle nicht gefunden: " + a);
   return s.split(a).join(b);
 };
-writeFileSync(`${out}/js/config.js`, '/* Testversion: getrennter Speicher, nur künstliche Testdaten. */\nwindow.VL_CHANNEL = "test";\nwindow.VL_DB = "vivalink-test";\n');
+// Synchronisierungs-Server (Cloudflare Worker, kostenlos). Zuerst nur in der Testversion aktiv; die echte App folgt nach Freigabe.
+const SYNC_URL = "https://vivalink-sync.hidden-art-0326.workers.dev";
+writeFileSync(`${out}/js/config.js`, `/* Testversion: getrennter Speicher, nur künstliche Testdaten. */\nwindow.VL_CHANNEL = "test";\nwindow.VL_DB = "vivalink-test";\nwindow.VL_SYNC_URL = "${SYNC_URL}";\n`);
 
 let html = readFileSync("index.html", "utf8");
 html = must(html, "<title>Vivalink Management AI</title>", "<title>Vivalink TEST</title>");
 html = must(html, '<meta name="apple-mobile-web-app-title" content="Vivalink">', '<meta name="apple-mobile-web-app-title" content="VL Test">');
 html = must(html, '<meta name="theme-color" content="#0f766e">', '<meta name="theme-color" content="#b45309">');
 html = must(html, '<script src="js/app.js', '<script src="js/demo.js?v=' + (html.match(/js\/app\.js\?v=([^"]+)"/) || [])[1] + '"></script>\n<script src="js/app.js');
+html = must(html, "connect-src 'self'", "connect-src 'self' " + SYNC_URL); // nur dieser eine Server zusätzlich
 writeFileSync(`${out}/index.html`, html);
 
 let sw = must(readFileSync("sw.js", "utf8"), 'const CH = "vivalink-";', 'const CH = "vivalink-test-";');
