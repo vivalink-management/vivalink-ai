@@ -45,7 +45,7 @@ Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
 1. ✅ Version 2.4 freigegeben und veröffentlicht (25.11.2026).
 2. ✅ Synchronisierung: Cloudflare (kostenlos), bestehendes Konto; Server eingerichtet, Webseite unverändert.
 3. ✅ Version 2.5 freigegeben und veröffentlicht (25.11.2026).
-4. **Einmalig auf den Geräten:** Synchronisierung einrichten und koppeln; Postfach-Schlüssel für die geplante Aufgabe ins sichere Formular.
+4. ✅ Geräte gekoppelt; Postfach-Schlüssel hinterlegt; wöchentliche Aufgaben „technische Wartung“ (Mo 4:43) und „Instagram-Entwürfe und Wochenanalyse“ (Mo 5:17) angelegt.
 3. **Verwaltung:** Freigabe des Auftrags in `AUFTRAG-VERWALTUNG.md` (zuerst Testumgebung).
 4. **Instagram:** Business-Konto bestätigen, Anmeldeweg (Empfehlung: Instagram Login).
 5. Später: ob eine kostenpflichtige KI-API für Echtzeit-Reaktionen gewünscht ist.

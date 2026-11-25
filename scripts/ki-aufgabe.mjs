@@ -86,7 +86,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   let base = process.env.VL_SYNC_URL;
   if (!base) {
     const cfg = await readFile(new URL("../js/config.js", import.meta.url), "utf8");
-    base = (cfg.match(/VL_SYNC_URL\s*=\s*"([^"]+)"/) || [])[1];
+    base = (cfg.match(/VL_SYNC_URL\s*=[^"\n]*"(https:\/\/[^"]+)"/) || [])[1]; // auch „window.VL_SYNC_URL ?? "…"“
   }
   if (!base && cmd !== "pruefen") {
     console.error("Keine Worker-Adresse (VL_SYNC_URL oder js/config.js).");
