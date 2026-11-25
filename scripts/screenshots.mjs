@@ -63,6 +63,16 @@ try {
     await p.click('#sheet button[data-a="close"]');
     await p.click('button[data-a="sync"]');
     await shot("sync");
+    await p.click('#sheet button[data-a="close"]');
+    await p.click('nav button[data-id="home"]');
+    await p.click('button[data-a="report"]');
+    await shot("wochenbericht");
+    await p.click('#sheet button[data-a="close"]');
+    await p.click('nav button[data-id="ai"]');
+    await p.click('[data-a="tpl"][data-id="week"]');
+    await p.fill("#ans", '```json\n{"format":"vivalink-actions","version":1,"tasks":[{"title":"Drei Orte für das nächste Meetup anfragen","prio":"hoch","area":"Meetup","dueDays":5,"why":"Mehr Auswahl"},{"title":"Teilnahmepreis prüfen","prio":"mittel","area":"Finanzen","dueDays":7,"why":"Kosten decken","after":1}]}\n```');
+    await p.click('button[data-a="ansTasks"]');
+    await shot("ki-aufgaben");
     await ctx.close();
   }
 } finally {

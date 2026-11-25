@@ -1,5 +1,26 @@
 # Änderungsprotokoll
 
+## 2.4.0 (Entwicklungszweig, noch nicht veröffentlicht) – Assistenz und automatische Qualitätssicherung
+
+**Neu**
+- **KI-Antwort → Aufgaben:**
+  - Strategie-, Wochen-, Problem- und Entscheidungsaufträge verlangen am Ende einen Aufgabenblock.
+  - „Aufgaben aus der Antwort übernehmen“ zeigt die Vorschläge zur Auswahl, mit Frist, Priorität und Reihenfolge.
+  - Ähnliche bestehende Aufgaben werden erkannt und nicht vorausgewählt.
+  - Preise, Zahlungen, bezahlte Werbung und Verträge werden nur als „Entscheidung nötig“ angelegt und erscheinen unter „Entscheidungen für dich“.
+- **Wochenbericht:**
+  - automatisch aus den Daten, ohne KI und ohne Ursachenbehauptungen
+  - wird jede Woche abgelegt
+  - lässt sich kopieren oder im Gedächtnis speichern
+- **Selbstreparatur (Stufe 1):** Verwaiste Verweise und ungültige Fristen werden im Zyklus automatisch behoben, mit Rückgängig-Punkt und Protokoll.
+
+**Qualität**
+- **Automatische Oberflächenprüfung** aller Ansichten und Fenster:
+  - Überlaufen, abgeschnittene Inhalte, kleine Tippflächen, verdeckte Leisten
+  - iPhone, iPad, 375 px und 320 px; in GitHub Actions zusätzlich WebKit
+- **Behoben:** Statuszeile und Aktionsleiste ragten bei 320 px (iPhone SE, vergrößerte Anzeige) aus dem Bildschirm.
+- **Arbeitsweise in `CLAUDE.md` festgelegt:** Claude prüft selbst, Gerätetests nur bei begründetem Restrisiko.
+
 ## 2.3.0 (Entwicklungszweig, noch nicht veröffentlicht) – Studio-Qualität, Bedienung, Management, Autonomie
 
 **Instagram-Studio**

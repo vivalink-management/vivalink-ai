@@ -149,6 +149,16 @@ for (const small of [false, 375, 320]) {
       await page.click('button[data-a="diag"]');
       await page.waitForTimeout(400);
       await check("Diagnose");
+      await page.click('#sheet button[data-a="close"]');
+      await nav(page, "home");
+      await page.click('button[data-a="report"]');
+      await check("Wochenbericht");
+      await page.click('#sheet button[data-a="close"]');
+      await nav(page, "ai");
+      await page.click('[data-a="tpl"][data-id="week"]');
+      await page.fill("#ans", '```json\n{"format":"vivalink-actions","version":1,"tasks":[{"title":"Eine ziemlich lange Aufgabe aus der Antwort der KI mit vielen Wörtern","prio":"hoch","area":"Meetup","dueDays":5,"why":"Begründung mit etwas mehr Text, damit umgebrochen werden muss"}]}\n```');
+      await page.click('button[data-a="ansTasks"]');
+      await check("Aufgaben übernehmen");
       expect(found).toEqual({});
       expect(g.errors).toEqual([]);
     });
