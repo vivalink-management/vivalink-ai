@@ -146,6 +146,13 @@ for (const small of [false, 375, 320]) {
       await page.click('button[data-a="sync"]');
       await check("Synchronisierung");
       await page.click('#sheet button[data-a="close"]');
+      // gekoppelt, aber nur dieses Gerät im Datenspeicher → Hinweis „Zusammenführen“
+      await page.evaluate(() => kvPut("sync-config", { vid: "a".repeat(32), token: "b".repeat(64), mk: "c", kv: 1, version: 1, last: Date.now(), devices: {}, recoveryAt: Date.now() }));
+      await page.click('button[data-a="sync"]');
+      await expect(page.locator("#syMergeCard")).toBeVisible();
+      await check("Synchronisierung/Zusammenführen");
+      await page.click('#sheet button[data-a="close"]');
+      await page.evaluate(() => kvPut("sync-config", null));
       await page.click('button[data-a="kpi"]');
       await check("Verwaltung");
       await page.click('#sheet button[data-a="close"]');

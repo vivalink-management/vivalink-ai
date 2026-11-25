@@ -55,7 +55,7 @@ Die Gegenstelle **berechnet nichts selbst**. Sie liest ausschließlich die Auswe
 ## Schritte zur echten Anbindung (jeweils erst nach deiner ausdrücklichen Freigabe)
 | # | Schritt | Wer | Ändert produktive Systeme? |
 |---|---|---|---|
-| 1 | **Bestandsaufnahme, nur lesend:** `node scripts/verwaltung.mjs inventory` erzeugt eine Abfrage, die nur Namen und Spaltentypen der vorhandenen Auswertungen auflistet (keine Inhalte). Du führst sie im Supabase-SQL-Editor aus und gibst Claude das Ergebnis. | Gründer | nein (nur lesen) |
+| 1 | **Bestandsaufnahme, nur lesend:** Die Abfrage `docs/bestandsaufnahme-verwaltung.sql` (automatisch geprüft), die nur Namen und Spaltentypen der vorhandenen Auswertungen auflistet (keine Inhalte). Du führst sie im Supabase-SQL-Editor aus und gibst Claude das Ergebnis. | Gründer | nein (nur lesen) |
 | 2 | **Zuordnung:** Claude trägt die passenden vorhandenen Auswertungen in `mapping.json` ein. Du bestätigst, ob Testkonten und Demo-Meetups dort bereits ausgeschlossen sind; erst dann wird `_meta` auf `true` gesetzt. Fehlende Kennzahlen bleiben leer. | Claude, Bestätigung Gründer | nein |
 | 3 | **Test mit der echten Struktur:** Claude bildet die Struktur der Auswertungen mit künstlichen Daten in der Testumgebung nach und prüft alles erneut. | Claude | nein |
 | 4 | **Supabase-Testprojekt (empfohlen):** Migration und Edge Function zuerst in einem getrennten Supabase-Projekt ausführen, z. B. im kostenlosen zweiten Projekt. | Gründer/Claude | nein (separates Projekt), **Freigabe nötig** |

@@ -1,7 +1,7 @@
 # Zentrale Entwicklungsübersicht: Vivalink Management AI
 
 **Fortsetzungsdokument für alle weiteren Entwicklungsaufträge.** Bei jedem Auftrag zuerst lesen und am Ende aktualisieren. Arbeitsweise (Tests, Gerätetests, Grenzen): **`CLAUDE.md`**.
-Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.6** (`main`, veröffentlicht am 25.11.2026) · Entwicklungszweig: **Version 2.7** (Verwaltungsanbindung, noch nicht veröffentlicht)
+Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.6** (`main`, veröffentlicht am 25.11.2026) · Entwicklungszweig: **Version 2.7.1** (Zusammenführen der Geräte, Verwaltungsanbindung)
 
 ## 1. Umgesetzt und getestet (noch nicht veröffentlicht)
 
@@ -90,7 +90,7 @@ Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
 6. Instagram-Veröffentlichung über den Worker (Berechtigung „automatisch veröffentlichen“ greift dann).
 
 ## 6. Bekannte Einschränkungen
-- **Synchronisierung der echten Geräte (Stand 25.11.2026, nach 2.6):** Der Server zeigt seit 16:06 zwei getrennte, je einmal beschriebene Tresore (Metadaten, Inhalte sind verschlüsselt und nicht lesbar). Das kann bedeuten, dass iPhone und iPad jeweils „Synchronisierung einrichten“ statt „Verbinden“ genutzt haben und deshalb nicht miteinander abgleichen. Prüfung am Gerät: „Mehr › Synchronisierung“ – unter „Geräte“ müssen beide Geräte stehen. Falls nicht: auf dem iPad „Kopplung auf diesem Gerät entfernen“, dann auf dem iPhone „Weiteres Gerät koppeln“ und den Code auf dem iPad bei „Verbinden“ eingeben.
+- **Synchronisierung der echten Geräte:** Am 25.11.2026 (16:06 und 16:07) wurden zwei getrennte Datenspeicher angelegt (Server-Metadaten). Ab 2.7.1 führt „Mehr › Synchronisierung › Zusammenführen“ sie verlustfrei zusammen (automatisch getestet: Erfolg, Fehler mit Rücknahme, bereits verbunden).
 - Live-Prüfungen der Synchronisierung nur über GitHub Actions („Live-Prüfung“): Aus Claude-Sitzungen der Umgebung „Vivalink“ lehnt der Worker Tresor-Anfragen mit 401 ab (Netzwerkschlüssel des Postfachs); Geräte und GitHub Actions sind nicht betroffen.
 - Die Bedienung von 2.3/2.4 ist nur automatisch und per Bildschirmfoto geprüft, nicht auf echten Geräten (Restrisiken siehe Abschnitt 3).
 - Eigene Fotos liegen nur auf dem Gerät, auf dem sie hinzugefügt wurden. Sie sind nicht im Backup und werden nicht synchronisiert (Speicherplatz, Datenschutz).

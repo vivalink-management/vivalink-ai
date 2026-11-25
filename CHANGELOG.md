@@ -1,6 +1,15 @@
 # Änderungsprotokoll
 
-## 2.7.0 (Entwicklungszweig, noch nicht veröffentlicht) – Anbindung der Vivalink-Verwaltung
+## 2.7.1 – Geräte zusammenführen, Anbindung der Vivalink-Verwaltung
+
+- **Synchronisierung: zwei getrennte Datenspeicher zusammenführen** (wenn beide Geräte „Synchronisierung einrichten“ gewählt haben):
+  - Hinweis „Nur dieses Gerät ist verbunden“ mit Zusammenführen per Code und Prüfzahl
+  - vorher Abgleich des eigenen Speichers, Sicherungspunkt und Rückgängig-Punkt; Daten werden nur ergänzt, nie gelöscht; gleichzeitige Änderungen als Konflikt mit beiden Fassungen
+  - bei Fehlern bleibt die bisherige Kopplung unverändert aktiv
+  - erst nach Erfolg: alter Speicher gesperrt (Inhalt auf dem Server gelöscht), neuer Wiederherstellungsschlüssel ersetzt beide bisherigen
+- **Bestandsaufnahme der Verwaltung:** `docs/bestandsaufnahme-verwaltung.sql` (nur Namen, Spalten, Datentypen; automatisch geprüft)
+
+**Aus 2.7.0:**
 
 - **Gegenstelle der Verwaltung** (Edge Function, nicht bereitgestellt):
   - liest nur vorhandene Auswertungen laut `mapping.json`, je Kennzahl nur Datum und Zahl

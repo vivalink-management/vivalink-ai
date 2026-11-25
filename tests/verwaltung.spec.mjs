@@ -5,10 +5,11 @@
 // Läuft, wenn PostgreSQL installiert ist (lokal und in GitHub Actions); VL_REQUIRE_VERWALTUNG=1 macht Fehlen zum Fehler.
 import { test, expect } from "@playwright/test";
 import postgres from "postgres";
+import { readFileSync } from "node:fs";
 import { startEnv, pgBin, TEST_MAPPING } from "./verwaltung/env.mjs";
 import { pgRepo, parseMapping } from "../server/kpi-pg.mjs";
 import { KPI_KEYS, buildKpis, MAX_PAIR_FAILS } from "../server/kpi-core.mjs";
-import { grantsSql } from "../scripts/verwaltung.mjs";
+import { grantsSql, INVENTORY_SQL } from "../scripts/verwaltung.mjs";
 import { ready, state, kv, expectToast } from "./helpers.mjs";
 
 test.describe.configure({ mode: "serial", timeout: 120_000 });
@@ -258,6 +259,30 @@ test("App ↔ echte Gegenstelle: Kopplung in der Oberfläche, Historie, automati
   await expectToast(p, "Gekoppelt ·");
   expect(await p.evaluate(() => findings().some((f) => f.id === "sys-kpi"))).toBe(false);
   await ctx.close();
+});
+
+test("Bestandsaufnahme: nur Namen, Spalten und Datentypen – keine Inhalte, keine Zeilenzahlen, keine Änderungen", async ({}, info) => {
+  serverOnly(info);
+  // Als eingeschränkte, rein lesende Rolle ausführbar (wie es im SQL-Editor bei einem einzelnen SELECT der Fall ist)
+  const rows = await env.sql.begin("read only", (t) => t.unsafe(INVENTORY_SQL));
+  expect(Object.keys(rows[0])).toEqual(["art", "quelle", "spalten", "hinweis"]);
+  const byName = Object.fromEntries(rows.map((r) => [r.quelle, r]));
+  expect(byName["public.admin_stats_daily"]).toMatchObject({ art: "view", spalten: "day date, registrations_total bigint, registrations_7d bigint, active_users_30d bigint" });
+  expect(byName["public.admin_finance_summary()"]).toMatchObject({ art: "funktion", hinweis: "security_definer" });
+  expect(byName["public.profiles"].art).toBe("tabelle");
+  expect(rows.some((r) => r.quelle.startsWith("management_ai.") || r.quelle.startsWith("pg_catalog."))).toBe(false);
+  // Keine Inhalte: keine künstlichen Namen, E-Mail-Adressen, Telefonnummern oder Zahlen aus den Daten
+  const out = JSON.stringify(rows);
+  const people = await env.sql`select full_name, email, phone from profiles`;
+  expect(people.flatMap((p) => [p.full_name, p.email, p.phone]).filter((x) => x && out.includes(x))).toEqual([]);
+  expect(out).not.toMatch(/@|\b108\b|\b120\b/);
+  // Nur ein einzelnes SELECT (kein Befehl, der etwas verändern könnte)
+  const stmt = INVENTORY_SQL.replace(/--.*$/gm, "").trim();
+  expect(stmt).toMatch(/^with /);
+  expect(stmt).not.toMatch(/\b(insert|update|delete|drop|alter|create|grant|revoke|truncate|copy|do|call|set)\b/i);
+  expect(stmt.replace(/;\s*$/, "")).not.toContain(";");
+  // Die Datei für den SQL-Editor entspricht genau dieser geprüften Abfrage
+  expect(readFileSync(new URL("../docs/bestandsaufnahme-verwaltung.sql", import.meta.url), "utf8")).toBe(INVENTORY_SQL);
 });
 
 test("Rückbau entfernt nur die Anbindung; Daten und Auswertungen der Verwaltung bleiben unverändert", async ({}, info) => {
