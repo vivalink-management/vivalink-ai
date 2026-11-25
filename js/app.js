@@ -411,6 +411,7 @@ document.addEventListener("click", async (e) => {
   else if (a.startsWith("st")) studioAction(a, id, b);
   else if (a === "snaps") snapSheet();
   else if (a === "sync" || a.startsWith("sy")) syncAction(a);
+  else if (a === "auto" || a.startsWith("au")) autonomyAction(a, id);
   else if (a === "msr") {
     const x = await act("measure.start", "gruender", () => startMeasure(id, Number(b.dataset.v)));
     if (!x || x.ok === false) return toast((x && x.error) || "Befund nicht mehr aktuell");
@@ -507,14 +508,33 @@ document.addEventListener("change", (e) => {
   S = raw || { v: SCHEMA, dev: uid(), memory: [], tasks: [], accent: "", lastBackup: "" };
   let ch = migrate();
   if (detectForks(S)) ch = true;
-  // Selbstständig erkannte Instagram-Anlässe (z. B. Meetup ohne Ankündigung) als Entwurf vorbereiten
-  const auto = runAutomations();
-  if (auto.length) (ch = true), logEvent("info", "studio.auto", auto.length + " Entwurf/Entwürfe automatisch erstellt"), logAction("studio.autoDraft", "auto", true, auto.length + " Entwurf/Entwürfe");
+  // Autonomie-Zyklus: Entwürfe aus bestätigten Fakten, Freigaben nur mit Berechtigung, Bericht unter „Mehr › Autonomie“
+  try {
+    const cyc = await runCycle("start");
+    const n = (k) => (cyc.steps.find((s) => s.k === k) || {}).n || 0;
+    if (n("entwuerfe")) (ch = true), logEvent("info", "studio.auto", n("entwuerfe") + " Entwurf/Entwürfe automatisch erstellt");
+    if (n("freigaben")) ch = true;
+  } catch (e) {
+    logEvent("error", "cycle", (e && e.message) || "Zyklus fehlgeschlagen");
+  }
   if (ch) await save();
   await autoSnapshot();
   LASTSNAP = ((await kvGet("snaps")) || [])[0] || null;
   render();
   syncSoon(1500);
+  // Wieder geöffnet (App lag im Hintergrund): Zyklus höchstens alle 6 Stunden erneut
+  document.addEventListener("visibilitychange", async () => {
+    if (document.visibilityState !== "visible") return;
+    const last = await kvGet("cycle-last");
+    if (last && Date.now() - last.at < 6 * 3600e3) return;
+    try {
+      await runCycle("wieder geöffnet");
+      await save();
+      if ($("#sheet").hidden) render();
+    } catch (e) {
+      logEvent("error", "cycle", (e && e.message) || "Zyklus fehlgeschlagen");
+    }
+  });
   if ("serviceWorker" in navigator)
     navigator.serviceWorker.register("sw.js").catch((e) => logEvent("warn", "sw.register", (e && e.message) || "Registrierung fehlgeschlagen"));
 })();

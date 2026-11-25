@@ -385,12 +385,12 @@ function parsePlanAnswer(text) {
   return { ok: true, items: list.filter((x) => x && typeof x === "object").slice(0, 60) };
 }
 /* Übernimmt geprüfte Beiträge als Entwürfe (ersetzt nichts, löscht nichts). */
-function importPlan(text, T = S) {
+function importPlan(text, T = S, source = "ki") {
   const r = parsePlanAnswer(text);
   if (!r.ok) return r;
   const added = [];
   for (const x of r.items) {
-    const p = makePost(x, "ki", T);
+    const p = makePost(x, source, T);
     if (!p.caption && !p.slides.some((s) => s.title || s.text)) continue;
     T.studio.posts.push(p);
     added.push(p);

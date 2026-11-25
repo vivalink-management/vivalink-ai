@@ -16,6 +16,7 @@ function migrate(T = S) {
     }
   }
   if (!T.meetup) (T.meetup = { date: "", place: "", goal: "", note: "", updatedAt: 0 }), (ch = true);
+  if (!Array.isArray(T.grants)) (T.grants = []), (ch = true); // widerrufbare Berechtigungen (additiv, ältere Versionen ignorieren sie)
   // Instagram-Studio (ab Datenversion 4): fehlende Felder ergänzen, Vorhandenes nie überschreiben
   const sd = studioDefaults();
   if (!T.studio || typeof T.studio !== "object") (T.studio = sd), (ch = true);
@@ -70,6 +71,22 @@ function cleanTask(r) {
   o.after = isId(r.after) ? r.after : "";
   o.deleted = !!r.deleted;
   return o;
+}
+/* Berechtigung: nur bekannte, freigebbare Handlungen; Widerruf bleibt erhalten (Protokoll) */
+function cleanGrant(r) {
+  if (!r || typeof r !== "object" || !isId(r.id) || typeof GRANTABLE === "undefined" || !GRANTABLE[r.action]) return null;
+  return {
+    id: r.id,
+    action: r.action,
+    until: optDate(r.until),
+    max: Math.max(1, Math.min(50, Math.round(optNum(r.max) || 1))),
+    per: r.per === "tag" ? "tag" : "woche",
+    note: str(r.note, 200),
+    createdAt: optNum(r.createdAt) || 0,
+    revokedAt: optNum(r.revokedAt) || null,
+    updatedAt: optNum(r.updatedAt) || 0,
+    revs: revList(r.revs),
+  };
 }
 function cleanEntry(e) {
   if (!e || typeof e !== "object" || !isId(e.id)) return null;
@@ -196,7 +213,11 @@ function parseBackup(text) {
 }
 
 function cleanIncoming(data, aitest) {
-  const out = { memory: [], tasks: [], metrics: [], meetup: null, suggest: {}, aitest: [], posts: [], brand: null, settings: null, skipped: 0 };
+  const out = { memory: [], tasks: [], metrics: [], meetup: null, suggest: {}, aitest: [], posts: [], brand: null, settings: null, grants: [], skipped: 0 };
+  for (const r of Array.isArray(data.grants) ? data.grants : []) {
+    const c = cleanGrant(r);
+    c ? out.grants.push(c) : out.skipped++;
+  }
   const st = data.studio && typeof data.studio === "object" ? data.studio : null;
   if (st) {
     for (const r of Array.isArray(st.posts) ? st.posts : []) {
@@ -331,6 +352,8 @@ function mergeInto(T, inc) {
     mergeList(T, T.memory, "memory", [r], rep, ["active", "supersededBy"]);
   }
   mergeList(T, T.tasks, "tasks", inc.tasks, rep);
+  if (!Array.isArray(T.grants)) T.grants = [];
+  mergeList(T, T.grants, "grants", inc.grants || [], rep);
   for (const r of inc.metrics) {
     const m = T.metrics.find((x) => x.id === r.id);
     if (!m) {
@@ -430,7 +453,7 @@ function resolveConflict(id, choice) {
       touch(x);
       return x;
     };
-    if (c.coll === "tasks" || c.coll === "memory" || c.coll === "posts") {
+    if (c.coll === "tasks" || c.coll === "memory" || c.coll === "posts" || c.coll === "grants") {
       const list = c.coll === "posts" ? S.studio.posts : S[c.coll],
         i = list.findIndex((x) => x.id === c.ref);
       lift(o);

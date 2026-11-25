@@ -12,7 +12,7 @@ const allowed = /^\/(index\.html|sw\.js|manifest\.webmanifest|icon-\d+\.png|js\/
 
 // Nur für Tests: Tresor-Server (gleiche Logik wie der spätere Cloudflare Worker) und eine simulierte Verwaltung.
 const vault = new Map();
-const vstore = { get: async (id) => vault.get(id) || null, put: async (id, o) => void vault.set(id, o) };
+const vstore = { get: async (k) => vault.get(k) || null, put: async (k, o) => void vault.set(k, o), del: async (k) => void vault.delete(k) };
 const readBody = (req) => new Promise((ok) => { let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => ok(b)); });
 const KPI_TOKEN = "t".repeat(40);
 const kpiBody = (variant) => {
@@ -25,12 +25,14 @@ const kpiBody = (variant) => {
 http
   .createServer(async (req, res) => {
     const path = decodeURIComponent(new URL(req.url, "http://x").pathname);
-    if (path.startsWith("/v1/vault/")) {
-      const r = await handleVault({ method: req.method, path, auth: req.headers.authorization, body: req.method === "PUT" ? await readBody(req) : null }, vstore);
+    if (path.startsWith("/v1/")) {
+      // x-test-client: nur im Testserver, um die Begrenzung von Fehlversuchen je Absender zu prüfen
+      const client = req.headers["x-test-client"] || ""; // ohne Kennung keine Begrenzung (Tests laufen alle von derselben Adresse)
+      const r = await handleVault({ method: req.method, path, auth: req.headers.authorization, body: ["PUT", "POST", "DELETE"].includes(req.method) ? await readBody(req) : null, client }, vstore);
       res.writeHead(r.status, r.headers).end(r.body);
       return;
     }
-    if (path === "/__vault-dump") return res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify([...vault.values()]));
+    if (path === "/__vault-dump") return res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify([...vault.entries()].filter(([k]) => k.startsWith("v:")).map(([, v]) => v)));
     if (path.startsWith("/kpi/")) {
       if (path.endsWith("/pair") && req.method === "POST") {
         const b = JSON.parse((await readBody(req)) || "{}");

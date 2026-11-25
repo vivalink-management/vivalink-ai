@@ -35,6 +35,7 @@ const F = [
   "js/studio-view.js",
   "js/diag.js",
   "js/sync.js",
+  "js/autonomy.js",
   "js/kpi.js",
   "js/app.js",
 ];
