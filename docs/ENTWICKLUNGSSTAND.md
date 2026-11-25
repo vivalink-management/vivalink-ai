@@ -22,8 +22,8 @@ Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Version **2.5.0*
 
 | Funktion | Stand | Was fehlt |
 |---|---|---|
-| Synchronisierung iPhone ↔ iPad | fertig; Cloudflare Worker mit D1, gegen den echten Worker getestet | **Cloudflare-Konto und API-Token des Gründers** (Anleitung `SYNCHRONISIERUNG.md`) → Claude stellt bereit |
-| Geplante Claude-Aufgaben | Aufgaben-Postfach (Instagram, Wochenanalyse, Aufgabenvorschläge) und Brückenskript fertig und gegen den echten Worker getestet | Worker bereitstellen → App 2.5 veröffentlichen (Freigabe) → Postfach-Schlüssel ins sichere Formular → Claude legt Aufgaben an |
+| Synchronisierung iPhone ↔ iPad | Server `vivalink-sync` (Cloudflare, D1 in der EU) bereitgestellt; Testversion angebunden und live geprüft (Chromium und WebKit) | **Freigabe von 2.5** (verbindet die echte App), danach Geräte koppeln |
+| Geplante Claude-Aufgaben | Wöchentliche technische Wartung angelegt (montags 4:43 Uhr). Aufgaben-Postfach mit echtem Ablauf in der Testversion erprobt (7 Entwürfe, Analyse, Vorschläge) | nach 2.5: Postfach-Schlüssel aus der App ins sichere Formular → Claude legt die wöchentliche Inhalts- und Analyseaufgabe an |
 | Kennzahlen aus der Verwaltung | Client fertig und getestet | Gegenstelle in Supabase/Rork laut `AUFTRAG-VERWALTUNG.md` |
 | Automatische Instagram-Veröffentlichung und Statistiken | Schutzregeln, Berechtigung, JPEG-Export | Meta-App und Business-Login, Worker-Erweiterung (`INSTAGRAM-AUTOMATIK.md`) |
 
@@ -43,13 +43,14 @@ Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Version **2.5.0*
 
 ## 4. Offene Entscheidungen (nur du)
 1. ✅ Version 2.4 freigegeben und veröffentlicht (25.11.2026).
-2. ✅ Synchronisierung: Cloudflare (kostenlos). Offen: Konto und API-Token anlegen (`SYNCHRONISIERUNG.md`).
+2. ✅ Synchronisierung: Cloudflare (kostenlos), bestehendes Konto; Server eingerichtet, Webseite unverändert.
+3. **Freigabe von Version 2.5** (Pull Request #3): verbindet die echte App mit dem Server. Gesendet wird erst, wenn du auf einem Gerät „Synchronisierung einrichten“ tippst.
 3. **Verwaltung:** Freigabe des Auftrags in `AUFTRAG-VERWALTUNG.md` (zuerst Testumgebung).
 4. **Instagram:** Business-Konto bestätigen, Anmeldeweg (Empfehlung: Instagram Login).
 5. Später: ob eine kostenpflichtige KI-API für Echtzeit-Reaktionen gewünscht ist.
 
 ## 5. Nächste Arbeiten (Reihenfolge)
-1. Worker bereitstellen (sobald das Token vorliegt), Adresse in App und CSP, Test mit „VL Test“ und dem echten Server.
+1. ✅ Server bereitgestellt, Testversion angebunden und live geprüft.
 2. Version 2.5 nach Freigabe veröffentlichen; danach Geräte koppeln.
 3. Postfach-Schlüssel einrichten, geplante Claude-Aufgaben anlegen (Inhalte und Analyse wöchentlich; technische Wartung wöchentlich).
 4. Instagram-Veröffentlichung über den Worker (Berechtigung „automatisch veröffentlichen“ greift dann).

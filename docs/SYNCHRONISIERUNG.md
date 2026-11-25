@@ -50,25 +50,33 @@ Grundsatz: Ein kurzer Code darf nie allein die dauerhafte Verschlüsselung trage
 
 Quellen: [Cloudflare Workers Limits](https://developers.cloudflare.com/workers/platform/limits), [Cloudflare KV Limits](https://developers.cloudflare.com/kv/platform/limits), [Cloudflare D1 Free-Tier](https://developers.cloudflare.com/changelog/post/2026-09-01-d1-free-tier-limit-enforcement/), [Supabase Pricing](https://supabase.com/docs/pricing), [Supabase Free Tier 2026](https://automationatlas.io/answers/supabase-free-tier-limits-2026/).
 
-## Einrichtung (Cloudflare, kostenlos)
-**Gründer (einmalig, ca. 10 Minuten):**
-1. Kostenloses Konto: https://dash.cloudflare.com/sign-up (E-Mail bestätigen; für den kostenlosen Tarif keine Zahlungsdaten eingeben).
-2. **Workers & Pages** öffnen. Wird eine workers.dev-Subdomain verlangt, einen neutralen Namen wählen (ohne Personennamen).
-3. **Profil (oben rechts) → API Tokens → Create Token → Vorlage „Edit Cloudflare Workers“ → Use template**:
-   - zusätzlich **„+ Add more“ → Account · D1 · Edit**
-   - bei „Account Resources“ das eigene Konto
-   - **Continue to summary → Create Token** → Token kopieren
-4. Das Token **nur** in das sichere Formular in Claude einfügen (nicht in den Chat). Claude sieht den Wert nie; er gilt nur für Anfragen an api.cloudflare.com.
+## Einrichtung (erledigt am 25.11.2026)
+- **Konto:** bestehendes Cloudflare-Konto des Gründers (kostenloser Tarif). Die Webseite vivalink.me bleibt unberührt.
+- **Getrennte Ressourcen:**
+  - Worker `vivalink-sync`, erreichbar unter https://vivalink-sync.hidden-art-0326.workers.dev (nicht unter vivalink.me)
+  - eigene D1-Datenbank `vivalink-sync`, **EU-Rechtsraum**
+- **Prüfung vor und nach der Einrichtung:** Der Worker `vivalink-webseite` ist unverändert (Änderungsdatum, Prüfwert, Einstellungen), ebenso die workers.dev-Subdomain. Neu sind nur Worker und Datenbank `vivalink-sync`.
+- **API-Token:** eigenes Token mit nur drei Rechten (Workers Scripts: Edit, D1: Edit, Account Settings: Read), ohne Rechte an Domains bzw. Zonen, DNS oder Routen.
+  - Es liegt nur als geschützter Netzwerkschlüssel in der Claude-Umgebung „Vivalink“.
+  - Gültig bis 2.12.2026; für spätere Aktualisierungen des Workers ein neues Token anlegen (gleiche Anleitung).
+- **Live geprüft:**
+  - Testversion und echter Server, zwei Geräte über die Oberfläche, Chromium und WebKit (Ablauf „Live-Prüfung“ in GitHub Actions)
+  - Einrichten, Wiederherstellungsschlüssel, Kopplung mit Prüfzahl, Synchronisierung in beide Richtungen, Konflikt, Wiederherstellung, Schlüsselwechsel, Aufgaben-Postfach
+  - fremde Webseiten abgewiesen (403)
 
-**Claude (selbstständig):**
-- D1-Datenbank `vivalink-sync` anlegen und `database_id` in `server/wrangler.toml` eintragen (keine Geheimnisse).
-- `wrangler deploy` aus `server/` ausführen, Erreichbarkeit und Herkunftsprüfung testen.
-- Worker-Adresse in `js/config.js` (`VL_SYNC_URL`) und in die CSP (`connect-src`) eintragen.
-- Zuerst die Testversion, danach Pull Request.
-- Veröffentlichung der App nur nach Freigabe.
+**Token erstellen (für spätere Aktualisierungen):**
+1. dash.cloudflare.com → Profil → **API Tokens** → **Create Token** → **Custom token**.
+2. Rechte:
+   - Account · Workers Scripts · Edit
+   - Account · D1 · Edit
+   - Account · Account Settings · Read
 
-**Danach auf den Geräten:**
+   Keine Zone-Rechte.
+3. Account Resources: das eigene Konto. TTL: wenige Wochen.
+4. Wert nur in das sichere Formular in Claude eingeben.
+
+**Auf den Geräten (nach Veröffentlichung der App-Version mit Synchronisierung):**
 1. iPhone: **Mehr › Synchronisierung › Synchronisierung einrichten** → Wiederherstellungsschlüssel sicher aufbewahren.
 2. **Weiteres Gerät koppeln** → iPad: Code eingeben → Prüfzahlen vergleichen → auf dem iPhone bestätigen.
 
-**Kosten:** Der kostenlose Tarif reicht deutlich (Bedarf: wenige hundert Anfragen und Schreibvorgänge pro Tag). Bei Überschreitung lehnt Cloudflare Anfragen ab, es entstehen keine Kosten ohne Tarifwechsel.
+**Kosten:** Der kostenlose Tarif reicht deutlich. Bei Überschreitung lehnt Cloudflare Anfragen ab, es entstehen keine Kosten ohne Tarifwechsel.

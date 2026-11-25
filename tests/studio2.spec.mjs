@@ -112,6 +112,16 @@ test("Faktenprüfung: App-Store-/Download-Behauptungen, Platzhalter und Mitglied
   expect(r).toEqual({ app: true, ph: true, members: true, stock: true, loud: true, repeat: true, clean: [[], []] });
 });
 
+test("Zitatprüfung: echte Namen werden erkannt, normale Sätze nicht", async ({ page }) => {
+  await seed(page, { state: brandOk(v2State()) });
+  const r = await page.evaluate(() =>
+    ["Wer ein bisschen von sich erzählt und nach Hobbys fragt, findet Gemeinsames. vivalink.me", "Das Treffen war toll, sagt Lena. vivalink.me", "Teilnehmerin Anna war begeistert. vivalink.me", "„Ich habe dort meine beste Freundin gefunden“ – Marie, 34. vivalink.me", "Ein ehrlicher Erfahrungsbericht. vivalink.me"].map((c, i) =>
+      makePost({ date: "2026-03-04", pillar: "tipps", type: "einzelbild", title: "Zitat " + "abcde"[i] + " " + i, hook: "H" + i, slides: [{ template: "frage", title: "x" }], caption: c }, "ki").warnings.some((w) => w.includes("Erfahrungsbericht")),
+    ),
+  );
+  expect(r).toEqual([false, true, true, true, true]);
+});
+
 test("Planung: kein Bereich zweimal hintereinander, Blickwinkel und Beitragsart je Termin, KI-Auftrag mit Wahrheitsregeln", async ({ page }) => {
   await fixClock(page);
   const s = brandOk(v2State());

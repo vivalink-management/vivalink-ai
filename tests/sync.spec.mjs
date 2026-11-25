@@ -9,7 +9,7 @@ import { handleVault, PAIR_TTL, RL_MAX } from "../server/vault-core.mjs";
 const BASE = "http://127.0.0.1:4173";
 async function device(browser, name, withUrl = true) {
   const ctx = await browser.newContext({ serviceWorkers: "block" });
-  if (withUrl) await ctx.addInitScript((u) => (window.VL_SYNC_URL = u), BASE);
+  await ctx.addInitScript((u) => (window.VL_SYNC_URL = u), withUrl ? BASE : ""); // "" = ohne Server
   const p = await ctx.newPage();
   p.errors = [];
   p.on("pageerror", (e) => p.errors.push(name + ": " + e.message));
@@ -332,4 +332,23 @@ test("D1-Speicher (wie im Cloudflare Worker): atomares Schreiben, kein stilles Ã
   expect((await handleVault({ method: "GET", path: "/v1/task/out", taskToken: "kurz", now: t }, st)).status).toBe(401);
   t += 22 * 24 * 3600e3;
   expect((await handleVault({ method: "GET", path: "/v1/task/out", taskToken: tok, now: t }, st)).status).toBe(404);
+});
+
+test("Echte App mit eingetragenem Server: ohne eingerichtete Synchronisierung wird nichts gesendet", async ({ browser }) => {
+  const ctx = await browser.newContext({ serviceWorkers: "block" });
+  const p = await ctx.newPage();
+  const sent = [];
+  await p.route((u) => u.hostname.endsWith("workers.dev"), (r) => (sent.push(r.request().url()), r.abort()));
+  await p.goto("/");
+  await ready(p);
+  expect(await p.evaluate(() => VL_SYNC_URL)).toMatch(/^https:\/\/vivalink-sync\.[a-z0-9-]+\.workers\.dev$/);
+  for (const t of ["home", "tasks", "studio", "more"]) await p.click(`nav button[data-id="${t}"]`);
+  await p.evaluate(async () => {
+    S.tasks.push({ id: "x1", title: "lokal", prio: "mittel", area: "App", due: "", done: false, updatedAt: Date.now() });
+    await save();
+    await runCycle("test");
+  });
+  await p.waitForTimeout(5000); // syncSoon wartet 4 Sekunden
+  expect(sent).toEqual([]);
+  await ctx.close();
 });

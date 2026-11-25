@@ -60,7 +60,14 @@ Eine KI, die **jederzeit sofort** auf Ereignisse reagiert, braucht eine API. Die
 - Ergebnisse werden nach der Übernahme gelöscht; Postfächer laufen nach 21 Tagen ab.
 - **Bewusste Abwägung:** Die Postfach-Inhalte (öffentliche Fakten, zusammengefasste Kennzahlen, Aufgabentitel) sind bei Cloudflare nicht Ende-zu-Ende verschlüsselt, weil die Claude-Sitzung sie lesen muss und dort keine geheimen Schlüssel liegen dürfen. Vertrauliches wird nie übertragen. Der Daten-Tresor bleibt Ende-zu-Ende verschlüsselt.
 
-**Einrichtung (einmalig, nach Veröffentlichung der App mit Synchronisierung):**
+**Angelegt:**
+- **„Vivalink: technische Wartung (wöchentlich)“** (montags 4:43 Uhr, Umgebung „Vivalink“):
+  - Tests, Abgleich der veröffentlichten Version
+  - Fehlerbehebung auf eigenem Zweig, ohne Veröffentlichung
+  - Hinweis: Geplante Aufgaben haben keinen GitHub-Connector. Die Korrektur liegt dann auf einem Zweig; den Pull Request legt Claude in einer normalen Sitzung an.
+- **Erprobt (Testversion, echter Server):** Auftrag abgeholt, 7 Entwürfe, Wochenanalyse und 3 Aufgabenvorschläge zurückgegeben. Die App hat alles korrekt übernommen und geprüft.
+
+**Einrichtung der Inhalts- und Analyseaufgabe (einmalig, nach Veröffentlichung der App mit Synchronisierung):**
 1. Du tippst in der App **Mehr › Autonomie › Geplante KI-Aufgaben › Einrichten** und kopierst den Schlüssel.
 2. Claude öffnet ein sicheres Formular für die Worker-Adresse (Header `x-vl-task-token`); du fügst den Schlüssel dort ein.
 3. Claude legt die geplanten Aufgaben an:
