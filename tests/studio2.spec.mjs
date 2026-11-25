@@ -172,9 +172,9 @@ test("Meetup: Ankündigung, Erinnerung und Rückblick automatisch – abwechslun
   // Drei Tage nach dem Meetup
   await page.clock.setFixedTime(new Date(NOW.getTime() + 5 * 864e5));
   await page.reload();
-  await page.waitForFunction(() => typeof S !== "undefined" && S && S.studio);
+  await page.waitForFunction(() => window.VL_READY === true); // Startablauf (inkl. Zyklus) abgeschlossen
   const q = await page.evaluate(() => {
-    const again = runAutomations().length;
+    const again = runAutomations().length; // der Start hat den Rückblick bereits angelegt → kein zweiter
     const p = livePosts().find((x) => x.auto === "rueckblick");
     return { has: !!p, again, ph: p && p.caption.includes("[BITTE ERGÄNZEN"), warn: p && p.warnings.some((w) => w.includes("Platzhalter")), week: p && (approveWeek(weekKey(p.date)), p.status) };
   });

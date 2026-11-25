@@ -95,6 +95,6 @@ test("Selbstreparatur: verwaiste Verweise und ungültige Fristen beim Start beho
   // Ohne Fehler: nichts angefasst, kein neuer Rückgängig-Punkt
   await page.evaluate(() => kvPut("pre-import", null));
   await page.reload();
-  await page.waitForFunction(() => typeof S !== "undefined" && S && S.studio);
+  await page.waitForFunction(() => window.VL_READY === true); // Startablauf abgeschlossen
   expect(await kv(page, "pre-import")).toBeNull();
 });

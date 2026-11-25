@@ -57,7 +57,7 @@ test("Maßnahme freigeben: Aufgabe mit Ausgangswert, Instagram-Entwurf aus Fakte
   });
   await page.clock.setFixedTime(new Date(NOW.getTime() + 5 * 864e5));
   await page.reload();
-  await page.waitForFunction(() => typeof S !== "undefined" && S && S.studio);
+  await page.waitForFunction(() => window.VL_READY === true); // Startablauf abgeschlossen
   const f = await page.evaluate(() => findings().find((y) => y.id.startsWith("ms-")));
   expect(f.why.join(" ")).toContain("vorher 4");
   expect(f.why.join(" ")).toContain("jetzt 15");

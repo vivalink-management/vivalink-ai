@@ -612,6 +612,7 @@ document.addEventListener("change", (e) => {
     $("#app").innerHTML = '<h1>Vivalink Management AI</h1><div class="card rec bad">Die Ansicht konnte nicht angezeigt werden. Deine Daten sind gespeichert.</div><div class="row"><button class="p" data-a="snaps">Sicherungspunkt wiederherstellen</button><button data-a="diag">Diagnose</button></div>';
   }
   syncSoon(1500);
+  window.VL_READY = true; // Start vollständig abgeschlossen (für Tests und Diagnose)
   // Wieder geöffnet (App lag im Hintergrund): Zyklus höchstens alle 6 Stunden erneut
   document.addEventListener("visibilitychange", async () => {
     if (document.visibilityState !== "visible") return;

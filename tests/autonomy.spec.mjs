@@ -101,7 +101,7 @@ test("Zyklus läuft beim Start und ist unter „Mehr › Autonomie“ nachvollzi
   await expect(page.locator("#sheet")).toContainText("nie automatisch");
   // Zweiter Start: keine doppelten Entwürfe, kein Protokoll-Rauschen
   await page.reload();
-  await page.waitForFunction(() => typeof S !== "undefined" && S && S.studio);
+  await page.waitForFunction(() => window.VL_READY === true); // Startablauf abgeschlossen
   expect((await state(page)).studio.posts).toHaveLength(1);
   expect(await page.evaluate(() => ACTIONS.filter((a) => a.name === "studio.autoDraft").length)).toBe(1);
 });
