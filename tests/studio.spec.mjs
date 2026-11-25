@@ -483,7 +483,8 @@ test("Status: Entwurf, Geplant, Fällig, Veröffentlicht; Filter und Gestaltungs
   await tabTo(page, "gestaltung");
   await page.selectOption("#pe-variant", "2");
   await page.click('button[data-a="stEdit"]');
-  expect((await state(page)).studio.posts.find((p) => p.title === "Noch Entwurf").variant).toBe(2);
+  await expectToast(page, "Gespeichert"); // Speichern abgeschlossen (nicht mitten im Vorgang beenden)
+  await expect.poll(async () => (await state(page)).studio.posts.find((p) => p.title === "Noch Entwurf").variant).toBe(2);
 });
 
 test("Monatsplan bleibt bearbeitbar: belegte Termine werden nicht doppelt geplant", async ({ page }) => {
