@@ -1,6 +1,6 @@
 # Änderungsprotokoll
 
-## 2.7.1 – Geräte zusammenführen, Anbindung der Vivalink-Verwaltung
+## 2.7.1 (veröffentlicht am 25.11.2026) – Geräte zusammenführen, Anbindung der Vivalink-Verwaltung
 
 - **Synchronisierung: zwei getrennte Datenspeicher zusammenführen** (wenn beide Geräte „Synchronisierung einrichten“ gewählt haben):
   - Hinweis „Nur dieses Gerät ist verbunden“ mit Zusammenführen per Code und Prüfzahl

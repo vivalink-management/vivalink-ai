@@ -1,7 +1,7 @@
 # Zentrale Entwicklungsübersicht: Vivalink Management AI
 
 **Fortsetzungsdokument für alle weiteren Entwicklungsaufträge.** Bei jedem Auftrag zuerst lesen und am Ende aktualisieren. Arbeitsweise (Tests, Gerätetests, Grenzen): **`CLAUDE.md`**.
-Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.6** (`main`, veröffentlicht am 25.11.2026) · Entwicklungszweig: **Version 2.7.1** (Zusammenführen der Geräte, Verwaltungsanbindung)
+Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.7.1** (`main`, veröffentlicht am 25.11.2026) · Entwicklungszweig: gleicher Stand
 
 ## 1. Umgesetzt und getestet (noch nicht veröffentlicht)
 
@@ -40,9 +40,9 @@ Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
 - Nur künstliche Daten. Prüfung auf vertrauliche Inhalte bei jedem Lauf.
 - Live-Prüfung der Synchronisierung (Testversion gegen den echten Worker) bitte über den Workflow „Live-Prüfung“ in GitHub Actions starten, nicht aus einer Claude-Sitzung der Umgebung „Vivalink“: Seit dort der Netzwerkschlüssel für das Aufgaben-Postfach hinterlegt ist, lehnt der Worker Tresor-Anfragen aus dieser Umgebung mit 401 ab (das Postfach selbst funktioniert). Echte Geräte und GitHub Actions sind nicht betroffen; 2.6 dort am 25.11.2026 bestanden (Chromium und WebKit, iPhone und iPad).
 
-## Stand der Autonomie (2.7, Entwicklungszweig)
+## Stand der Autonomie (2.7.1, veröffentlicht)
 
-### Einsatzbereit (Produktion 2.6)
+### Einsatzbereit (Produktion 2.7.1)
 | Funktion | Was die KI selbstständig tut | Grenze |
 |---|---|---|
 | Autonomie-Zyklus | Daten prüfen, Befunde, „Heute zu tun“, Entwürfe aus Fakten, Rückblick-Entwurf nach Meetups, Selbstreparatur eindeutiger Datenfehler | nur Stufe 0/1; Stufe 2 mit Berechtigung |
@@ -52,7 +52,7 @@ Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
 | Geplante Aufgabe „Instagram-Entwürfe und Wochenanalyse“ (Mo 5:17) | 14-Tage-Entwürfe, Wochenanalyse mit Vorwochen, bis zu 5 Aufgabenvorschläge; meldet Probleme (z. B. kein Auftrag) | nur Entwürfe bzw. Vorschläge zur Freigabe |
 | Wochenbericht, Studio-Feinarbeit, Sammelfreigabe | Trends, Prioritäten, Erfolgskontrolle; Entwürfe automatisch nachgebessert | Freigabe bleibt beim Gründer |
 
-### Neu in 2.7 (fertig und getestet, wirksam nach Freigabe)
+### Neu in 2.7 (veröffentlicht; Verwaltungs-Gegenstelle noch nicht bereitgestellt)
 - Verwaltungs-Gegenstelle mit eingeschränkter Datenbankrolle, READ-ONLY-Lesen, Schutz vor Code-Durchprobieren, 503 ohne Einzelheiten
 - Getrennte Testumgebung mit künstlicher Verwaltung; läuft bei jedem Testlauf (lokal und GitHub Actions)
 - App: Widerruf erkannt (kein Dauerabruf), wachsende Pause nach Fehlern, Hinweis „Verwaltung gestört“, letzter Fehler sichtbar
@@ -76,8 +76,9 @@ Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
 3. ✅ Version 2.5 freigegeben und veröffentlicht (25.11.2026).
 4. ✅ Geräte gekoppelt; Postfach-Schlüssel hinterlegt; wöchentliche Aufgaben „technische Wartung“ (Mo 4:43) und „Instagram-Entwürfe und Wochenanalyse“ (Mo 5:17) angelegt.
 5. ✅ Version 2.6 freigegeben und veröffentlicht (25.11.2026).
-6. **Verwaltung (höchste Priorität):** lesende Bestandsaufnahme ausführen (Schritt 1 in `AUFTRAG-VERWALTUNG.md`); Bereitstellung in Supabase später gesondert freigeben.
-7. **Version 2.7:** Freigabe zur Veröffentlichung (ändert für dich sichtbar nur die Verwaltungs-Ansicht; ohne Bereitstellung bleibt die Anbindung inaktiv).
+6. **Verwaltung (höchste Priorität):** Bestandsaufnahme freigegeben (25.11.2026) – Gründer führt `docs/bestandsaufnahme-verwaltung.sql` im SQL-Editor aus und gibt das Ergebnis an Claude; Bereitstellung in Supabase später gesondert freigeben.
+6a. **Geräte zusammenführen** (einmalig, Gründer): „Mehr › Synchronisierung“ – Anleitung im Bericht vom 25.11.2026 bzw. Abschnitt 6.
+7. ✅ Version 2.7.1 freigegeben und veröffentlicht (25.11.2026).
 8. **Instagram:** Business-Konto bestätigen, Anmeldeweg (Empfehlung: Instagram Login).
 9. Später: ob eine kostenpflichtige KI-API für Echtzeit-Reaktionen gewünscht ist.
 
@@ -90,7 +91,7 @@ Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
 6. Instagram-Veröffentlichung über den Worker (Berechtigung „automatisch veröffentlichen“ greift dann).
 
 ## 6. Bekannte Einschränkungen
-- **Synchronisierung der echten Geräte:** Am 25.11.2026 (16:06 und 16:07) wurden zwei getrennte Datenspeicher angelegt (Server-Metadaten). Ab 2.7.1 führt „Mehr › Synchronisierung › Zusammenführen“ sie verlustfrei zusammen (automatisch getestet: Erfolg, Fehler mit Rücknahme, bereits verbunden).
+- **Synchronisierung der echten Geräte:** Am 25.11.2026 (16:06 und 16:07) wurden zwei getrennte Datenspeicher angelegt (Server-Metadaten). Bis zum Zusammenführen gleichen iPhone und iPad nicht ab. Ab 2.7.1 führt „Mehr › Synchronisierung › Zusammenführen“ sie verlustfrei zusammen (automatisch getestet: Erfolg, Fehler mit Rücknahme, bereits verbunden).
 - Live-Prüfungen der Synchronisierung nur über GitHub Actions („Live-Prüfung“): Aus Claude-Sitzungen der Umgebung „Vivalink“ lehnt der Worker Tresor-Anfragen mit 401 ab (Netzwerkschlüssel des Postfachs); Geräte und GitHub Actions sind nicht betroffen.
 - Die Bedienung von 2.3/2.4 ist nur automatisch und per Bildschirmfoto geprüft, nicht auf echten Geräten (Restrisiken siehe Abschnitt 3).
 - Eigene Fotos liegen nur auf dem Gerät, auf dem sie hinzugefügt wurden. Sie sind nicht im Backup und werden nicht synchronisiert (Speicherplatz, Datenschutz).
