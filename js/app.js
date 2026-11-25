@@ -9,15 +9,42 @@ document.addEventListener("click", async (e) => {
     scrollTo(0, 0);
   } else if (a === "close") close();
   else if (a === "newTask") taskForm();
-  else if (a === "saveTask") {
+  else if (a === "editTask") taskForm(S.tasks.find((y) => y.id === id));
+  else if (a === "delTask") {
+    const x = S.tasks.find((y) => y.id === taskEdit);
+    if (!x) return;
+    if (window._tdel !== x.id) {
+      window._tdel = x.id;
+      return toast("Nochmal tippen, um die Aufgabe zu löschen");
+    }
+    window._tdel = null;
+    x.deleted = true; // Löschvermerk (für Synchronisierung), abhängige Aufgaben werden frei
+    x.done = true;
+    for (const y of S.tasks.filter((z) => z.after === x.id)) (y.after = ""), touch(y);
+    touch(x);
+    close();
+    await save();
+    render();
+    toast("Aufgabe gelöscht");
+  } else if (a === "saveTask") {
     const t = val("t-t").trim();
     if (!t) return toast("Bitte eine Aufgabe eingeben");
+    const ex = taskEdit && S.tasks.find((y) => y.id === taskEdit);
+    if (ex) {
+      Object.assign(ex, { title: t, prio: val("t-p"), area: val("t-a"), due: val("t-d"), after: makesCycle(ex.id, val("t-after")) ? "" : val("t-after") });
+      touch(ex);
+      close();
+      await save();
+      render();
+      return toast("Aufgabe gespeichert");
+    }
     const x = {
       id: uid(),
       title: t,
       prio: val("t-p"),
       area: val("t-a"),
       due: val("t-d"),
+      after: val("t-after"),
       done: false,
       dev: S.dev,
     };
@@ -108,15 +135,15 @@ document.addEventListener("click", async (e) => {
     toast("Aufgabe angelegt (Frist " + fmt(due) + ")");
   } else if (a === "later" || a === "nope") {
     S.suggest = S.suggest || {};
-    const days = a === "later" ? 7 : 60;
-    S.suggest[id] = {
-      until: new Date(Date.now() + days * 864e5).toLocaleDateString("sv-SE"),
-      mode: a,
-      at: Date.now(),
-    };
+    const f = findings().find((x) => x.id === id),
+      prev = S.suggest[id];
+    // „Später“ wiederholt: Abstand verdoppelt sich (7, 14, 28 Tage); „Nicht relevant“: erst wieder bei Verschärfung
+    const n = prev && prev.mode === a ? Math.min((prev.n || 1) + 1, 4) : 1;
+    const days = a === "later" ? 7 * 2 ** (n - 1) : 180;
+    S.suggest[id] = { until: addDays(today(), days), mode: a, at: Date.now(), sev: f ? f.sev : 3, n };
     await save();
     render();
-    toast(a === "later" ? "Für 7 Tage ausgeblendet" : "Als nicht relevant markiert (60 Tage ausgeblendet)");
+    toast(a === "later" ? `Für ${days} Tage ausgeblendet` : "Als nicht relevant markiert – erscheint nur wieder, wenn es dringender wird");
   } else if (a === "met") metSheet(id);
   else if (a === "meet") meetForm();
   else if (a === "saveMeet") {

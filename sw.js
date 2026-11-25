@@ -27,6 +27,7 @@ const F = [
   "js/rules.js",
   "js/studio.js",
   "js/advice.js",
+  "js/manage.js",
   "js/render.js",
   "js/prompts.js",
   "js/aitest.js",

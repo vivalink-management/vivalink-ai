@@ -67,6 +67,8 @@ function cleanTask(r) {
   o.revs = revList(r.revs);
   if (r.fid != null) o.fid = str(r.fid, 80);
   if (r.src != null) o.src = str(r.src, 40);
+  o.after = isId(r.after) ? r.after : "";
+  o.deleted = !!r.deleted;
   return o;
 }
 function cleanEntry(e) {
@@ -226,7 +228,7 @@ function cleanIncoming(data, aitest) {
     for (const k in data.suggest) {
       const s = data.suggest[k];
       if (/^[A-Za-z0-9_-]{1,80}$/.test(k) && s && typeof s === "object")
-        out.suggest[k] = { until: optDate(s.until), mode: s.mode === "nope" ? "nope" : "later", at: optNum(s.at) || 0 };
+        out.suggest[k] = { until: optDate(s.until), mode: s.mode === "nope" ? "nope" : "later", at: optNum(s.at) || 0, sev: [0, 1, 2, 3].includes(s.sev) ? s.sev : null, n: Math.min(4, Math.max(1, optNum(s.n) || 1)) };
     }
   for (const x of Array.isArray(aitest) ? aitest : []) {
     if (x && isId(x.id)) out.aitest.push(x);
