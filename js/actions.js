@@ -62,12 +62,13 @@ function canPublish(p) {
   if (!p || p.deleted) return { ok: false, why: "Beitrag gelöscht" };
   if (p.status === "veroeffentlicht" || (p.publish && p.publish.state === "erledigt")) return { ok: false, why: "Bereits veröffentlicht – doppelte Veröffentlichung verhindert" };
   if (p.publish && p.publish.state === "laeuft" && Date.now() - p.publish.at < 10 * 60e3) return { ok: false, why: "Veröffentlichung läuft bereits" };
+  if (p.demo) return { ok: false, why: "Demo-Beitrag aus der Testversion – wird nie veröffentlicht" };
   if (p.status !== "freigegeben") return { ok: false, why: "Nicht freigegeben – Veröffentlichung nur nach deiner Freigabe" };
   if (p.approvedHash && p.approvedHash !== postHash(p)) return { ok: false, why: "Seit der Freigabe verändert – bitte erneut freigeben" };
   return { ok: true };
 }
 /* Fingerabdruck des veröffentlichten Inhalts (Text, Folien, Termin) */
-const postHash = (p) => JSON.stringify([p.caption, p.hashtags, p.slides, p.type, p.date, p.variant]);
+const postHash = (p) => JSON.stringify([p.caption, p.hashtags, p.slides, p.type, p.date, p.variant].concat(p.photo && p.photo.consent ? [p.photo.id] : []));
 function approvePost(p) {
   p.status = "freigegeben";
   p.approvedAt = Date.now();

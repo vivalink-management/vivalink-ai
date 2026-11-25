@@ -126,6 +126,7 @@ function render() {
 }
 const sheet = (h) => {
   const s = $("#sheet");
+  s.className = "sheet";
   s.innerHTML = "<div>" + h + "</div>";
   s.hidden = false;
 };

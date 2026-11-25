@@ -6,6 +6,7 @@ import { guard, seed, open, nav, state, kv, stubClipboard, clip, expectToast } f
 import { v2State, T0 } from "./fixtures.mjs";
 
 const NOW = new Date("2026-03-02T09:00:00"); // Montag
+const tabTo = (page, k) => page.click(`#sheet [data-a="stTab"][data-id="${k}"]`);
 const d = (n) => new Date(NOW.getTime() + n * 864e5).toLocaleDateString("sv-SE");
 function brandOk(s) {
   s.studio = { brand: { region: "Testregion", signup: "Registrierung über die Test-Website", colorsConfirmed: true, website: "vivalink.me" }, settings: {}, posts: [], learned: {} };
@@ -137,9 +138,9 @@ test("Wochenfreigabe gibt nur geprüfte Beiträge frei; Beitrag mit Hinweis brau
   expect(P.find((p) => p.title === "Mit Hinweis").status).toBe("entwurf");
   await page.locator('[data-a="stOpen"]', { hasText: "Mit Hinweis" }).click();
   await expect(page.locator("#sheet")).toContainText("Prüfhinweise");
-  await page.click('#sheet button[data-a="stSet"][data-id="freigegeben"]');
+  await page.click('#sheet .abar button[data-a="stSet"][data-id="freigegeben"]');
   await expectToast(page, "Nochmal tippen");
-  await page.click('#sheet button[data-a="stSet"][data-id="freigegeben"]');
+  await page.click('#sheet .abar button[data-a="stSet"][data-id="freigegeben"]');
   P = (await state(page)).studio.posts;
   expect(P.find((p) => p.title === "Mit Hinweis").status).toBe("freigegeben");
 });
@@ -153,6 +154,7 @@ test("Bearbeiten, Folie hinzufügen, Löschen; Faktenprüfung läuft bei jeder �
   await nav(page, "studio");
   await page.locator('[data-a="stOpen"]', { hasText: "Bearbeitungstest" }).click();
   await expect(page.locator("#stPrev canvas")).toHaveCount(1);
+  await tabTo(page, "text");
   await page.fill("#pe-caption", "Neue Caption mit 777 erfundenen Gästen");
   await page.fill('[data-slide="0"][data-f="title"]', "Neue Frage");
   await page.click('button[data-a="stEdit"]');
@@ -166,6 +168,7 @@ test("Bearbeiten, Folie hinzufügen, Löschen; Faktenprüfung läuft bei jeder �
   expect(p.type).toBe("karussell");
   expect(p.slides).toHaveLength(2);
   await expect(page.locator("#stPrev canvas")).toHaveCount(2);
+  await tabTo(page, "termin");
   await page.click('button[data-a="stDel"]');
   await page.click('button[data-a="stDel"]');
   await expectToast(page, "Beitrag gelöscht");
@@ -232,6 +235,7 @@ test("Veröffentlicht markieren, Ergebnisse eintragen, Planung lernt daraus", as
   });
   await nav(page, "studio");
   await page.locator('[data-a="stOpen"]', { hasText: "Zu veröffentlichen" }).click();
+  await tabTo(page, "termin");
   await page.click('#sheet button[data-a="stSet"][data-id="veroeffentlicht"]');
   await page.fill("#pm-reach", "500");
   await page.fill("#pm-likes", "40");
@@ -347,7 +351,7 @@ test("Manipulierte KI-Antwort: Inhalte werden nur als Text gezeigt, ungültige W
   await page.locator('[data-a="stOpen"]').first().click();
   await expect(page.locator("#sheet h1")).toContainText("<img src=x");
   expect(await page.evaluate(() => window.__pwned)).toBeUndefined();
-  await page.click('#sheet button[data-a="close"]');
+  await page.click('#sheet .abar button[data-a="stClose"]');
   for (const bad of ["kein json", '{"posts": "x"}', '{"format":"x","posts":[']) {
     if (await page.evaluate(() => $("#sheet").hidden)) await page.click('button[data-a="stPrompt"]');
     await page.fill("#stAns", bad);
@@ -417,7 +421,7 @@ test("Keine doppelten Meetup-Ankündigungen: Automatik und Monatsplan kennen sic
     importPlan(JSON.stringify({ posts: planSlots(sm()).filter((x) => x.pillar === "meetup").map((x, i) => ({ ...x, title: "Meetup-Beitrag " + ["Ankündigung", "Erinnerung"][i], slides: [{ template: "ankuendigung", title: "Nächstes Meetup" }] })) }));
     return save();
   });
-  expect(await page.evaluate(() => [runAutomations().length, meetupCoverage()])).toEqual([0, { announce: true, remind: true }]);
+  expect(await page.evaluate(() => [runAutomations().length, meetupCoverage()])).toEqual([0, { announce: true, remind: true, recap: false }]);
   slots = await page.evaluate(() => planSlots(sm()));
   expect(slots.filter((x) => x.pillar === "meetup")).toEqual([]);
 });
@@ -476,6 +480,7 @@ test("Status: Entwurf, Geplant, Fällig, Veröffentlicht; Filter und Gestaltungs
   await expect(page.locator('[data-a="stOpen"]')).toHaveCount(2);
   await page.click('button[data-a="stFilter"][data-id="alle"]');
   await page.locator('[data-a="stOpen"]', { hasText: "Noch Entwurf" }).click();
+  await tabTo(page, "gestaltung");
   await page.selectOption("#pe-variant", "2");
   await page.click('button[data-a="stEdit"]');
   expect((await state(page)).studio.posts.find((p) => p.title === "Noch Entwurf").variant).toBe(2);

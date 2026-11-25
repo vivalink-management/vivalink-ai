@@ -46,14 +46,16 @@ test("Veröffentlichung nur nach Freigabe, nie doppelt, nach Änderung erneut fr
   expect(await page.evaluate(() => markPublishedManually(S.studio.posts[0]))).toMatchObject({ ok: false });
   await nav(page, "studio");
   await page.locator('[data-a="stOpen"]', { hasText: "Schutztest" }).click();
-  await page.click('#sheet button[data-a="stSet"][data-id="freigegeben"]');
+  await page.click('#sheet .abar button[data-a="stSet"][data-id="freigegeben"]');
   await expectToast(page, "Fällig");
   // Änderung nach Freigabe → wieder Entwurf
+  await page.click('#sheet [data-a="stTab"][data-id="text"]');
   await page.fill("#pe-caption", "Geänderter Text mit vivalink.me");
   await page.click('button[data-a="stEdit"]');
   await expectToast(page, "bitte erneut freigeben");
   expect((await state(page)).studio.posts[0].status).toBe("entwurf");
-  await page.click('#sheet button[data-a="stSet"][data-id="freigegeben"]');
+  await page.click('#sheet .abar button[data-a="stSet"][data-id="freigegeben"]');
+  await page.click('#sheet [data-a="stTab"][data-id="termin"]');
   await page.click('#sheet button[data-a="stSet"][data-id="veroeffentlicht"]');
   await expectToast(page, "Veröffentlicht");
   const p = (await state(page)).studio.posts[0];

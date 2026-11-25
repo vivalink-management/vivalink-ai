@@ -141,7 +141,11 @@ function cleanPost(r) {
     metrics: r.metrics && typeof r.metrics === "object" ? Object.fromEntries(["reach", "likes", "comments", "saves", "shares", "follows", "at"].map((k) => [k, num(r.metrics[k])])) : null,
     warnings: (Array.isArray(r.warnings) ? r.warnings : []).map((w) => str(w, 300)).slice(0, 10),
     hints: (Array.isArray(r.hints) ? r.hints : []).map((w) => str(w, 300)).slice(0, 12),
-    variant: Number.isInteger(r.variant) && r.variant >= 0 && r.variant <= 2 ? r.variant : 0,
+    variant: Number.isInteger(r.variant) && r.variant >= 0 && r.variant < DESIGNS.length ? r.variant : 0,
+    photo: r.photo && typeof r.photo === "object" && /^ph-[A-Za-z0-9_-]{4,40}$/.test(r.photo.id || "") ? { id: r.photo.id, consent: !!r.photo.consent, note: str(r.photo.note, 160) } : null,
+    kind: KINDS[r.kind] ? r.kind : undefined,
+    angle: str(r.angle, 120),
+    confirmed: !!r.confirmed,
     deleted: !!r.deleted,
     updatedAt: optNum(r.updatedAt) || 0,
     revs: revList(r.revs),
@@ -181,6 +185,9 @@ function parseBackup(text) {
     env = j;
     data = j.data;
   }
+  // Schutz vor Demodaten: Backups der Testversion werden in der echten App nicht übernommen
+  if (!IS_TEST && ((env && env.channel === "test") || (data && typeof data.dev === "string" && data.dev.startsWith("demo-"))))
+    return { ok: false, error: "Dieses Backup stammt aus der Testversion „VL Test“ (künstliche Daten) und wird in der echten App nicht übernommen." };
   if (!data || !Array.isArray(data.memory) || !Array.isArray(data.tasks))
     return { ok: false, error: "Kein gültiges Backup (Gedächtnis oder Aufgaben fehlen)" };
   return { ok: true, kind: "state", env, data, aitest: env && Array.isArray(env.aitest) ? env.aitest : null, schema: (env && env.schema) || data.v || 1 };
@@ -192,7 +199,7 @@ function cleanIncoming(data, aitest) {
   if (st) {
     for (const r of Array.isArray(st.posts) ? st.posts : []) {
       const c = cleanPost(r);
-      c ? out.posts.push(c) : out.skipped++;
+      c && !(c.demo && !IS_TEST) ? out.posts.push(c) : out.skipped++;
     }
     out.brand = cleanBrand(st.brand);
     out.settings = cleanSettings(st.settings);
@@ -473,6 +480,7 @@ async function makeBackup() {
     app: APP_VERSION,
     createdAt: new Date().toISOString(),
     device: S.dev,
+    channel: IS_TEST ? "test" : "prod",
     sha256: await sha256(payloadOf(data, aitest)),
     data,
     aitest,
