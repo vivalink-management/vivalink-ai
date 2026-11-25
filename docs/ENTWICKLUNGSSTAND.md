@@ -1,7 +1,7 @@
 # Zentrale Entwicklungsübersicht: Vivalink Management AI
 
 **Fortsetzungsdokument für alle weiteren Entwicklungsaufträge.** Bei jedem Auftrag zuerst lesen und am Ende aktualisieren. Arbeitsweise (Tests, Gerätetests, Grenzen): **`CLAUDE.md`**.
-Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.5** (`main`, veröffentlicht am 25.11.2026) · Entwicklungszweig: **Version 2.6** (noch nicht veröffentlicht)
+Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.6** (`main`, veröffentlicht am 25.11.2026) · Entwicklungszweig: **Version 2.7** (Verwaltungsanbindung, noch nicht veröffentlicht)
 
 ## 1. Umgesetzt und getestet (noch nicht veröffentlicht)
 
@@ -22,9 +22,7 @@ Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
 
 | Funktion | Stand | Was fehlt |
 |---|---|---|
-| Synchronisierung iPhone ↔ iPad | Server `vivalink-sync` (Cloudflare, D1 in der EU) bereitgestellt; Testversion angebunden und live geprüft (Chromium und WebKit) | **Freigabe von 2.5** (verbindet die echte App), danach Geräte koppeln |
-| Geplante Claude-Aufgaben | Wöchentliche technische Wartung angelegt (montags 4:43 Uhr). Aufgaben-Postfach mit echtem Ablauf in der Testversion erprobt (7 Entwürfe, Analyse, Vorschläge) | nach 2.5: Postfach-Schlüssel aus der App ins sichere Formular → Claude legt die wöchentliche Inhalts- und Analyseaufgabe an |
-| Kennzahlen aus der Verwaltung | Client fertig und getestet | Gegenstelle in Supabase/Rork laut `AUFTRAG-VERWALTUNG.md` |
+| Kennzahlen aus der Verwaltung | App, Gegenstelle, Edge Function und Migration fertig; in getrennter Testumgebung (eigenes PostgreSQL + Deno, künstliche Daten) Ende-zu-Ende geprüft | Bestandsaufnahme und Zuordnung der echten Auswertungen, dann Bereitstellung mit Freigabe (`AUFTRAG-VERWALTUNG.md`) |
 | Automatische Instagram-Veröffentlichung und Statistiken | Schutzregeln, Berechtigung, JPEG-Export | Meta-App und Business-Login, Worker-Erweiterung (`INSTAGRAM-AUTOMATIK.md`) |
 
 ## 3. Tests und Qualitätssicherung (Claude prüft selbst, siehe `CLAUDE.md`)
@@ -42,55 +40,58 @@ Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
 - Nur künstliche Daten. Prüfung auf vertrauliche Inhalte bei jedem Lauf.
 - Live-Prüfung der Synchronisierung (Testversion gegen den echten Worker) bitte über den Workflow „Live-Prüfung“ in GitHub Actions starten, nicht aus einer Claude-Sitzung der Umgebung „Vivalink“: Seit dort der Netzwerkschlüssel für das Aufgaben-Postfach hinterlegt ist, lehnt der Worker Tresor-Anfragen aus dieser Umgebung mit 401 ab (das Postfach selbst funktioniert). Echte Geräte und GitHub Actions sind nicht betroffen; 2.6 dort am 25.11.2026 bestanden (Chromium und WebKit, iPhone und iPad).
 
-## Stand der Autonomie (2.6, Entwicklungszweig)
+## Stand der Autonomie (2.7, Entwicklungszweig)
 
-### Einsatzbereit (in Produktion 2.5 bzw. sofort wirksam)
+### Einsatzbereit (Produktion 2.6)
 | Funktion | Was die KI selbstständig tut | Grenze |
 |---|---|---|
 | Autonomie-Zyklus | Daten prüfen, Befunde, „Heute zu tun“, Entwürfe aus Fakten, Rückblick-Entwurf nach Meetups, Selbstreparatur eindeutiger Datenfehler | nur Stufe 0/1; Stufe 2 mit Berechtigung |
-| Synchronisierung iPhone ↔ iPad | Abgleich beim Öffnen und nach Änderungen, Konflikte erkennen | Ende-zu-Ende verschlüsselt |
-| Geplante Aufgabe „technische Wartung“ (Mo 4:43) | Tests, Abgleich der veröffentlichten Version, Fehlerbehebung auf eigenem Zweig | nie veröffentlichen, kein GitHub-Connector für Pull Requests |
-| Geplante Aufgabe „Instagram-Entwürfe und Wochenanalyse“ (Mo 5:17) | 14-Tage-Entwürfe, Wochenanalyse, bis zu 5 Aufgabenvorschläge | nur Entwürfe bzw. Vorschläge zur Freigabe |
+| Synchronisierung iPhone ↔ iPad | Abgleich beim Öffnen und nach Änderungen, Konflikte erkennen | Ende-zu-Ende verschlüsselt; Kopplung der echten Geräte siehe Abschnitt 6 |
+| Überwachung der geplanten Aufgaben | zeigt Termin, letzten belegten Erfolg, Ergebnis; ausgeblieben/Problem als Befund | nur belegte Erfolge |
+| Geplante Aufgabe „technische Wartung“ (Mo 4:43) | Tests, Abgleich der veröffentlichten Version, Fehlerbehebung auf eigenem Zweig, **Rückmeldung an die Überwachung** (seit 25.11.2026; Kette einmal echt geprüft) | nie veröffentlichen |
+| Geplante Aufgabe „Instagram-Entwürfe und Wochenanalyse“ (Mo 5:17) | 14-Tage-Entwürfe, Wochenanalyse mit Vorwochen, bis zu 5 Aufgabenvorschläge; meldet Probleme (z. B. kein Auftrag) | nur Entwürfe bzw. Vorschläge zur Freigabe |
+| Wochenbericht, Studio-Feinarbeit, Sammelfreigabe | Trends, Prioritäten, Erfolgskontrolle; Entwürfe automatisch nachgebessert | Freigabe bleibt beim Gründer |
 
-### Neu in 2.6 (fertig und getestet, wirksam nach Freigabe der Version)
-- Überwachung der geplanten Aufgaben (nur belegte Erfolge; ausgeblieben/Problem als Befund)
-- Wochenbericht mit Vorwochenvergleich, Trends, Prioritäten nach Zielrangfolge, Erfolgskontrolle
-- Automatische Feinarbeit an KI-Entwürfen, „Freigabebereit“, Sammelfreigabe
-- Verwaltung: Oberfläche zum Koppeln, automatischer Abruf
+### Neu in 2.7 (fertig und getestet, wirksam nach Freigabe)
+- Verwaltungs-Gegenstelle mit eingeschränkter Datenbankrolle, READ-ONLY-Lesen, Schutz vor Code-Durchprobieren, 503 ohne Einzelheiten
+- Getrennte Testumgebung mit künstlicher Verwaltung; läuft bei jedem Testlauf (lokal und GitHub Actions)
+- App: Widerruf erkannt (kein Dauerabruf), wachsende Pause nach Fehlern, Hinweis „Verwaltung gestört“, letzter Fehler sichtbar
 
 ### Vorbereitet, nicht aktiv
 | Funktion | Was fehlt |
 |---|---|
-| Rückmeldung der Wartungsaufgabe an die Überwachung | Version 2.6 veröffentlichen, dann Auftrag der Wartungsaufgabe um `melden` ergänzen (Claude) |
-| Kennzahlen aus der Verwaltung | gesonderte Freigabe: Zuordnung der vorhandenen Auswertungen, Migration und Edge Function zuerst in der Supabase-Testumgebung (`AUFTRAG-VERWALTUNG.md`) |
+| Kennzahlen aus der Verwaltung | 1) lesende Bestandsaufnahme (Gründer führt eine Strukturabfrage aus), 2) Zuordnung, 3) Bereitstellung in Supabase – **gesonderte Freigabe**, Schritte in `AUFTRAG-VERWALTUNG.md` |
 | Automatisches Veröffentlichen bei Instagram | Meta-App und Business-Login (kostenlos), Worker-Erweiterung, Berechtigung „automatisch veröffentlichen“ |
 
 ### Was für eine weitgehend autonome Management-KI noch fehlt
-1. **Echte Kennzahlen automatisch:** Verwaltungsanbindung (oben). Erst damit kann die KI Entwicklungen selbst erkennen statt aus manuellen Einträgen.
+1. **Echte Kennzahlen automatisch:** technisch fertig; es fehlen Bestandsaufnahme, Zuordnung und Bereitstellung mit Freigabe.
 2. **Instagram-Veröffentlichung und -Statistiken automatisch:** schließt den Kreis Entwurf → Veröffentlichung → Ergebnis → Lernen.
-3. **Wirkungsmessung über Zeit:** mehrere Wochen echter Daten, damit Trends und Maßnahmenkontrolle belastbar werden (kein Entwicklungsaufwand, nur Zeit).
-4. **Reaktion in Echtzeit:** heute wöchentlich bzw. beim Öffnen. Für Reaktionen binnen Minuten bräuchte es eine KI-API (kostenpflichtig, nur mit Zustimmung).
-5. **Weitere Aufgabenbereiche** (später, je nach Wunsch): E-Mail/Newsletter-Entwürfe, Meetup-Organisation (Orte, Erinnerungen), Auswertung der Website.
+3. **Wirkungsmessung über Zeit:** mehrere Wochen echter Daten, damit Trends und Maßnahmenkontrolle belastbar werden.
+4. **Reaktion in Echtzeit:** heute wöchentlich bzw. beim Öffnen; schneller nur mit kostenpflichtiger KI-API (nur mit Zustimmung).
+5. **Weitere Aufgabenbereiche** (später): E-Mail/Newsletter-Entwürfe, Meetup-Organisation, Auswertung der Website.
 
 ## 4. Offene Entscheidungen (nur du)
 1. ✅ Version 2.4 freigegeben und veröffentlicht (25.11.2026).
 2. ✅ Synchronisierung: Cloudflare (kostenlos), bestehendes Konto; Server eingerichtet, Webseite unverändert.
 3. ✅ Version 2.5 freigegeben und veröffentlicht (25.11.2026).
 4. ✅ Geräte gekoppelt; Postfach-Schlüssel hinterlegt; wöchentliche Aufgaben „technische Wartung“ (Mo 4:43) und „Instagram-Entwürfe und Wochenanalyse“ (Mo 5:17) angelegt.
-5. **Version 2.6:** Freigabe zur Veröffentlichung (Pull Request vom Entwicklungszweig).
-6. **Verwaltung:** Freigabe des Auftrags in `AUFTRAG-VERWALTUNG.md` (zuerst Testumgebung).
-7. **Instagram:** Business-Konto bestätigen, Anmeldeweg (Empfehlung: Instagram Login).
-8. Später: ob eine kostenpflichtige KI-API für Echtzeit-Reaktionen gewünscht ist.
+5. ✅ Version 2.6 freigegeben und veröffentlicht (25.11.2026).
+6. **Verwaltung (höchste Priorität):** lesende Bestandsaufnahme ausführen (Schritt 1 in `AUFTRAG-VERWALTUNG.md`); Bereitstellung in Supabase später gesondert freigeben.
+7. **Version 2.7:** Freigabe zur Veröffentlichung (ändert für dich sichtbar nur die Verwaltungs-Ansicht; ohne Bereitstellung bleibt die Anbindung inaktiv).
+8. **Instagram:** Business-Konto bestätigen, Anmeldeweg (Empfehlung: Instagram Login).
+9. Später: ob eine kostenpflichtige KI-API für Echtzeit-Reaktionen gewünscht ist.
 
 ## 5. Nächste Arbeiten (Reihenfolge)
 1. ✅ Server bereitgestellt, Testversion angebunden und live geprüft.
 2. ✅ Version 2.5 veröffentlicht; Geräte koppeln (Gründer, einmalig).
 3. ✅ Postfach-Schlüssel eingerichtet, geplante Claude-Aufgaben angelegt (Inhalte und Analyse wöchentlich; technische Wartung wöchentlich).
-4. Nach Freigabe von 2.6: Wartungsaufgabe meldet ihr Ergebnis an die Überwachung (`melden`).
-5. Instagram-Veröffentlichung über den Worker (Berechtigung „automatisch veröffentlichen“ greift dann).
-6. Verwaltungs-Schnittstelle aktivieren, sobald die Gegenstelle existiert.
+4. ✅ Wartungsaufgabe meldet ihr Ergebnis an die Überwachung (`melden`), Inhaltsaufgabe meldet Probleme.
+5. Verwaltung (höchste Priorität): Bestandsaufnahme → Zuordnung → Test mit nachgebildeter echter Struktur → Bereitstellung mit Freigabe (`AUFTRAG-VERWALTUNG.md`).
+6. Instagram-Veröffentlichung über den Worker (Berechtigung „automatisch veröffentlichen“ greift dann).
 
 ## 6. Bekannte Einschränkungen
+- **Synchronisierung der echten Geräte (Stand 25.11.2026, nach 2.6):** Der Server zeigt seit 16:06 zwei getrennte, je einmal beschriebene Tresore (Metadaten, Inhalte sind verschlüsselt und nicht lesbar). Das kann bedeuten, dass iPhone und iPad jeweils „Synchronisierung einrichten“ statt „Verbinden“ genutzt haben und deshalb nicht miteinander abgleichen. Prüfung am Gerät: „Mehr › Synchronisierung“ – unter „Geräte“ müssen beide Geräte stehen. Falls nicht: auf dem iPad „Kopplung auf diesem Gerät entfernen“, dann auf dem iPhone „Weiteres Gerät koppeln“ und den Code auf dem iPad bei „Verbinden“ eingeben.
+- Live-Prüfungen der Synchronisierung nur über GitHub Actions („Live-Prüfung“): Aus Claude-Sitzungen der Umgebung „Vivalink“ lehnt der Worker Tresor-Anfragen mit 401 ab (Netzwerkschlüssel des Postfachs); Geräte und GitHub Actions sind nicht betroffen.
 - Die Bedienung von 2.3/2.4 ist nur automatisch und per Bildschirmfoto geprüft, nicht auf echten Geräten (Restrisiken siehe Abschnitt 3).
 - Eigene Fotos liegen nur auf dem Gerät, auf dem sie hinzugefügt wurden. Sie sind nicht im Backup und werden nicht synchronisiert (Speicherplatz, Datenschutz).
 - Die Faktenprüfung erkennt typische Probleme, kann Aussagen ohne Datenbasis aber nicht verifizieren. Deine Freigabe bleibt nötig.

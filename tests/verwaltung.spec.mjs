@@ -16,7 +16,7 @@ const available = !!pgBin();
 if (process.env.VL_REQUIRE_VERWALTUNG && !available) throw new Error("PostgreSQL fehlt, Verwaltungs-Tests können nicht laufen");
 test.skip(!available, "PostgreSQL nicht installiert");
 
-let env, fnPort;
+let env, fnPort, tok503;
 test.beforeAll(async ({}, info) => {
   test.setTimeout(240_000); // erster Start lädt Deno und postgres.js
   fnPort = 8740 + info.parallelIndex;
@@ -260,11 +260,24 @@ test("App ↔ echte Gegenstelle: Kopplung in der Oberfläche, Historie, automati
   await ctx.close();
 });
 
+test("Rückbau entfernt nur die Anbindung; Daten und Auswertungen der Verwaltung bleiben unverändert", async ({}, info) => {
+  serverOnly(info);
+  const snap = async () => JSON.stringify(await env.sql`select (select count(*) from profiles) p, (select count(*) from payments) z, (select registrations_total from admin_stats_daily order by day desc limit 1) r, (select count(*) from information_schema.views where table_schema = 'public') v`);
+  const before = await snap();
+  tok503 = await newToken();
+  await env.sql.unsafe("drop schema management_ai cascade; drop owned by management_ai; drop role management_ai;");
+  expect(await snap()).toBe(before);
+  expect((await env.sql`select count(*)::int n from pg_roles where rolname = 'management_ai'`)[0].n).toBe(0);
+  expect((await env.sql`select count(*)::int n from pg_namespace where nspname = 'management_ai'`)[0].n).toBe(0);
+});
+
 test("Datenbank nicht erreichbar → 503 ohne Einzelheiten (keine internen Meldungen nach außen)", async ({}, info) => {
   serverOnly(info);
-  const tok = await newToken();
-  await env.stopPg();
-  const r = await kpis(tok);
-  expect(r.status).toBe(503);
-  expect(await r.text()).toBe('{"error":"unavailable"}');
+  // nach dem Rückbau (Schema fehlt) und bei gestoppter Datenbank: jeweils 503 ohne Einzelheiten
+  for (const step of ["ohne Schema", "Datenbank aus"]) {
+    if (step === "Datenbank aus") await env.stopPg();
+    const r = await kpis(tok503);
+    expect(r.status, step).toBe(503);
+    expect(await r.text()).toBe('{"error":"unavailable"}');
+  }
 });

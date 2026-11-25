@@ -1,6 +1,18 @@
 # Änderungsprotokoll
 
-## 2.6.0 (Entwicklungszweig, noch nicht veröffentlicht) – Überwachung, bessere Analysen, Studio-Feinarbeit, Verwaltung vorbereitet
+## 2.7.0 (Entwicklungszweig, noch nicht veröffentlicht) – Anbindung der Vivalink-Verwaltung
+
+- **Gegenstelle der Verwaltung** (Edge Function, nicht bereitgestellt):
+  - liest nur vorhandene Auswertungen laut `mapping.json`, je Kennzahl nur Datum und Zahl
+  - eigene Rolle ohne Zugriff auf Personendaten, READ-ONLY, eigenes Schema, keine Änderung bestehender Objekte
+  - Kopplungscodes (8 Ziffern, 10 Minuten, Sperre nach Fehlversuchen), widerrufbare Gerätezugänge, Begrenzung, CORS, 503 ohne Einzelheiten
+- **Getrennte Testumgebung:** eigenes PostgreSQL + Edge Function unter Deno, künstliche Verwaltung; läuft bei jedem Testlauf
+- **App:** erkennt Widerruf (kein Dauerabruf), wachsende Pause nach Fehlern, Zeitlimit, Hinweis bei gestörter Anbindung, letzter Fehler sichtbar
+- **Werkzeuge:** `scripts/verwaltung.mjs` (lesende Bestandsaufnahme, Rechte-SQL, Bereitstellungsordner)
+- Wartungsaufgabe meldet ihr Ergebnis an die Überwachung; Inhaltsaufgabe meldet Probleme
+- Datenversion unverändert (4)
+
+## 2.6.0 (veröffentlicht am 25.11.2026) – Überwachung, bessere Analysen, Studio-Feinarbeit, Verwaltung vorbereitet
 
 - **Überwachung der geplanten KI-Aufgaben** (Mehr › Autonomie):
   - je Aufgabe Status, Rhythmus, letzter belegter Erfolg, Ergebnis, nächster Termin

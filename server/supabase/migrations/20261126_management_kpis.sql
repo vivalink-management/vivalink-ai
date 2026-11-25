@@ -60,4 +60,4 @@ end $$;
 revoke all on function management_ai.new_pair_code() from public;
 
 -- Gerät widerrufen: update management_ai.devices set revoked_at = now() where name = '…';
--- Rückbau (vollständig): drop schema management_ai cascade; drop role management_ai;
+-- Rückbau (vollständig): drop schema management_ai cascade; drop owned by management_ai; drop role management_ai;
