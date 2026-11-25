@@ -115,7 +115,7 @@ test.describe("Doppelte Aktionen", () => {
     });
     expect(r.out.slice(0, 4)).toEqual(["fehler", "fehler", "fehler", "fehler"]);
     expect(r.n).toBeLessThanOrEqual(1);
-    if (r.n) expect(r.p).toEqual({ date: "", pillar: "community", type: "einzelbild", cap: "string", tags: [] });
+    if (r.n) expect(r.p).toEqual({ date: "", pillar: "community", type: "einzelbild", cap: "string", tags: ["#Vivalink"] }); // #Vivalink ergänzt die automatische Feinarbeit
   });
 });
 

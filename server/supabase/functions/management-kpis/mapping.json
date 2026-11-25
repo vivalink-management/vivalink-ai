@@ -1,0 +1,15 @@
+{
+  "_hinweis": "Zuordnung der VORHANDENEN Auswertungen der Verwaltung zu den Schlüsseln der Management AI. Beim Umsetzen (nach Freigabe) je Schlüssel die bestehende View bzw. Funktion eintragen; nicht neu berechnen. Leere Einträge werden übersprungen. Jede Quelle muss Zeilen {date, value} liefern, ohne Personendaten, Testkonten und Demo-Meetups ausgeschlossen.",
+  "reg_total": { "source": "", "date": "date", "value": "value" },
+  "reg_week": { "source": "", "date": "date", "value": "value" },
+  "active_users": { "source": "", "date": "date", "value": "value" },
+  "signups": { "source": "", "date": "date", "value": "value" },
+  "attend": { "source": "", "date": "date", "value": "value" },
+  "noshow": { "source": "", "date": "date", "value": "value" },
+  "invites": { "source": "", "date": "date", "value": "value" },
+  "invite_rate": { "source": "", "date": "date", "value": "value" },
+  "payments": { "source": "", "date": "date", "value": "value" },
+  "refunds": { "source": "", "date": "date", "value": "value" },
+  "inc": { "source": "", "date": "date", "value": "value" },
+  "exp": { "source": "", "date": "date", "value": "value" }
+}

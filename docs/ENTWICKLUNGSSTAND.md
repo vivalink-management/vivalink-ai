@@ -1,7 +1,7 @@
 # Zentrale Entwicklungsübersicht: Vivalink Management AI
 
 **Fortsetzungsdokument für alle weiteren Entwicklungsaufträge.** Bei jedem Auftrag zuerst lesen und am Ende aktualisieren. Arbeitsweise (Tests, Gerätetests, Grenzen): **`CLAUDE.md`**.
-Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Version **2.5.0** in Entwicklung · Produktion: **Version 2.4** (`main`, veröffentlicht am 25.11.2026)
+Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.5** (`main`, veröffentlicht am 25.11.2026) · Entwicklungszweig: **Version 2.6** (noch nicht veröffentlicht)
 
 ## 1. Umgesetzt und getestet (noch nicht veröffentlicht)
 
@@ -40,21 +40,55 @@ Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Version **2.5.0*
 - **Über 120 automatische Tests** (lokal über 370 Läufe): Regression V1/V2/2.1, Migration, Backup, Konflikte, Sicherheit, Diagnose, Offline, Testversion, Update und Rückbau, Studio, Grafiken, Bedienung, Management, Empfehlungen, Synchronisierung (inklusive Angreifer, Ablauf, Fehlversuche), Autonomie, Robustheit.
 - Je Test in drei Bildschirmgrößen (Chromium: Desktop, iPhone, iPad), in GitHub Actions zusätzlich WebKit.
 - Nur künstliche Daten. Prüfung auf vertrauliche Inhalte bei jedem Lauf.
+- Live-Prüfung der Synchronisierung (Testversion gegen den echten Worker) bitte über den Workflow „Live-Prüfung“ in GitHub Actions starten, nicht aus einer Claude-Sitzung der Umgebung „Vivalink“: Seit dort der Netzwerkschlüssel für das Aufgaben-Postfach hinterlegt ist, lehnt der Worker Tresor-Anfragen aus dieser Umgebung mit 401 ab (das Postfach selbst funktioniert). Echte Geräte und GitHub Actions sind nicht betroffen; 2.6 dort am 25.11.2026 bestanden (Chromium und WebKit, iPhone und iPad).
+
+## Stand der Autonomie (2.6, Entwicklungszweig)
+
+### Einsatzbereit (in Produktion 2.5 bzw. sofort wirksam)
+| Funktion | Was die KI selbstständig tut | Grenze |
+|---|---|---|
+| Autonomie-Zyklus | Daten prüfen, Befunde, „Heute zu tun“, Entwürfe aus Fakten, Rückblick-Entwurf nach Meetups, Selbstreparatur eindeutiger Datenfehler | nur Stufe 0/1; Stufe 2 mit Berechtigung |
+| Synchronisierung iPhone ↔ iPad | Abgleich beim Öffnen und nach Änderungen, Konflikte erkennen | Ende-zu-Ende verschlüsselt |
+| Geplante Aufgabe „technische Wartung“ (Mo 4:43) | Tests, Abgleich der veröffentlichten Version, Fehlerbehebung auf eigenem Zweig | nie veröffentlichen, kein GitHub-Connector für Pull Requests |
+| Geplante Aufgabe „Instagram-Entwürfe und Wochenanalyse“ (Mo 5:17) | 14-Tage-Entwürfe, Wochenanalyse, bis zu 5 Aufgabenvorschläge | nur Entwürfe bzw. Vorschläge zur Freigabe |
+
+### Neu in 2.6 (fertig und getestet, wirksam nach Freigabe der Version)
+- Überwachung der geplanten Aufgaben (nur belegte Erfolge; ausgeblieben/Problem als Befund)
+- Wochenbericht mit Vorwochenvergleich, Trends, Prioritäten nach Zielrangfolge, Erfolgskontrolle
+- Automatische Feinarbeit an KI-Entwürfen, „Freigabebereit“, Sammelfreigabe
+- Verwaltung: Oberfläche zum Koppeln, automatischer Abruf
+
+### Vorbereitet, nicht aktiv
+| Funktion | Was fehlt |
+|---|---|
+| Rückmeldung der Wartungsaufgabe an die Überwachung | Version 2.6 veröffentlichen, dann Auftrag der Wartungsaufgabe um `melden` ergänzen (Claude) |
+| Kennzahlen aus der Verwaltung | gesonderte Freigabe: Zuordnung der vorhandenen Auswertungen, Migration und Edge Function zuerst in der Supabase-Testumgebung (`AUFTRAG-VERWALTUNG.md`) |
+| Automatisches Veröffentlichen bei Instagram | Meta-App und Business-Login (kostenlos), Worker-Erweiterung, Berechtigung „automatisch veröffentlichen“ |
+
+### Was für eine weitgehend autonome Management-KI noch fehlt
+1. **Echte Kennzahlen automatisch:** Verwaltungsanbindung (oben). Erst damit kann die KI Entwicklungen selbst erkennen statt aus manuellen Einträgen.
+2. **Instagram-Veröffentlichung und -Statistiken automatisch:** schließt den Kreis Entwurf → Veröffentlichung → Ergebnis → Lernen.
+3. **Wirkungsmessung über Zeit:** mehrere Wochen echter Daten, damit Trends und Maßnahmenkontrolle belastbar werden (kein Entwicklungsaufwand, nur Zeit).
+4. **Reaktion in Echtzeit:** heute wöchentlich bzw. beim Öffnen. Für Reaktionen binnen Minuten bräuchte es eine KI-API (kostenpflichtig, nur mit Zustimmung).
+5. **Weitere Aufgabenbereiche** (später, je nach Wunsch): E-Mail/Newsletter-Entwürfe, Meetup-Organisation (Orte, Erinnerungen), Auswertung der Website.
 
 ## 4. Offene Entscheidungen (nur du)
 1. ✅ Version 2.4 freigegeben und veröffentlicht (25.11.2026).
 2. ✅ Synchronisierung: Cloudflare (kostenlos), bestehendes Konto; Server eingerichtet, Webseite unverändert.
-3. **Freigabe von Version 2.5** (Pull Request #3): verbindet die echte App mit dem Server. Gesendet wird erst, wenn du auf einem Gerät „Synchronisierung einrichten“ tippst.
-3. **Verwaltung:** Freigabe des Auftrags in `AUFTRAG-VERWALTUNG.md` (zuerst Testumgebung).
-4. **Instagram:** Business-Konto bestätigen, Anmeldeweg (Empfehlung: Instagram Login).
-5. Später: ob eine kostenpflichtige KI-API für Echtzeit-Reaktionen gewünscht ist.
+3. ✅ Version 2.5 freigegeben und veröffentlicht (25.11.2026).
+4. ✅ Geräte gekoppelt; Postfach-Schlüssel hinterlegt; wöchentliche Aufgaben „technische Wartung“ (Mo 4:43) und „Instagram-Entwürfe und Wochenanalyse“ (Mo 5:17) angelegt.
+5. **Version 2.6:** Freigabe zur Veröffentlichung (Pull Request vom Entwicklungszweig).
+6. **Verwaltung:** Freigabe des Auftrags in `AUFTRAG-VERWALTUNG.md` (zuerst Testumgebung).
+7. **Instagram:** Business-Konto bestätigen, Anmeldeweg (Empfehlung: Instagram Login).
+8. Später: ob eine kostenpflichtige KI-API für Echtzeit-Reaktionen gewünscht ist.
 
 ## 5. Nächste Arbeiten (Reihenfolge)
 1. ✅ Server bereitgestellt, Testversion angebunden und live geprüft.
-2. Version 2.5 nach Freigabe veröffentlichen; danach Geräte koppeln.
-3. Postfach-Schlüssel einrichten, geplante Claude-Aufgaben anlegen (Inhalte und Analyse wöchentlich; technische Wartung wöchentlich).
-4. Instagram-Veröffentlichung über den Worker (Berechtigung „automatisch veröffentlichen“ greift dann).
-5. Verwaltungs-Schnittstelle aktivieren, sobald die Gegenstelle existiert.
+2. ✅ Version 2.5 veröffentlicht; Geräte koppeln (Gründer, einmalig).
+3. ✅ Postfach-Schlüssel eingerichtet, geplante Claude-Aufgaben angelegt (Inhalte und Analyse wöchentlich; technische Wartung wöchentlich).
+4. Nach Freigabe von 2.6: Wartungsaufgabe meldet ihr Ergebnis an die Überwachung (`melden`).
+5. Instagram-Veröffentlichung über den Worker (Berechtigung „automatisch veröffentlichen“ greift dann).
+6. Verwaltungs-Schnittstelle aktivieren, sobald die Gegenstelle existiert.
 
 ## 6. Bekannte Einschränkungen
 - Die Bedienung von 2.3/2.4 ist nur automatisch und per Bildschirmfoto geprüft, nicht auf echten Geräten (Restrisiken siehe Abschnitt 3).

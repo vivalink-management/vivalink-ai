@@ -1,7 +1,29 @@
 # Auftrag: Lesende Kennzahlen-Schnittstelle der Vivalink-Verwaltung (für Rork / Supabase)
 
 **Zweck:** Die Management AI übernimmt zusammengefasste Kennzahlen automatisch, ohne manuelles Übertragen.
-**Gegenseite in der Management AI:** fertig entwickelt und getestet (`js/kpi.js`, `tests/kpi.spec.mjs`).
+**Gegenseite in der Management AI:** fertig entwickelt und getestet (`js/kpi.js`, Oberfläche unter „Mehr › Kennzahlen aus der Verwaltung“, automatischer Abruf höchstens alle 6 Stunden).
+**Gegenstelle der Verwaltung: vorbereitet und mit künstlichen Daten getestet (2.6):**
+- **Logik:** `server/kpi-core.mjs`, dieselbe Logik in Tests und Edge Function
+- **Supabase-Vorlagen** (nicht bereitgestellt):
+  - Migration: `server/supabase/migrations/20261126_management_kpis.sql`
+  - Edge Function: `server/supabase/functions/management-kpis/index.ts`
+  - Zuordnung: `server/supabase/functions/management-kpis/mapping.json`
+
+## Keine Doppelentwicklung
+Die Verwaltung besitzt bereits umfangreiche Auswertungen. Die Gegenstelle **berechnet nichts neu**. In `mapping.json` wird je Schlüssel die **vorhandene** Auswertung (View oder Funktion) eingetragen, die Zeilen `{date, value}` liefert. Leere Einträge werden übersprungen.
+
+## Umsetzung (nach gesonderter Freigabe, zuerst Testumgebung, ohne Rork-Credits soweit möglich)
+1. **Bestandsaufnahme (lesend):** vorhandene Auswertungen der Verwaltung den Schlüsseln zuordnen → `mapping.json`.
+2. **Migration** in der Supabase-Testumgebung ausführen: drei Tabellen, RLS aktiv, keine Policies.
+3. **Edge Function bereitstellen:**
+   - `kpi-core.mjs` in den Funktionsordner kopieren.
+   - Der Service-Role-Schlüssel kommt nur aus der Umgebungsvariable der Funktion.
+4. **Kopplungscode in der Verwaltung:**
+   - SHA-256 von `vivalink-pair:<Code>` in `management_pair_codes` speichern (Ablauf 10 Minuten).
+   - Erzeugung durch einen Admin; das kann zunächst ein SQL-Befehl sein, später eine Schaltfläche in Rork.
+5. **In der Management AI:**
+   - Funktionsadresse als `VL_KPI_URL` in `js/config.js` und in die CSP (`connect-src`) eintragen.
+   - Test mit „VL Test“, dann Freigabe.
 **Ausführung:** erst nach Freigabe durch den Gründer, zuerst in der **Supabase-Testumgebung**, dann in der Produktion. Rork-Credits nur, wenn ohne Rork nicht umsetzbar.
 
 ## Grundsätze

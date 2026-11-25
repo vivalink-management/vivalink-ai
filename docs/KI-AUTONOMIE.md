@@ -67,7 +67,11 @@ Eine KI, die **jederzeit sofort** auf Ereignisse reagiert, braucht eine API. Die
   - Hinweis: Geplante Aufgaben haben keinen GitHub-Connector. Die Korrektur liegt dann auf einem Zweig; den Pull Request legt Claude in einer normalen Sitzung an.
 - **Erprobt (Testversion, echter Server):** Auftrag abgeholt, 7 Entwürfe, Wochenanalyse und 3 Aufgabenvorschläge zurückgegeben. Die App hat alles korrekt übernommen und geprüft.
 
-**Einrichtung der Inhalts- und Analyseaufgabe (einmalig, nach Veröffentlichung der App mit Synchronisierung):**
+- **„Vivalink: Instagram-Entwürfe und Wochenanalyse (wöchentlich)“** (montags 5:17 Uhr, Umgebung „Vivalink“): eingerichtet am 25.11.2026.
+  - Postfach-Schlüssel als geschützter Netzwerkschlüssel hinterlegt; Verbindung geprüft (Auftrag der echten App abholbar).
+  - Ergebnisse holt die App beim nächsten Öffnen selbst ab.
+
+**Einrichtung der Inhalts- und Analyseaufgabe (erledigt; Ablauf zur Erinnerung):**
 1. Du tippst in der App **Mehr › Autonomie › Geplante KI-Aufgaben › Einrichten** und kopierst den Schlüssel.
 2. Claude öffnet ein sicheres Formular für die Worker-Adresse (Header `x-vl-task-token`); du fügst den Schlüssel dort ein.
 3. Claude legt die geplanten Aufgaben an:

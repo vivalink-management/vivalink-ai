@@ -1,6 +1,28 @@
 # Änderungsprotokoll
 
-## 2.5.0 (Entwicklungszweig) – Synchronisierung über Cloudflare vorbereitet, Aufgaben-Postfach für geplante Claude-Aufgaben
+## 2.6.0 (Entwicklungszweig, noch nicht veröffentlicht) – Überwachung, bessere Analysen, Studio-Feinarbeit, Verwaltung vorbereitet
+
+- **Überwachung der geplanten KI-Aufgaben** (Mehr › Autonomie):
+  - je Aufgabe Status, Rhythmus, letzter belegter Erfolg, Ergebnis, nächster Termin
+  - erkennt ausgebliebene oder fehlgeschlagene Läufe und meldet sie als Befund
+  - Erfolg nur mit Beleg (Zeitstempel und Inhalt)
+- **Ergebnis-Postfach als Liste:**
+  - mehrere Rückmeldungen gehen nicht verloren, atomares Leeren
+  - Rückmeldung der Wartung per `ki-aufgabe.mjs melden`
+- **Wochenbericht:**
+  - Vergleich mit der Vorwoche, 4-Wochen-Trend je Kennzahl
+  - automatisch erkannte wichtige Entwicklungen
+  - Empfehlungen nach deiner Zielrangfolge, Erfolgskontrolle der Maßnahmen
+  - frühere Berichte und eine Anleitung zum Vergleich gehen an die wöchentliche Claude-Analyse
+- **Studio:**
+  - automatische Feinarbeit an KI-Entwürfen (transparent angezeigt): fehlender Anmelde-Hinweis, #Vivalink, laute oder zu viele Emojis, Leerzeilen
+  - Kennzeichnung „Freigabebereit“ und Sammelfreigabe der nächsten 14 Tage
+- **Verwaltung (vorbereitet):**
+  - Oberfläche zum Koppeln, automatischer Abruf höchstens alle 6 Stunden
+  - Gegenstelle mit Zuordnung der vorhandenen Auswertungen, Supabase-Vorlagen
+  - alles mit künstlichen Daten getestet, nichts an Supabase verändert
+
+## 2.5.0 (veröffentlicht am 25.11.2026) – Synchronisierung über Cloudflare vorbereitet, Aufgaben-Postfach für geplante Claude-Aufgaben
 
 - **Server:** Cloudflare Worker mit D1-Speicher.
   - atomare Versionsprüfung: gleichzeitiges Schreiben kann nie still überschreiben

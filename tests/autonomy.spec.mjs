@@ -151,7 +151,7 @@ test("Geplante Claude-Aufgabe: Auftrag (Instagram + Wochenanalyse) ohne Vertraul
   expect(st.tasks.some((t) => t.title.includes("Meetup-Orte"))).toBe(false); // Vorschläge, noch keine Aufgaben
   // Postfach „in“ wurde geleert; erneutes Abholen bringt nichts doppelt
   await page.click('button[data-a="auTaskIn"]');
-  await expectToast(page, "keine Ergebnisse");
+  await expectToast(page, "keine neuen Ergebnisse");
   // Vorschläge erscheinen unter „Entscheidungen für dich“ und werden erst nach Auswahl angelegt
   await page.click('#sheet button[data-a="close"]');
   await nav(page, "home");

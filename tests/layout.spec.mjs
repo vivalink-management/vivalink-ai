@@ -146,6 +146,9 @@ for (const small of [false, 375, 320]) {
       await page.click('button[data-a="sync"]');
       await check("Synchronisierung");
       await page.click('#sheet button[data-a="close"]');
+      await page.click('button[data-a="kpi"]');
+      await check("Verwaltung");
+      await page.click('#sheet button[data-a="close"]');
       await page.click('button[data-a="diag"]');
       await page.waitForTimeout(400);
       await check("Diagnose");
