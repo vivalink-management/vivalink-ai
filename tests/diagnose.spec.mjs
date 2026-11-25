@@ -63,12 +63,16 @@ test("Gleiche Fehler werden zusammengefasst, Protokoll ist begrenzt", async ({ p
 });
 
 test("Speicherfehler wird erkannt, gemeldet und protokolliert", async ({ page }) => {
-  await open(page);
-  await page.evaluate(() => {
-    indexedDB.open = () => {
-      throw new Error("Speicher simuliert defekt");
+  // Störung bleibt auch über ein erneutes Laden der Seite bestehen (sonst in WebKit unzuverlässig)
+  await page.addInitScript(() => {
+    const orig = IDBFactory.prototype.open;
+    IDBFactory.prototype.open = function (...a) {
+      if (sessionStorage.getItem("vl-broken")) throw new Error("Speicher simuliert defekt");
+      return orig.apply(this, a);
     };
   });
+  await open(page);
+  await page.evaluate(() => sessionStorage.setItem("vl-broken", "1"));
   await nav(page, "tasks");
   await page.click('button[data-a="newTask"]');
   await page.fill("#t-t", "Wird nicht gespeichert");
