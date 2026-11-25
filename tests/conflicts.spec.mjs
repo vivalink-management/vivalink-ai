@@ -124,6 +124,7 @@ test("Ältere Daten ohne Änderungshistorie: unterschiedliche Stände werden als
 
 test("Kennzahl-Ziel auf zwei Geräten geändert: Konflikt mit Rücknahme", async ({ page }) => {
   await seed(page, { state: v1State() });
+  await page.click('button[data-a="allMet"]');
   await page.click('[data-a="met"][data-id="m_signups"]');
   await page.fill("#v-g", "30");
   await page.click('button[data-a="saveGoal"]');

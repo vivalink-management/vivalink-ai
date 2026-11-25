@@ -19,7 +19,8 @@ export async function guard(page) {
   return { errors, external };
 }
 export async function ready(page) {
-  await expect(page.locator("nav button")).toHaveCount(5);
+  await expect(page.locator('nav button[data-id="home"]')).toBeVisible();
+  await page.waitForFunction(() => typeof S !== "undefined" && S && Array.isArray(S.tasks));
 }
 export async function open(page) {
   await page.goto("/");

@@ -9,7 +9,7 @@ function scenario() {
   const old = NOW.getTime() - 20 * 864e5;
   const e = (id, d, v) => ({ id, date: day(d), value: v, status: "confirmed", src: "manual", note: "", updatedAt: old });
   return {
-    v: 3, dev: "devRules", accent: "", lastBackup: day(-10), suggest: {}, conflicts: [],
+    v: 3, dev: "devRules", accent: "", lastBackup: day(-40), suggest: {}, conflicts: [],
     memory: [
       { id: "d1", cat: "Entscheidung", title: "Testentscheidung", text: "", status: "confirmed", date: day(-30), reason: "", result: "", private: false, active: true, createdAt: old, updatedAt: old },
       { id: "u1", cat: "Ziele", title: "Unklarer Testeintrag", text: "", status: "unknown", date: day(-1), reason: "", result: "", private: false, active: true, createdAt: old, updatedAt: old },
@@ -35,7 +35,8 @@ test("Erwartete Befunde werden erkannt und richtig als Fakt bzw. Annahme gekennz
   await seed(page, { state: scenario() });
   const F = await page.evaluate(() => findings().map((f) => ({ id: f.id, kind: f.kind, sev: f.sev })));
   const ids = F.map((f) => f.id);
-  for (const id of ["t-od", "t-hn", "t-st", "g-gap", "g-un", "g-nr", "m-tr-reg_week", "mt-pace", "bk"]) expect(ids, id).toContain(id);
+  for (const id of ["t-od", "t-hn", "t-st", "g-gap", "g-un", "g-nr", "m-tr-reg_week", "mt-pace"]) expect(ids, id).toContain(id);
+  expect(ids).not.toContain("bk"); // keine Erinnerung an manuelle Backups
   expect(F.find((f) => f.id === "mt-pace")).toMatchObject({ kind: "annahme", sev: 3 });
   expect(F.find((f) => f.id === "t-od")).toMatchObject({ kind: "fakt", sev: 3 });
   expect(F.find((f) => f.id === "m-tr-reg_week")).toMatchObject({ kind: "fakt", sev: 2 });
@@ -65,6 +66,8 @@ test("Ohne Auffälligkeiten: „Aktuell kein Handlungsbedarf erkannt“", async 
   s.metrics = [];
   s.meetup = { date: day(40), place: "Testort", goal: "10", note: "", updatedAt: 1 };
   s.lastBackup = day(0);
+  // Studio vollständig eingerichtet und Beitrag für die nächsten Tage freigegeben
+  s.studio = { posts: [{ id: "p1", status: "freigegeben", source: "ki", date: day(2), time: "18:00", pillar: "tipps", type: "einzelbild", title: "Testbeitrag", hook: "", slides: [{ template: "frage", title: "Testfrage", text: "" }], caption: "Test", hashtags: [], updatedAt: 1 }], brand: { region: "Testregion", signup: "Registrierung über die Test-Website", colorsConfirmed: true }, settings: {}, learned: {} };
   await seed(page, { state: s });
   const ids = await page.evaluate(() => findings().map((f) => f.id));
   expect(ids.filter((i) => !i.startsWith("m-nv"))).toEqual([]);

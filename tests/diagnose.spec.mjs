@@ -1,5 +1,6 @@
 // Diagnose und technisches Fehlerprotokoll (Grundlage für spätere selbstständige Fehlerbehebung).
 import { test, expect } from "@playwright/test";
+import { APP, SCHEMA, CACHE } from "./version.mjs";
 import { guard, open, seed, nav, state, kv, stubClipboard, waitClip, expectToast } from "./helpers.mjs";
 import { v1State, v2State } from "./fixtures.mjs";
 
@@ -9,14 +10,14 @@ test("Diagnoseseite zeigt Version, Speichertest, Integrität und keine Inhalte",
   await seed(page, { state: v2State() });
   await nav(page, "more");
   await page.click('button[data-a="diag"]');
-  await expect(page.locator('[data-check="app"]')).toHaveText("2.1.0");
+  await expect(page.locator('[data-check="app"]')).toHaveText(APP);
   await expect(page.locator('[data-check="storage"]')).toHaveText("OK (Schreiben und Lesen)");
   await expect(page.locator('[data-check="mode"]')).toHaveText("Browser-Tab");
   await expect(page.locator('[data-issue="none"]')).toBeVisible();
   await page.click('button[data-a="cpDiag"]');
   const t = await waitClip(page);
   expect(t).toContain("Diagnosebericht (ohne Inhalte)");
-  expect(t).toContain("App-Version: 2.1.0");
+  expect(t).toContain("App-Version: " + APP);
   for (const secret of ["Testziel", "Testaufgabe", "kontakt@example.invalid", "Testort", "Testentscheidung"]) expect(t).not.toContain(secret);
   expect(g.errors).toEqual([]);
 });
@@ -62,12 +63,16 @@ test("Gleiche Fehler werden zusammengefasst, Protokoll ist begrenzt", async ({ p
 });
 
 test("Speicherfehler wird erkannt, gemeldet und protokolliert", async ({ page }) => {
-  await open(page);
-  await page.evaluate(() => {
-    indexedDB.open = () => {
-      throw new Error("Speicher simuliert defekt");
+  // Störung bleibt auch über ein erneutes Laden der Seite bestehen (sonst in WebKit unzuverlässig)
+  await page.addInitScript(() => {
+    const orig = IDBFactory.prototype.open;
+    IDBFactory.prototype.open = function (...a) {
+      if (sessionStorage.getItem("vl-broken")) throw new Error("Speicher simuliert defekt");
+      return orig.apply(this, a);
     };
   });
+  await open(page);
+  await page.evaluate(() => sessionStorage.setItem("vl-broken", "1"));
   await nav(page, "tasks");
   await page.click('button[data-a="newTask"]');
   await page.fill("#t-t", "Wird nicht gespeichert");
@@ -95,5 +100,5 @@ test("Integritätsprüfung findet fehlende Verweise und doppelte IDs", async ({ 
 test("Migration wird im Protokoll festgehalten", async ({ page }) => {
   await seed(page, { state: v1State() });
   await expect.poll(async () => ((await kv(page, "log")) || []).some((e) => e.code === "migration")).toBe(true);
-  expect((await state(page)).v).toBe(3);
+  expect((await state(page)).v).toBe(SCHEMA);
 });

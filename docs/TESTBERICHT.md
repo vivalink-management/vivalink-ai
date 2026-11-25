@@ -1,3 +1,24 @@
+# Testbericht
+
+## Version 2.2.0 – Instagram-Studio (Entwicklungszweig, nicht veröffentlicht)
+
+| Prüfung | Ergebnis |
+|---|---|
+| Neue Studio-Tests (13): Markenprofil, Monatsplan, Faktenprüfung, KI-Antwort, Grafiken, Wochenfreigabe, Bearbeiten, Export Feed/Story, Teilen, Auswertung und Lernen, automatische Meetup-Entwürfe ohne Doppelungen, Regelmotor-Hinweise, Synchronisierungs-Tauglichkeit, manipulierte KI-Antworten, Sicherungspunkte, 30-Tage-Hinweis | ✅ lokal |
+| Update **2.1 → 2.2** und Rückbau 2.2 → 2.1 → 2.2 mit dem **originalen Code von 2.1** (`tests/fixtures/legacy-v21`) | ✅ lokal |
+| Alle bisherigen Tests (Regression V1/V2/2.1, Migration, Backup, Konflikte, Sicherheit, Diagnose, PWA, Testversion) | ✅ lokal |
+| GitHub Actions (Chromium + WebKit, Desktop/iPhone/iPad) | siehe Pull Request |
+| Sichtprüfung der Grafiken (alle Vorlagen, Feed und Story) und der Studio-Oberfläche auf iPhone-Breite | ✅ Layout überarbeitet |
+
+**Während der Entwicklung gefundene und behobene Fehler**
+1. Ein bestätigter Fakt mit dem Wort „kostenlos“ ließ jede Preisangabe durch. Jetzt muss jeder Betrag genau so in den Fakten stehen.
+2. Die Faktenprüfung erkannte das Datum „12.3.2026“ nicht als erlaubt, sondern nur „2026-03-12“. Jetzt werden alle üblichen Schreibweisen erkannt.
+3. Die Dublettenerkennung war bei kurzen Einstiegssätzen zu empfindlich.
+4. Meetup-Ankündigungen wären doppelt entstanden (Automatik und Monatsplan). Beide Wege kennen sich jetzt gegenseitig.
+5. Der Test-Build kopierte die Markendateien nicht. Der Service Worker der Testversion hätte sich deshalb nicht installieren lassen.
+
+---
+
 # Testbericht Version 2.1.0
 
 Stand: 23.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · **nicht veröffentlicht, nicht in `main`**

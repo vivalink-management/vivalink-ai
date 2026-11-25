@@ -1,7 +1,7 @@
 /* Grundlagen: Konstanten, Hilfsfunktionen, Speicher, technisches Protokoll */
-const APP_VERSION = "2.1.0";
+const APP_VERSION = "2.4.0";
 const IS_TEST = window.VL_CHANNEL === "test";
-const SCHEMA = 3; // Datenversion: 1 = GitHub-Version, 2 = Artefakt (Kennzahlen), 3 = Konflikterkennung
+const SCHEMA = 4; // Datenversion: 1 = GitHub-Version, 2 = Artefakt (Kennzahlen), 3 = Konflikterkennung, 4 = Instagram-Studio
 const CATS = [
   "Ziele",
   "Geschäftsmodell",
@@ -71,6 +71,7 @@ async function save() {
     toast("Speichern auf diesem Gerät nicht möglich");
     return false;
   }
+  if (typeof syncSoon === "function") syncSoon(); // nur aktiv, wenn Synchronisierung freigegeben und eingerichtet
   return true;
 }
 /* Jede Änderung merkt sich, auf welchem Stand sie beruht (revs). So erkennt das Zusammenführen,

@@ -1,0 +1,107 @@
+# Weg zu einer weitgehend selbstständigen Management AI: realistische Bewertung
+
+## 1. Was mit den vorhandenen Abonnements möglich ist (ohne Zusatzkosten)
+
+| Weg | Was geht | Was nicht geht | Kosten |
+|---|---|---|---|
+| **Claude Pro: Chat** | Analysen, Texte, Monatspläne per Kopieren und Einfügen (heute im Einsatz) | kein Zugriff der App auf Claude ohne dich | im Abo |
+| **Claude Pro: geplante Claude-Code-Aufgaben** | Zeitgesteuerte Cloud-Sitzungen, frühestens stündlich, z. B. montags: Fakten lesen, Wochen- oder Monatsplan im Studio-Format erstellen, Entwürfe ablegen, Bericht schreiben, Tests und technische Prüfungen ausführen | kein garantierter Dauerbetrieb: Ist das Pro-Kontingent erschöpft, fällt ein Lauf aus. Kein Zugriff auf iPhone/iPad direkt. | im Abo |
+| **ChatGPT Plus** | manuelle Nutzung, Bilderzeugung, Aufgaben-Erinnerungen in ChatGPT | keine Schnittstelle, über die die App ChatGPT nutzen könnte. Ergebnisse gelangen nur per Kopieren in die App. | im Abo |
+| **Claude- oder OpenAI-API** | echte Programmsteuerung, jederzeit, aus dem Server | – | **kostenpflichtig pro Nutzung**, nicht im Pro- oder Plus-Abo enthalten. Nur nach deiner Zustimmung. |
+| **Lokale KI im Browser (WebGPU)** | kurze Texte offline und privat | komplexe Analysen, verlässliches Deutsch | 0 € |
+
+**Ehrliche Einschätzung:** Mit den vorhandenen Abos lässt sich ein **regelmäßig selbstständig arbeitender Assistent** bauen:
+- Er läuft wöchentlich oder täglich über geplante Claude-Code-Aufgaben.
+- Der Regelmotor in der App läuft immer, ohne KI.
+
+Eine KI, die **jederzeit sofort** auf Ereignisse reagiert, braucht eine API. Die kostet pro Nutzung; bei moderater Nutzung schätzungsweise wenige Euro im Monat. Diese Entscheidung liegt bei dir.
+
+## 2. Autonomie-Zyklus und Berechtigungen (in Version 2.3 umgesetzt)
+**Zyklus** (`js/autonomy.js`): Er läuft beim Start, beim Wiederöffnen (höchstens alle 6 Stunden) und auf Knopfdruck. Bericht unter „Mehr › Autonomie“.
+
+| Schritt | Was passiert | Stufe |
+|---|---|---|
+| 1. Daten erfassen | lokale Daten; Synchronisierung und Verwaltung, sobald angebunden | 0 |
+| 2. Analysieren | Regelmotor (Fakten und Annahmen getrennt) | 0 |
+| 3. Aufgaben erkennen | „Heute zu tun“ mit Begründung und Reihenfolge | 0 |
+| 4. Maßnahmen entwickeln | priorisierte Vorschläge mit Nutzen, Aufwand, Dringlichkeit, Risiko | Start: 2 |
+| 5. Entwürfe erstellen | Instagram-Entwürfe nur aus bestätigten Fakten (Ankündigung, Erinnerung, Rückblick mit Platzhaltern) | 0 |
+| 6. Freigaben einholen | warten auf dich – oder automatisch mit Berechtigung | 2 |
+| 7. Freigegebenes ausführen | Veröffentlichung: heute manuell, später über den Worker | 2 |
+| 8. Ergebnisse prüfen | Maßnahmenkontrolle zum Prüftermin, ohne Ursachenbehauptung | 0 |
+
+**Berechtigungen:** Eine Handlung der Stufe 2 läuft nur dann automatisch, wenn du eine Berechtigung erteilt hast.
+- **Befristet:** höchstens 3 Monate.
+- **Begrenzt:** höchstens n pro Tag oder Woche; die Grenze hält auch bei gleichzeitigen Abläufen.
+- **Jederzeit widerrufbar.**
+- **Synchronisiert und protokolliert:** Jede automatische Nutzung steht mit Verweis auf die Berechtigung im Aktionsprotokoll.
+- **Zurzeit erteilbar:**
+  - „Beiträge ohne Prüfhinweis automatisch freigeben“ (nur Termine in den nächsten 7 Tagen, nie Demo)
+  - „Freigegebene Beiträge automatisch veröffentlichen“ (wirkt erst nach der Instagram-Anbindung)
+- **Stufe 3 ist nicht erteilbar:** Preise, Zahlungen, Werbung, Produktivsysteme, kostenpflichtige Dienste.
+
+## 3. Geplante Claude-Aufgaben: Aufgaben-Kanal (vorbereitet, getestet, nicht aktiv)
+1. **Voraussetzung:** Der Synchronisierungs-Server ist eingerichtet (`SYNCHRONISIERUNG.md`).
+2. **In der App (einmalig):** „Mehr › Autonomie › Geplante KI-Aufgaben › Einrichten“. Die App zeigt einmalig einen **Aufgaben-Schlüssel**. Er öffnet nur zwei Postfächer (Auftrag und Ergebnis), **nie** den Daten-Tresor.
+3. **Auftrag:** Die App legt verschlüsselt ab:
+   - freie Termine der nächsten 14 Tage
+   - Regeln, Tonalität, Blickwinkel
+   - ausschließlich öffentliche Fakten: keine vertraulichen Einträge, keine Geschäftsmodell-Interna (getestet)
+4. **Geplante Claude-Aufgabe** (Claude Code, im Pro-Abo):
+   - In der Umgebung der Aufgabe als geheime Werte: `VL_SYNC_URL` und `VL_TASK_KEY`.
+   - Ablauf: `node scripts/ki-aufgabe.mjs holen` → Beiträge im Format `vivalink-studio-plan` schreiben → `node scripts/ki-aufgabe.mjs abgeben antwort.json`.
+   - Vorschlag: montags früh.
+5. **Rückweg:** „Ergebnisse abholen“ übernimmt die Antwort **nur als Entwürfe**.
+   - Es gelten dieselben Prüfungen wie bei jeder KI-Antwort.
+   - Jede Antwort wird einmalig übernommen; doppelt eingefügte Beiträge werden übersprungen.
+   - Ohne Berechtigung wird nichts freigegeben.
+6. **Grenzen:** Ist das Pro-Kontingent erschöpft, fällt ein Lauf aus. Die App funktioniert dann wie bisher; der Monatsplan per „Auftrag kopieren“ bleibt jederzeit möglich.
+
+## 4. Lokale KI auf iPhone und iPad
+- **Geräte laut KI-Test:** iPhone 16 Pro (8 GB Arbeitsspeicher), iPad mit A16-Chip.
+- **Speichergrenze:** Safari erlaubt einer Webseite in der Praxis nur etwa 1,5–3 GB, darüber wird die Seite neu geladen.
+- **Realistische Modelle (WebLLM, 4-Bit):**
+  - Llama 3.2 1B (ca. 0,9 GB) und Qwen 2.5 1.5B (ca. 1,1 GB): laufen voraussichtlich, langsam bis mittel.
+  - Phi-3.5-mini (ca. 2,2 GB) und größere Modelle sind wahrscheinlich zu groß.
+- **Qualität im Deutschen:** Modelle mit 1–2 Milliarden Parametern machen spürbar Grammatik- und Faktenfehler.
+- **Geeignet nur für:**
+  - Varianten einer Caption umformulieren
+  - Hashtag-Vorschläge
+  - kurze Zusammenfassungen
+  - einfache Einordnung von Texten
+- **Ungeeignet für:** Strategie, Analysen, alles mit Fakten.
+- **Empfehlung:** vorerst **nicht einbauen**.
+  - Der Download von über 1 GB pro Gerät und die Wartezeiten stehen in keinem Verhältnis zum Nutzen.
+  - Die Arbeitsaufträge und später die geplanten Claude-Aufgaben liefern deutlich bessere Ergebnisse.
+  - Der vorhandene KI-Test (Mehr › KI-Test) bleibt, um das später mit echten Messwerten neu zu bewerten.
+
+## 5. Werkzeuge kontrolliert nutzen (vorbereitet)
+- **Freigabelogik** (`js/actions.js`): Jede Handlung hat eine Stufe.
+  - Stufe 0: automatisch
+  - Stufe 1: automatisch mit Rückgängig-Punkt
+  - Stufe 2: nur nach Freigabe
+  - Stufe 3: nie automatisch (Preise, Zahlungen, bezahlte Werbung, Produktivsysteme, kostenpflichtige Dienste)
+- Unbekannte Handlungen werden abgelehnt.
+- Alles wird im **Aktionsprotokoll** festgehalten (Mehr › Diagnose).
+- **Vorgesehene Werkzeuge**, jeweils serverseitig im selben kostenlosen Worker, mit Zugangsdaten nur dort:
+
+| Werkzeug | Stufe | Stand |
+|---|---|---|
+| Instagram: veröffentlichen | 2 | Schutz vor doppelter oder nicht freigegebener Veröffentlichung fertig und getestet; Anbindung siehe `INSTAGRAM-AUTOMATIK.md` |
+| Instagram: Statistiken | 0 | Datenmodell (`metrics` je Beitrag) und Lernlogik fertig |
+| Vivalink-Verwaltung: Kennzahlen lesen | 0 | Client fertig und getestet; Gegenstelle laut `AUFTRAG-VERWALTUNG.md` |
+| Kalender (z. B. Meetup-Termine) | 0 lesen / 2 schreiben | nicht begonnen |
+| Canva | – | nicht nötig: Die Grafiken entstehen kostenlos in der App. Canvas Schnittstelle für automatische Vorlagen ist nach unserem Kenntnisstand Enterprise-Kunden vorbehalten. |
+| Website-Statistiken | 0 | erst, wenn ein datenschutzfreundliches Statistikwerkzeug auf vivalink.me genutzt wird |
+
+## 6. Fortschritt (ehrliche Einordnung, Stand 2.3)
+- **Hilfreicher Management-Assistent:** **weitgehend vorhanden** (ca. 80–85 %).
+  - Daten, Regeln, Empfehlungen mit Risiken, „Heute zu tun“, Maßnahmenkontrolle
+  - Instagram-Studio mit fertigen Grafiken
+  - Sicherung und Robustheit
+- **Weitgehend autonome KI:** etwa **35–40 % des Weges**. Die Architektur (Zyklus, Berechtigungen, Protokoll, Aufgaben-Kanal, sichere Synchronisierung) steht. Es fehlen die Anbindungen:
+  1. Synchronisierungs-Server einrichten (deine Entscheidung zum Anbieter; kostenlos)
+  2. Geplante Claude-Aufgabe anlegen (im Pro-Abo)
+  3. Kennzahlen-Gegenstelle in der Verwaltung (Rork/Supabase-Auftrag)
+  4. Instagram-Veröffentlichung und Statistiken (Meta-App, Business-Login)
+  5. Optional eine KI-API für Reaktionen in Echtzeit (kostenpflichtig, nur mit deiner Zustimmung)

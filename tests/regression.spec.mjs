@@ -1,5 +1,6 @@
 // Regressionstests: alle Funktionen aus Version 1 (GitHub) und Version 2 (Artefakt) über die Oberfläche.
 import { test, expect } from "@playwright/test";
+import { APP, SCHEMA, CACHE, METRICS } from "./version.mjs";
 import { guard, open, ready, nav, state, stubClipboard, clip, toastText, seed } from "./helpers.mjs";
 import { v2State } from "./fixtures.mjs";
 
@@ -19,7 +20,9 @@ test("Start: Übersicht, Empfehlungen, Meetup, Kennzahlen, Navigation", async ({
   for (const t of ["offen", "überfällig", "Wissen", "Entscheidungen"]) await expect(page.locator(".stat span", { hasText: t })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Empfehlungen" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Nächstes Meetup" })).toBeVisible();
-  await expect(page.locator('[data-a="met"]')).toHaveCount(11);
+  await expect(page.locator('[data-a="met"]')).toHaveCount(0); // ohne Werte eingeklappt
+  await page.click('button[data-a="allMet"]');
+  await expect(page.locator('[data-a="met"]')).toHaveCount(METRICS);
   for (const id of ["tasks", "memory", "ai", "more", "home"]) {
     await nav(page, id);
     await expect(page.locator(`nav button[data-id="${id}"]`)).toHaveClass(/on/);
@@ -193,7 +196,7 @@ test("Regelmotor: Befund als Aufgabe, Später, Nicht relevant, Alle Hinweise", a
   const cards = page.locator('#app .card:has(button[data-a="mk"])');
   const n0 = await cards.count();
   expect(n0).toBeGreaterThan(0);
-  await expect(cards.first().locator(".chip")).toHaveText(/Fakt|Annahme/);
+  await expect(cards.first().locator(".row.sp .chip")).toHaveText(/Fakt|Annahme/);
   const before = (await state(page)).tasks.length;
   const mkId = await cards.first().locator('button[data-a="mk"]').getAttribute("data-id");
   await cards.first().locator('button[data-a="mk"]').click();
@@ -219,7 +222,7 @@ test("Mehr: WebGPU-Hinweis, KI-Test speichern und kopieren, Akzentfarbe, Version
   await open(page);
   await nav(page, "more");
   await expect(page.locator("#app")).toContainText("WebGPU:");
-  await expect(page.locator("#app")).toContainText("Version 2.1.0 · Datenversion 3");
+  await expect(page.locator("#app")).toContainText(`Version ${APP} · Datenversion ${SCHEMA}`);
   await page.click('button[data-a="aiTest"]');
   await expect(page.locator("#sheet textarea[id^=pt]")).toHaveCount(4);
   await page.fill("#a-mod", "Testmodell");

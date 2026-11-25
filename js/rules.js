@@ -284,17 +284,27 @@ function findings() {
       }
     }
   }
-  if ((S.memory.length || S.tasks.length) && (!S.lastBackup || ago(S.lastBackup) > 7))
-    add(
-      "bk",
-      "system",
-      2,
-      "fakt",
-      "Backup ist veraltet",
-      "Sichere deine Daten unter „Mehr“.",
-      [S.lastBackup ? "Letztes Backup: " + fmt(S.lastBackup) + "." : "Es gibt noch kein Backup."],
-      "more",
-    );
+  // Keine Erinnerung an manuelle Backups (Entscheidung des Gründers). Gemeldet wird nur, wenn die automatische Sicherung ausfällt.
+  if ((S.memory.length || S.tasks.length) && (!LASTSNAP || ago(LASTSNAP) > 2))
+    add("sys-snap", "system", 2, "fakt", "Automatische Sicherung funktioniert nicht", "Öffne „Mehr › Diagnose“ und prüfe den Speichertest.", [LASTSNAP ? "Letzter automatischer Sicherungspunkt: " + fmt(LASTSNAP) + "." : "Noch kein automatischer Sicherungspunkt vorhanden."], "more");
+  /* Instagram-Studio: erkennt selbstständig, wann Marketing-Arbeit ansteht */
+  if (S.studio) {
+    const SP = livePosts(),
+      nm = nextMonth(t.slice(0, 7)),
+      in7 = addDays(t, 7);
+    const miss = brandMissing();
+    if (miss.length) add("ig-brand", "studio", 1, "fakt", "Markenprofil für Instagram unvollständig", "Ergänze im Studio: " + miss.join(", ") + ".", ["Ohne diese Angaben verweisen Beiträge nur auf die Website."], "studio");
+    if (Number(t.slice(8)) >= 20 && !SP.some((p) => (p.date || "").startsWith(nm)))
+      add("ig-plan", "studio", 1, "fakt", "Instagram-Plan für " + new Date(nm + "-15T12:00").toLocaleDateString("de-DE", { month: "long" }) + " fehlt", "Erstelle im Studio den Monatsplan.", ["Für den nächsten Monat ist noch kein Beitrag geplant."], "studio");
+    const wait = SP.filter((p) => p.status === "entwurf" && p.date && p.date >= t && p.date <= in7);
+    if (wait.length) add("ig-wait", "studio", 2, "fakt", wait.length + " Instagram-Beitrag/Beiträge warten auf Freigabe", "Prüfe und gib sie im Studio frei.", wait.slice(0, 5).map((p) => `${fmt(p.date)}: ${p.title}`), "studio");
+    else if (!SP.some((p) => p.date && p.date >= t && p.date <= in7 && p.status !== "abgelehnt"))
+      add("ig-none", "studio", 1, "fakt", "Keine Instagram-Beiträge für die nächsten 7 Tage", "Erstelle Beiträge im Studio.", ["Für die nächsten 7 Tage ist nichts geplant."], "studio");
+    const due = SP.filter((p) => p.status === "freigegeben" && p.date && p.date <= t);
+    if (due.length) add("ig-due", "studio", 2, "fakt", due.length + " freigegebene(r) Beitrag/Beiträge zur Veröffentlichung fällig", "Im Studio öffnen → „Teilen (Instagram)“ → danach „Als veröffentlicht markieren“.", due.slice(0, 5).map((p) => `${fmt(p.date)} ${p.time}: ${p.title}`), "studio");
+    const unr = SP.filter((p) => p.status === "veroeffentlicht" && !p.metrics && p.publishedAt && now - p.publishedAt > 3 * 864e5);
+    if (unr.length) add("ig-rate", "studio", 1, "fakt", unr.length + " veröffentlichte(r) Beitrag/Beiträge ohne Ergebnisse", "Trage Reichweite und Interaktionen ein – daraus lernt die Planung.", unr.slice(0, 5).map((p) => p.title), "studio");
+  }
   /* Technische Selbstüberwachung: Datenkonflikte und Fehler im technischen Protokoll */
   const oc = openConflicts();
   if (oc.length)
@@ -320,17 +330,21 @@ function findings() {
       errs.slice(-3).map((e) => e.code + ": " + e.msg),
       "more",
     );
+  measureFindings(add, t); // Erfolgskontrolle freigegebener Maßnahmen
   const sg = S.suggest || {},
     hasT = (id) => S.tasks.some((x) => !x.done && x.fid === id);
   return F.filter((f) => {
     const s = sg[f.id];
-    return !(s && s.until > t) && !hasT(f.id);
+    // Ausgeblendet bis zum Datum; „Nicht relevant“ zusätzlich nur bei gleicher oder geringerer Dringlichkeit
+    const hidden = s && (s.until > t || (s.mode === "nope" && s.sev != null && f.sev <= s.sev));
+    return !hidden && !hasT(f.id);
   }).sort((a, b) => b.score - a.score);
 }
 function pickTop(F) {
   const n = {},
     o = [];
   for (const f of F) {
+    if (f.sev < 1) continue; // Hinweise ohne Dringlichkeit nur unter „Alle Hinweise“
     if (o.length >= 3) break;
     if ((n[f.g] || 0) < 2) {
       o.push(f);
@@ -339,8 +353,7 @@ function pickTop(F) {
   }
   return o;
 }
-const fCard = (f) =>
-  `<div class="card rec ${f.sev >= 3 ? "bad" : f.sev === 2 ? "warn" : ""}"><div class="row sp"><b>${esc(f.title)}</b><span class="chip">${f.kind === "fakt" ? "Fakt" : "Annahme"}</span></div><div>${esc(f.action)}</div><details><summary class="mut">Warum sehe ich das?</summary>${f.why.map((w) => `<div class="mut">• ${esc(w)}</div>`).join("")}</details>${f.tab ? `<button class="s" data-a="tab" data-id="${esc(f.tab)}" style="margin-top:6px">${f.tab === "ai" ? "Tiefenanalyse" : "Öffnen"}</button>` : ""}<div class="row" style="margin-top:6px"><button class="s p" data-a="mk" data-id="${esc(f.id)}">Als Aufgabe anlegen</button><button class="s" data-a="later" data-id="${esc(f.id)}">Später</button><button class="s" data-a="nope" data-id="${esc(f.id)}">Nicht relevant</button></div></div>`;
+/* fCard (Darstellung eines Befunds) liegt in js/advice.js */
 function topHtml() {
   const F = findings(),
     top = pickTop(F);

@@ -1,5 +1,7 @@
 # Projektübersicht Vivalink Management AI
 
+> Aktueller Gesamtstand und nächste Schritte: **[`ENTWICKLUNGSSTAND.md`](ENTWICKLUNGSSTAND.md)** (zentrale, fortlaufende Übersicht).
+
 Zentrale, fortlaufend gepflegte Übersicht. Jede neue Funktion wird hier abgeglichen.
 **Enthält bewusst keine Unternehmenszahlen, Orte, Personen oder Zugangsdaten** (öffentliches Repository).
 
@@ -68,9 +70,11 @@ Zuständigkeit: CC = Claude Code, R = Rork, G = Gründer.
   - Backend-Herzschlag für Hintergrundprozesse
 
 ## Offene Entscheidungen des Gründers
-1. **Freigabe von Version 2.1** zur Veröffentlichung (Ablauf: `docs/VEROEFFENTLICHUNG.md`). Gerätetests in der Testversion sind erfolgreich abgeschlossen.
-2. Optional: `main` in den GitHub-Einstellungen schützen (kostenlos). Dann sind Änderungen nur noch über Pull Requests möglich.
-3. Später: Supabase-Tarif und Projektanzahl (für Synchronisierung und Testumgebung), Rork-Auftrag als PDF, Instagram-Kontotyp und Markenvorgaben.
+1. **Version 2.3 (Studio, Bedienung, Management, Autonomie):** Gerätetest in „VL Test“ (TESTVERSION.md, C2 und C3), danach Freigabe zur Veröffentlichung.
+2. ✅ Markenfarben bestätigt (Pink #FA0372, Violett #6203DD, Orange #FE6603). ✅ Anmeldung über vivalink.me. Region einmal im Markenprofil der App eintragen.
+3. Speicher für die Synchronisierung wählen: Supabase Free oder Cloudflare (beide kostenlos). Danach starten geplante Claude-Aufgaben.
+4. Optional: `main` in den GitHub-Einstellungen schützen (kostenlos). Dann sind Änderungen nur noch über Pull Requests möglich.
+5. Später: Supabase-Tarif und Projektanzahl (für Synchronisierung und Testumgebung), Rork-Auftrag als PDF, Instagram-Kontotyp und Markenvorgaben.
 
 ## Bekannte Grenzen
 - Lokal wird nur Chromium getestet. WebKit (Safari-Technik) läuft in GitHub Actions. Echte iPhone- und iPad-Tests ersetzt beides nicht.

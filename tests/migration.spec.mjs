@@ -1,5 +1,6 @@
 // Datenübernahme: vorhandene Daten aus Version 1 (GitHub Pages) und Version 2 (Artefakt) bleiben vollständig erhalten.
 import { test, expect } from "@playwright/test";
+import { APP, SCHEMA, CACHE, METRICS } from "./version.mjs";
 import { guard, seed, ready, nav, state, kv, toastText } from "./helpers.mjs";
 import { v1State, v2State } from "./fixtures.mjs";
 
@@ -11,18 +12,18 @@ test("Version 1 → 3: alle Einträge erhalten, geprüfte Sicherheitskopie, kein
   const v1 = v1State();
   await seed(page, { state: v1 });
   const s = await state(page);
-  expect(s.v).toBe(3);
+  expect(s.v).toBe(SCHEMA);
   expect(s.memory).toEqual(v1.memory);
   expect(s.tasks).toEqual(v1.tasks);
   expect(s.accent).toBe(v1.accent);
   expect(s.lastBackup).toBe(v1.lastBackup);
   expect(s.dev).toBe(v1.dev);
-  expect(s.metrics).toHaveLength(11);
+  expect(s.metrics).toHaveLength(METRICS);
   expect(s.metrics.flatMap((m) => m.entries)).toEqual([]);
   expect(s.conflicts).toEqual([]);
   const safe = await kv(page, "safety-v1");
   expect(safe.data).toEqual(v1);
-  expect(safe.to).toBe(3);
+  expect(safe.to).toBe(SCHEMA);
   await nav(page, "memory");
   await expect(page.locator("#list")).toContainText("Testziel Beta");
   await nav(page, "tasks");
@@ -33,7 +34,7 @@ test("Version 2 (Artefakt) → 3: Kennzahlen, Meetup, Ausblendungen und Daten-St
   const v2 = v2State();
   await seed(page, { state: v2 });
   const s = await state(page);
-  expect(s.v).toBe(3);
+  expect(s.v).toBe(SCHEMA);
   expect(s.memory).toEqual(v2.memory);
   expect(s.tasks).toEqual(v2.tasks);
   expect(s.meetup).toEqual(v2.meetup);
@@ -74,7 +75,7 @@ test("Leerer Start: neues Gerät erhält leere Daten in Version 3", async ({ pag
   await page.goto("/");
   await ready(page);
   const s = await state(page);
-  expect(s.v).toBe(3);
+  expect(s.v).toBe(SCHEMA);
   expect(s.memory).toEqual([]);
   expect(await kv(page, "safety-v1")).toBeNull();
 });
