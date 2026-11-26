@@ -9,8 +9,9 @@
 //   Speicherfehler → 503 ohne Einzelheiten (keine Datenbankmeldungen nach außen)
 //
 // repo (wird von der Edge Function bzw. im Test bereitgestellt):
-//   pairCode(hash) → {expiresAt, usedAt} | null      useCode(hash, now) → true nur beim ersten Mal (atomar)
-//   addDevice({name, tokenHash, now})                 device(tokenHash) → {revokedAt} | null
+//   pairCode(hash) → {expiresAt, usedAt} | null
+//   redeem(hash, {name, tokenHash, now}) → true nur beim ersten Mal; Code einlösen UND Gerät speichern in EINER Transaktion
+//   device(tokenHash) → {revokedAt} | null
 //   touch(tokenHash, now)                             calls(tokenHash, sinceMs) → Anzahl   logCall(tokenHash, now)
 //   aggregates() → [{key, date, value}]   (aus den vorhandenen Auswertungen gemäß mapping.json)
 //   meta() → {excludesTestAccounts, excludesDemoMeetups}  (vom Gründer bestätigte Angaben aus mapping.json, sonst false)
@@ -67,9 +68,10 @@ async function route({ method, path, auth, body, now = Date.now() }, repo) {
     const c = await repo.pairCode(h);
     if (!c) return fail(401, "invalid");
     if (c.usedAt || c.expiresAt <= now) return fail(410, "expired");
-    if (!(await repo.useCode(h, now))) return fail(410, "expired"); // gleichzeitige Nutzung: nur der erste gewinnt
     const token = [...crypto.getRandomValues(new Uint8Array(32))].map((x) => x.toString(16).padStart(2, "0")).join("");
-    await repo.addDevice({ name: String(b.device || "Management AI").replace(/[^\w .-]/g, "").slice(0, 60) || "Management AI", tokenHash: await sha256hex(token), now });
+    const dev = { name: String(b.device || "Management AI").replace(/[^\w .-]/g, "").slice(0, 60) || "Management AI", tokenHash: await sha256hex(token), now };
+    // Einlösen und Gerät speichern atomar (gleichzeitige Nutzung: nur der erste gewinnt; Fehler beim Speichern → Code bleibt gültig)
+    if (!(await repo.redeem(h, dev))) return fail(410, "expired");
     return json(200, { token });
   }
   if (method === "GET" && p.endsWith("/kpis")) {
@@ -110,6 +112,13 @@ export function memoryRepo(aggregates = []) {
       return true;
     },
     addDevice: async ({ name, tokenHash, now }) => void devices.set(tokenHash, { name, createdAt: now, revokedAt: null }),
+    redeem: async (h, { name, tokenHash, now }) => {
+      const c = codes.get(h);
+      if (!c || c.usedAt || c.expiresAt <= now) return false;
+      c.usedAt = now;
+      devices.set(tokenHash, { name, createdAt: now, revokedAt: null });
+      return true;
+    },
     device: async (h) => devices.get(h) || null,
     touch: async (h, now) => void (devices.get(h).lastUsedAt = now),
     calls: async (h, since) => calls.filter((c) => c.h === h && c.at > since).length,

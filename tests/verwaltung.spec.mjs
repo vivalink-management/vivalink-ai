@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { startEnv, pgBin, TEST_MAPPING } from "./verwaltung/env.mjs";
 import { pgRepo, parseMapping } from "../server/kpi-pg.mjs";
 import { KPI_KEYS, buildKpis, MAX_PAIR_FAILS } from "../server/kpi-core.mjs";
-import { grantsSql, INVENTORY_SQL, factsSql, dryRunSql, eventTriggerDiagSql, ET_TERMS, ET_EXT } from "../scripts/verwaltung.mjs";
+import { grantsSql, INVENTORY_SQL, factsSql, dryRunSql, eventTriggerDiagSql, ET_TERMS, ET_EXT, RUECKBAU_SQL } from "../scripts/verwaltung.mjs";
 import { ready, state, kv, expectToast } from "./helpers.mjs";
 
 test.describe.configure({ mode: "serial", timeout: 120_000 });
@@ -555,6 +555,189 @@ test("Probelauf: ausdrückliche Transaktion mit ROLLBACK; leere Kennzahlen sind 
   } finally {
     await db.end();
     await env.sql.unsafe("drop database if exists probe with (force)");
+  }
+});
+
+test("Datenbankzugang der Edge Function: jede Operation nur als management_ai; ohne Rollenwechsel keine Daten (503)", async ({}, info) => {
+  serverOnly(info);
+  // Alle Abfragen mitschneiden, die die Gegenstelle über ihre Verbindung schickt (gleiche Logik wie in der Edge Function)
+  const seen = [];
+  const port = 54400 + info.parallelIndex;
+  // gleiche Verbindungsoptionen wie in index.ts (prepare: false, fetch_types: false)
+  const sql = postgres(`postgres://postgres@127.0.0.1:${port}/postgres`, { prepare: false, fetch_types: false, max: 1, onnotice: () => {}, debug: (_c, q) => seen.push(q.replace(/\s+/g, " ").trim()) });
+  const repo = pgRepo(sql, TEST_MAPPING, KPI_KEYS);
+  const now = Date.now();
+  await repo.calls("x".repeat(64), now - 1000);
+  await repo.device("y".repeat(64));
+  await repo.aggregates(now);
+  // In jeder Transaktion ist die erste Anweisung der Rollenwechsel mit Prüfung von current_user
+  const stmts = seen.filter((q) => !/^(begin|commit|rollback|start transaction|set transaction)/i.test(q));
+  const isRole = (q) => /set_config\('role'/.test(q) && /current_user/.test(q);
+  let expectRole = true;
+  for (const q of seen) {
+    if (/^(begin|start transaction)/i.test(q)) expectRole = true;
+    else if (/^(commit|rollback)/i.test(q)) continue;
+    else if (expectRole) {
+      expect(isRole(q), "erste Anweisung der Transaktion: " + q).toBe(true);
+      expectRole = false;
+    }
+  }
+  expect(stmts.filter(isRole).length).toBeGreaterThanOrEqual(3);
+  expect(seen.some((q) => /^begin/i.test(q))).toBe(true);
+  await sql.end();
+  // Ohne möglichen Rollenwechsel → 503, keine Werte, nichts als postgres gelesen
+  const tok = await newToken();
+  // Rollenwechsel unmöglich machen (Rolle vorübergehend umbenannt; in der Testumgebung ist postgres Superuser, daher kein „revoke“)
+  await env.sql.unsafe("alter role management_ai rename to management_ai_weg");
+  try {
+    const r = await kpis(tok);
+    expect(r.status).toBe(503);
+    expect(await r.text()).toBe('{"error":"unavailable"}');
+    expect((await pair(await env.code().catch(() => "12345678"))).status).toBe(503);
+  } finally {
+    await env.sql.unsafe("alter role management_ai_weg rename to management_ai");
+  }
+  expect((await kpis(tok)).status).toBe(200);
+});
+
+test("Kopplung atomar: scheitert das Speichern des Geräts, bleibt der Code gültig; gleichzeitige Einlösung nur einmal", async ({}, info) => {
+  serverOnly(info);
+  const code = await env.code();
+  // Speichern des Geräts schlägt fehl (Prüfregel verbietet neue Geräte vorübergehend)
+  await env.sql.unsafe("alter table management_ai.devices add constraint vl_test_sperre check (false) not valid");
+  try {
+    const r = await pair(code);
+    expect(r.status).toBe(503);
+  } finally {
+    await env.sql.unsafe("alter table management_ai.devices drop constraint vl_test_sperre");
+  }
+  const [c] = await env.sql`select used_at from management_ai.pair_codes where code_hash = encode(sha256(convert_to(${"vivalink-pair:" + code}, 'UTF8')), 'hex')`;
+  expect(c.used_at).toBeNull(); // nicht verbraucht
+  // derselbe Code funktioniert danach – aber nur EINMAL, auch bei gleichzeitigen Anfragen
+  await env.sql`delete from management_ai.calls where token_hash = 'pair:fail'`;
+  const res = await Promise.all([pair(code), pair(code), pair(code)]);
+  expect(res.map((x) => x.status).sort()).toEqual([200, 410, 410]);
+  const [{ n }] = await env.sql`select count(*)::int n from management_ai.devices where created_at > now() - interval '1 minute'`;
+  expect(n).toBeGreaterThanOrEqual(1);
+});
+
+test("Ohne gültigen Gerätezugang keine Kennzahlen – auch bei ausgeschalteter Supabase-JWT-Prüfung", async ({}, info) => {
+  serverOnly(info);
+  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
+  const fakeJwt = (role) => b64({ alg: "HS256", typ: "JWT" }) + "." + b64({ role, iss: "supabase" }) + ".c2lnbmF0dXI";
+  const revoked = await newToken();
+  await env.sql`update management_ai.devices set revoked_at = now() where token_hash = encode(sha256(convert_to(${revoked}, 'UTF8')), 'hex')`;
+  const cases = [
+    ["ohne Kopfzeile", {}],
+    ["leerer Bearer", { authorization: "Bearer " }],
+    ["Supabase-anon-Schlüssel (JWT)", { authorization: "Bearer " + fakeJwt("anon") }],
+    ["Dienst-Rollen-JWT (gefälscht)", { authorization: "Bearer " + fakeJwt("service" + "_role") }],
+    ["apikey-Kopfzeile", { apikey: fakeJwt("anon") }],
+    ["zufälliges 64-Hex-Token", { authorization: "Bearer " + "a1".repeat(32) }],
+    ["Token in Großbuchstaben", { authorization: "Bearer " + "A1".repeat(32) }],
+    ["widerrufenes Token", { authorization: "Bearer " + revoked }],
+    ["SQL-Einschleusung", { authorization: "Bearer ' or 1=1 --" }],
+    ["Basic statt Bearer", { authorization: "Basic " + Buffer.from("a:b").toString("base64") }],
+  ];
+  for (const [name, h] of cases) {
+    const r = await fetch(env.url + "/kpis", { headers: h });
+    const t = await r.text();
+    expect(r.status, name).toBe(401);
+    expect(t, name).not.toContain("values");
+  }
+  // Token im Adress-Parameter wird nicht akzeptiert; andere Wege/Methoden liefern keine Daten
+  const good = await newToken();
+  for (const [m, path, h] of [["GET", "/kpis?token=" + good, {}], ["POST", "/kpis", { authorization: "Bearer " + good }], ["GET", "/pair", {}], ["GET", "/", {}], ["GET", "/kpis/../kpis", {}]]) {
+    const r = await fetch(env.url + path, { method: m, headers: h });
+    expect([401, 404], m + " " + path).toContain(r.status);
+    expect(await r.text()).not.toContain("values");
+  }
+  // Kopplung mit Einschleusungsversuchen: kein Zugang, keine Wirkung
+  for (const code of ["' or 1=1 --", "12345678; drop table x", "1e7", "-1234567", "１２３４５６７８"]) expect([400, 401], code).toContain((await pair(code)).status);
+  const dev = await pair(await env.code(), "'); drop table management_ai.devices; --");
+  expect(dev.status).toBe(200);
+  expect((await env.sql`select count(*)::int n from pg_tables where schemaname = 'management_ai' and tablename = 'devices'`)[0].n).toBe(1);
+  // Versionsanzeige: nur Fassung, keine Daten, ohne Zugang
+  const v = await (await fetch(env.url + "/version")).json();
+  expect(Object.keys(v)).toEqual(["format", "build"]);
+  expect(v.build).toMatch(/^[0-9a-f]{64}$/);
+});
+
+test("Einrichtung: COMMIT nur bei vollständigem Erfolg; bei jedem Fehler bleibt nichts zurück; danach vollständig rückbaubar", async ({}, info) => {
+  serverOnly(info);
+  test.setTimeout(120_000);
+  const port = 54400 + info.parallelIndex;
+  const roleBefore = (await env.sql`select count(*)::int n from pg_roles where rolname = 'management_ai'`)[0].n;
+  // Die Rolle ist clusterweit; für diesen Test eine eigene Datenbank ohne Rolle simulieren geht nicht – daher prüfen wir
+  // in einer frischen Datenbank, in der das Schema fehlt, und erlauben die vorhandene Rolle nur, wenn sie aus env stammt.
+  await env.sql.unsafe("drop database if exists einr with (force)");
+  await env.sql.unsafe("create database einr");
+  const db = postgres(`postgres://postgres@127.0.0.1:${port}/einr`, { max: 1, onnotice: () => {} });
+  const run = async (q) => {
+    const r = await db.unsafe(q).simple();
+    const rows = (Array.isArray(r[0]) ? r : [r]).filter((x) => x.length && "Prüfung" in x[0]).pop() || [];
+    return Object.fromEntries(rows.map((x) => [x["Prüfung"], x["Ergebnis"]]));
+  };
+  const has = async () => (await db`select count(*)::int n from pg_namespace where nspname = 'management_ai'`)[0].n;
+  try {
+    for (const f of ["supabase-stub.sql", "supabase-eventtrigger.sql", "fixture.sql"]) await db.unsafe(readFileSync(new URL("./verwaltung/" + f, import.meta.url), "utf8"));
+    // Die Rolle existiert clusterweit bereits (aus der Testumgebung): Einrichtung muss das erkennen und nichts tun
+    expect(roleBefore).toBe(1);
+    let r = await run(dryRunSql(TEST_MAPPING, [], { einrichtung: true }));
+    expect(r["Bereits eingerichtet"]).toMatch(/^ja – nichts verändert/);
+    expect(r["GESAMT"]).toMatch(/^PROBLEM/);
+    expect(await has()).toBe(0);
+    // Für die eigentliche Einrichtung Rolle der Testumgebung kurz entfernen (danach wiederherstellen)
+    await env.sql.unsafe("drop schema management_ai cascade; drop owned by management_ai; drop role management_ai;");
+    try {
+      // a) Fehler bei einer Kennzahl → PROBLEM, nichts gespeichert, Nachprüfung vor dem COMMIT
+      r = await run(dryRunSql({ ...TEST_MAPPING, reg_week: { source: "public.admin_stats_daily", date: "day", value: "gibt_es_nicht" } }, [], { einrichtung: true }));
+      expect(r["GESAMT"]).toMatch(/^PROBLEM .* nichts eingerichtet, alle Änderungen zurückgenommen$/);
+      expect(r["Objekte der Anbindung vor dem COMMIT vorhanden"]).toBe("nein – das COMMIT speichert nichts");
+      expect(await has()).toBe(0);
+      expect((await db`select count(*)::int n from pg_roles where rolname = 'management_ai'`)[0].n).toBe(0);
+      // b) unbekannter Ereignistrigger → Abbruch vor jeder Änderung
+      await db.unsafe(`create function public.vl_et_x() returns event_trigger language plpgsql as $$ begin perform 1; end $$; create event trigger fremd_x on ddl_command_end execute function public.vl_et_x();`);
+      r = await run(dryRunSql(TEST_MAPPING, [], { einrichtung: true }));
+      expect(r["Ereignistrigger: unbekannt oder verändert"]).toMatch(/ABBRUCH E-ET/);
+      expect(await has()).toBe(0);
+      await db.unsafe("drop event trigger fremd_x; drop function public.vl_et_x();");
+      // c) Erfolg → gespeichert, alle Rechteprüfungen bestanden
+      r = await run(dryRunSql(TEST_MAPPING, [], { einrichtung: true }));
+      expect(r["GESAMT"], JSON.stringify(r)).toMatch(/^OK – Anbindung eingerichtet/);
+      expect(r["Rechte: Schreibrechte außerhalb des eigenen Bereichs"]).toBe("keine");
+      expect(r["Rechte: Rolle management_ai ohne Anmeldung und ohne Sonderrechte"]).toBe("ja");
+      expect(await has()).toBe(1);
+      // c2) Gegenproben: Änderung an BESTEHENDEN Objekten wird erkannt → nichts gespeichert
+      await db.unsafe(RUECKBAU_SQL);
+      for (const [name, extra, zeile, erwartet] of [
+        ["neue Spalte in bestehender Tabelle", "alter table public.meetups add column vl_x int;", "Teilnachweis: bestehende Tabellen, Funktionen, Rollen, Rechte, Richtlinien, Trigger unverändert (neu nur Schema und Rolle management_ai)", "NEIN (PROBLEM)"],
+        ["neue Prüfregel an bestehender Tabelle", "alter table public.meetups add constraint vl_k check (capacity >= 0);", "Teilnachweis: bestehende Tabellen, Funktionen, Rollen, Rechte, Richtlinien, Trigger unverändert (neu nur Schema und Rolle management_ai)", "NEIN (PROBLEM)"],
+        ["Rechte an API-Rolle geändert", "revoke select on public.profiles from anon;", "Teilnachweis: bestehende Tabellen, Funktionen, Rollen, Rechte, Richtlinien, Trigger unverändert (neu nur Schema und Rolle management_ai)", "NEIN (PROBLEM)"],
+        ["Schreibrecht für management_ai", "grant insert on public.meetups to management_ai;", "Rechte: Schreibrechte außerhalb des eigenen Bereichs", "1 (PROBLEM)"],
+        ["Daten verändert", "update public.meetups set capacity = capacity;", "GESAMT", null],
+      ]) {
+        const rr = await run(dryRunSql(TEST_MAPPING, [extra], { einrichtung: true }));
+        if (erwartet) expect(rr[zeile], name).toBe(erwartet);
+        expect(rr["GESAMT"], name).toMatch(/^PROBLEM/);
+        expect(await has(), name).toBe(0);
+        expect((await db`select count(*)::int n from information_schema.columns where table_name = 'meetups' and column_name = 'vl_x'`)[0].n, name).toBe(0);
+      }
+      r = await run(dryRunSql(TEST_MAPPING, [], { einrichtung: true }));
+      expect(r["GESAMT"]).toMatch(/^OK – Anbindung eingerichtet/);
+      // d) Rückbau → vollständig entfernt
+      await db.unsafe(RUECKBAU_SQL);
+      expect(await has()).toBe(0);
+      expect((await db`select count(*)::int n from pg_roles where rolname = 'management_ai'`)[0].n).toBe(0);
+    } finally {
+      // Testumgebung wiederherstellen (Schema, Rolle, Rechte in der Haupt-Datenbank)
+      if (!(await env.sql`select count(*)::int n from pg_roles where rolname = 'management_ai'`)[0].n) await env.sql.unsafe("create role management_ai nologin");
+      await env.sql.unsafe(readFileSync(new URL("../server/supabase/migrations/20261126_management_kpis.sql", import.meta.url), "utf8"));
+      await env.sql.unsafe(grantsSql(TEST_MAPPING));
+    }
+  } finally {
+    await db.end();
+    await env.sql.unsafe("drop database if exists einr with (force)");
   }
 });
 

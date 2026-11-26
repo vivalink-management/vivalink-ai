@@ -6,6 +6,7 @@
 //   node scripts/verwaltung.mjs dryrun <mapping.json> [zusatz.sql …] → Probelauf ohne bleibende Wirkung (alles wird zurückgenommen)
 //   node scripts/verwaltung.mjs facts <fragen.json>          → datensparsame zweite Bestandsaufnahme ({functions, tables, terms})
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { KPI_KEYS } from "../server/kpi-core.mjs";
@@ -123,7 +124,7 @@ order by 1, 2;
    Alle Fehler werden im DO-Block abgefangen, damit das abschließende ROLLBACK immer ausgeführt wird; selbst wenn
    nicht, wird eine abgebrochene Transaktion nie bestätigt. Ausgegeben werden nur Prüfungen (ja/nein/Fehlertext),
    keine Kennzahlen und keine Daten. */
-const FP = (ohne) => `(select md5(coalesce(string_agg(x, '|' order by x), '')) from (
+const FP = (ohne) => `(select md5(coalesce(string_agg(x, '|' order by x), '')) from (${ohne ? "select regexp_replace(regexp_replace(x, ',management_ai=[^,}]*', '', 'g'), 'management_ai=[^,}]*,?', '', 'g') as x from (" : ""}
       select 'c:' || n.nspname || '.' || c.relname || ':' || c.relkind::text || ':' || coalesce(c.relacl::text, '') || ':' || c.relrowsecurity::text || ':' || c.relforcerowsecurity::text as x
         from pg_class c join pg_namespace n on n.oid = c.relnamespace
        where n.nspname not in ('pg_catalog', 'information_schema', 'pg_toast') and n.nspname not like 'pg\\_temp%' and n.nspname not like 'pg\\_toast\\_temp%'
@@ -142,10 +143,18 @@ const FP = (ohne) => `(select md5(coalesce(string_agg(x, '|' order by x), '')) f
       union all
       select 't:' || tgrelid::text || '.' || tgname || ':' || tgenabled::text from pg_trigger where not tgisinternal
       union all
+      select 'a:' || n.nspname || '.' || c.relname || '.' || a.attname || ':' || format_type(a.atttypid, a.atttypmod) || ':' || a.attnotnull::text || ':' || coalesce(a.attacl::text, '')
+        from pg_attribute a join pg_class c on c.oid = a.attrelid join pg_namespace n on n.oid = c.relnamespace
+       where a.attnum > 0 and not a.attisdropped and n.nspname not in ('pg_catalog', 'information_schema', 'pg_toast') and n.nspname not like 'pg\\_temp%' and n.nspname not like 'pg\\_toast\\_temp%'
+      union all
+      select 'k:' || n.nspname || '.' || coalesce(c.relname, '') || '.' || k.conname || ':' || md5(pg_get_constraintdef(k.oid))
+        from pg_constraint k join pg_namespace n on n.oid = k.connamespace left join pg_class c on c.oid = k.conrelid
+       where n.nspname not in ('pg_catalog', 'information_schema') and n.nspname not like 'pg\\_temp%'
+      union all
       select 'e:' || evtname || ':' || evtenabled::text from pg_event_trigger
       union all
       select 'd:' || defaclrole::text || ':' || defaclnamespace::text || ':' || defaclobjtype::text || ':' || coalesce(defaclacl::text, '') from pg_default_acl
-    ) s${ohne ? " where x !~ 'management_ai'" : ""})`;
+    ) s${ohne ? `) s0 where x !~ '^(a|c|f|k|n|p|t):management_ai\\.' and x !~ '^n:management_ai:' and x !~ '^r:management_ai:' and x !~ '^m:management_ai>'` : ""})`;
 const FINGERPRINT = FP(false);
 export function dryRunSql(mapping, extraSql = [], { rlsAutoMd5 = [], einrichtung = false } = {}) {
   const E = einrichtung; // true: dauerhafte Einrichtung (COMMIT nur bei vollständigem Erfolg), false: Probelauf (ROLLBACK)
@@ -177,19 +186,24 @@ export function dryRunSql(mapping, extraSql = [], { rlsAutoMd5 = [], einrichtung
     })
     .join("\n");
   const kopf = E
-    ? `-- Vivalink Management AI: DAUERHAFTE EINRICHTUNG der Verwaltungsanbindung (nur nach ausdrücklicher Freigabe ausführen).
--- Gleiche Prüfungen wie der Probelauf. Gespeichert wird NUR, wenn alle Prüfungen bestehen; sonst wird innerhalb der
--- Transaktion alles zurückgenommen und das abschließende COMMIT speichert nichts. Neue Objekte nur im Schema und in der
--- Rolle management_ai; bestehende Tabellen, Funktionen, Rechte und Daten werden nicht verändert.
--- Bereits eingerichtet → Abbruch ohne Änderung (für eine Neueinrichtung zuerst den Rückbau ausführen).
-`
-    : "";
-  return `${kopf}-- Vivalink Management AI: ${E ? "Einrichtung" : "PROBELAUF"} der Verwaltungsanbindung${E ? "" : " – ohne bleibende Wirkung"}.
--- Läuft vollständig in einer ausdrücklich gestarteten Transaktion, die am Ende mit ROLLBACK zurückgenommen wird.
+    ? `-- Vivalink Management AI: DAUERHAFTE EINRICHTUNG der Verwaltungsanbindung – nur nach ausdrücklicher Freigabe ausführen.
+-- Ablauf: BEGIN → Prüfung der Ereignistrigger (vor jeder Änderung) → Einrichtung → Prüfungen → Ergebnis → COMMIT.
+-- Die Einrichtung bleibt NUR bestehen, wenn ALLE Prüfungen bestehen. Schlägt eine Prüfung fehl, werden sämtliche Änderungen
+-- noch VOR dem COMMIT innerhalb der Transaktion zurückgenommen (Sicherungspunkt) und vor dem COMMIT nachgeprüft
+-- („Objekte der Anbindung vorhanden: nein“) – das abschließende COMMIT speichert dann nichts.
+-- Neu angelegt werden nur das Schema management_ai (Gerätezugänge, Kopplungscodes, Abrufprotokoll, Kennzahl-Auswertungen)
+-- und die Rolle management_ai ohne Anmeldung. Bestehende Tabellen, Funktionen, Rechte und Daten werden nicht verändert.
+-- Bereits eingerichtet → Abbruch ohne Änderung (für eine Neueinrichtung zuerst rueckbau.sql ausführen).
 -- Schreibt in keine bestehende Tabelle und ruft keine Zahlungs-, Buchungs-, Benachrichtigungs- oder Netzwerkfunktionen auf.
--- Ereignistrigger werden vorab geprüft (unbekannte → Abbruch ohne Änderung). Die Teilnachweise (Fingerabdruck,
--- Schreibzähler) decken nur die geprüften Bereiche ab; maßgeblich für „nichts bleibt zurück“ ist das ROLLBACK.
--- Ausgabe: eine Tabelle mit Prüfungen (ja/nein bzw. feste Fehlercodes) – keine Kennzahlen, keine Personendaten,
+-- Die Teilnachweise (Fingerabdruck, Schreibzähler) decken nur die geprüften Bereiche ab.
+`
+    : `-- Vivalink Management AI: PROBELAUF der Verwaltungsanbindung – ohne bleibende Wirkung.
+-- Ablauf: BEGIN → Prüfung der Ereignistrigger (vor jeder Änderung) → Einrichtung probeweise → Prüfungen → Ergebnis → ROLLBACK.
+-- Alles wird am Ende mit ROLLBACK zurückgenommen; es bleibt nichts bestehen.
+-- Schreibt in keine bestehende Tabelle und ruft keine Zahlungs-, Buchungs-, Benachrichtigungs- oder Netzwerkfunktionen auf.
+-- Die Teilnachweise (Fingerabdruck, Schreibzähler) decken nur die geprüften Bereiche ab; maßgeblich ist das ROLLBACK.
+`;
+  return `${kopf}-- Ausgabe: eine Tabelle mit Prüfungen (ja/nein bzw. feste Fehlercodes) – keine Kennzahlen, keine Personendaten,
 -- keine Fehlertexte der Datenbank. Fehlercodes: E-ET unbekannte Ereignistrigger (Abbruch VOR jeder Änderung),
 -- E-EINR Einrichtung fehlgeschlagen, E-KZ Kennzahl technisch fehlerhaft, E-PRF Prüfung abgebrochen, E-UNERW unerwartet;
 -- jeweils mit dem standardisierten SQLSTATE-Code (5 Zeichen, ohne Inhalte).
@@ -336,6 +350,18 @@ ${keyChecks}
        and has_table_privilege('management_ai', c.oid, 'select');
     select has_schema_privilege('anon', 'management_ai', 'usage') or has_schema_privilege('authenticated', 'management_ai', 'usage') into api;
     zeilen := zeilen || ('Rechte: weitere lesbare Tabellen der Verwaltung|' || case when basis = 0 then 'keine' else basis || ' (PROBLEM)' end);
+    -- keine Schreib-/Löschrechte auf irgendeine Tabelle außerhalb des eigenen Schemas; keine Anmeldung, kein Superuser,
+    -- keine Rollen-/Datenbankerstellung, keine Umgehung von RLS; nicht Mitglied privilegierter Rollen
+    select count(*) into n from pg_class c join pg_namespace s on s.oid = c.relnamespace
+     where s.nspname <> 'management_ai' and s.nspname not like 'pg\\_%' and s.nspname <> 'information_schema' and c.relkind in ('r', 'p', 'v', 'm', 'f')
+       and (has_table_privilege('management_ai', c.oid, 'insert') or has_table_privilege('management_ai', c.oid, 'update')
+            or has_table_privilege('management_ai', c.oid, 'delete') or has_table_privilege('management_ai', c.oid, 'truncate'));
+    zeilen := zeilen || ('Rechte: Schreibrechte außerhalb des eigenen Bereichs|' || case when n = 0 then 'keine' else n || ' (PROBLEM)' end);
+    if n > 0 then fehler := fehler + 1; end if;
+    select count(*) into n from pg_roles where rolname = 'management_ai' and (rolcanlogin or rolsuper or rolcreaterole or rolcreatedb or rolbypassrls or rolreplication);
+    select n + count(*) into n from pg_auth_members m where m.member = (select oid from pg_roles where rolname = 'management_ai');
+    zeilen := zeilen || ('Rechte: Rolle management_ai ohne Anmeldung und ohne Sonderrechte|' || case when n = 0 then 'ja' else 'nein (PROBLEM)' end);
+    if n > 0 then fehler := fehler + 1; end if;
     zeilen := zeilen || ('Rechte: Zugriff über die Supabase-API|' || case when api then 'ja (PROBLEM)' else 'nein' end);
     if basis > 0 or api then fehler := fehler + 1; end if;
     ${E ? "-- Einrichtung: nur bei einem Fehler zurücknehmen, sonst bleibt alles für das abschließende COMMIT erhalten\n    if fehler > 0 then raise exception 'vl_probelauf_zuruecknehmen'; end if;" : "raise exception 'vl_probelauf_zuruecknehmen';"}
@@ -355,13 +381,18 @@ ${keyChecks}
   -- Problem erst nach der Einrichtung festgestellt → alles zurücknehmen (gesamter äußerer Block)
   if fehler > 0 then raise exception 'vl_einrichtung_zuruecknehmen'; end if;` : ""}
   exception when others then
-    -- Sicherheitsnetz: jeder unerwartete Fehler wird gemeldet (nur Code), damit das abschließende ROLLBACK sicher ausgeführt wird
+    -- Sicherheitsnetz: jeder unerwartete Fehler wird gemeldet (nur Code); alle Änderungen dieses Blocks werden zurückgenommen,
+    -- damit die abschließende Anweisung (${E ? "COMMIT – speichert dann nichts" : "ROLLBACK"}) sicher ausgeführt wird
     if sqlerrm not in ('vl_probelauf_et', 'vl_einrichtung_zuruecknehmen') then
       zeilen := zeilen || ('Unerwarteter Fehler|FEHLER E-UNERW (SQLSTATE ' || sqlstate || ')'); fehler := fehler + 1;
     end if;
  end;
+  ${E ? `if fehler > 0 then
+    zeilen := zeilen || ('Objekte der Anbindung vor dem COMMIT vorhanden|' || case when exists (select 1 from pg_namespace where nspname = 'management_ai')
+      and not exists (select 1 from unnest(zeilen) z where z like 'Bereits eingerichtet|%') then 'ja (PROBLEM)' else 'nein – das COMMIT speichert nichts' end);
+  end if;` : ""}
   zeilen := zeilen || ('GESAMT|' || case when fehler = 0 then '${E ? "OK – Anbindung eingerichtet (wird mit COMMIT dauerhaft gespeichert)" : "OK – alles wird mit ROLLBACK zurückgenommen"}' else 'PROBLEM (' || fehler || ') – ${E ? "nichts eingerichtet, alle Änderungen zurückgenommen" : "alles wird mit ROLLBACK zurückgenommen"}' end);
-  -- Ergebnis ohne jede Strukturänderung weitergeben (transaktionslokale Einstellung, verschwindet mit dem ROLLBACK)
+  -- Ergebnis ohne jede Strukturänderung weitergeben (transaktionslokale Einstellung, verschwindet mit dem Ende der Transaktion)
   perform set_config('vl.probelauf', array_to_string(zeilen, chr(10)), true);
 end ${tag};
 select split_part(z, '|', 1) as "Prüfung", substr(z, length(split_part(z, '|', 1)) + 2) as "Ergebnis"
@@ -420,7 +451,7 @@ export function edgeSingleFile(mapping) {
     .split("\n")
     .filter((l) => !/^import\s.*from\s+"\.\/(kpi-core|kpi-pg)\.mjs"/.test(l) && !/^import mapping from/.test(l))
     .join("\n");
-  return `// Vivalink Management AI – Supabase Edge Function „management-kpis“ (EINE Datei, automatisch erzeugt; nicht von Hand ändern).
+  const out = `// Vivalink Management AI – Supabase Edge Function „management-kpis“ (EINE Datei, automatisch erzeugt; nicht von Hand ändern).
 // Bereitstellung nur nach ausdrücklicher Freigabe. Einstellung im Dashboard: JWT-Prüfung AUS (verify_jwt = false),
 // weil sich die App mit einem widerrufbaren Gerätezugang anmeldet. SUPABASE_DB_URL stellt Supabase automatisch bereit.
 // @ts-nocheck
@@ -434,6 +465,10 @@ ${pg}
 // ---- Edge Function (aus server/supabase/functions/management-kpis/index.ts) ----
 ${main.replace(/^\/\/.*\n/gm, "").split("\n").filter((l) => !/^import\s/.test(l)).join("\n")}
 `;
+
+  // Prüfsumme über die Datei ohne die Prüfsummen-Zeile; die bereitgestellte Funktion zeigt sie unter …/version an
+  const hash = createHash("sha256").update(out).digest("hex");
+  return out.replace('const BUILD = "entwicklung";', `const BUILD = "${hash}";`);
 }
 
 /* Rückbau: entfernt ausschließlich Schema und Rolle management_ai (bestehende Objekte bleiben unberührt) */

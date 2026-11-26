@@ -42,10 +42,16 @@ export function pgRepo(sql, mapping, keys, { onError = () => {} } = {}) {
   const M = parseMapping(mapping, keys);
   if (M.errors.length) throw new Error("mapping.json fehlerhaft: " + M.errors.join("; "));
   const iso = (t) => new Date(t).toISOString();
-  // Zugangsverwaltung: kurze Transaktion mit eingeschränkter Rolle
+  // Jede Datenbankoperation läuft in einer eigenen Transaktion, die ZUERST in die eingeschränkte Rolle wechselt und das
+  // prüft (current_user). Schlägt der Wechsel fehl oder stimmt die Rolle nicht, wird nichts ausgeführt (Fehler → 503).
+  // Es gibt keine Abfrage außerhalb dieser Transaktionen.
+  const asRole = async (t) => {
+    const [r] = await t`select set_config('role', ${ROLE}, true) as r, set_config('statement_timeout', '5000', true) as s, current_user as u`;
+    if (r.u !== ROLE) throw new Error("Rollenwechsel fehlgeschlagen");
+  };
   const tx = (fn) =>
     sql.begin(async (t) => {
-      await t`select set_config('role', ${ROLE}, true), set_config('statement_timeout', '5000', true)`;
+      await asRole(t);
       return fn(t);
     });
   return {
@@ -53,7 +59,15 @@ export function pgRepo(sql, mapping, keys, { onError = () => {} } = {}) {
       const [r] = await t`select expires_at, used_at from management_ai.pair_codes where code_hash = ${h}`;
       return r ? { expiresAt: new Date(r.expires_at).getTime(), usedAt: r.used_at } : null;
     }),
-    // atomar: nur die erste Nutzung setzt used_at
+    // Einlösen + Gerät speichern in EINER Transaktion: scheitert das Speichern, bleibt der Code unverbraucht
+    redeem: (h, { name, tokenHash, now }) =>
+      tx(async (t) => {
+        const ok = (await t`update management_ai.pair_codes set used_at = ${iso(now)} where code_hash = ${h} and used_at is null and expires_at > ${iso(now)} returning 1`).length === 1;
+        if (!ok) return false;
+        await t`insert into management_ai.devices (name, token_hash, created_at) values (${name}, ${tokenHash}, ${iso(now)})`;
+        return true;
+      }),
+    // (einzeln, nur noch für Tests/Altfälle) nur die erste Nutzung setzt used_at
     useCode: (h, now) => tx(async (t) => (await t`update management_ai.pair_codes set used_at = ${iso(now)} where code_hash = ${h} and used_at is null and expires_at > ${iso(now)} returning 1`).length === 1),
     addDevice: ({ name, tokenHash, now }) => tx((t) => t`insert into management_ai.devices (name, token_hash, created_at) values (${name}, ${tokenHash}, ${iso(now)})`).then(() => undefined),
     device: (h) => tx(async (t) => {
@@ -70,7 +84,7 @@ export function pgRepo(sql, mapping, keys, { onError = () => {} } = {}) {
       for (const e of M.entries) {
         try {
           const got = await sql.begin("read only", async (t) => {
-            await t`select set_config('role', ${ROLE}, true), set_config('statement_timeout', '5000', true)`;
+            await asRole(t);
             const from = e.fn ? t`${t(e.source)}()` : t`${t(e.source)}`;
             if (e.snapshot) return (await t`select ${t(e.value)} as v from ${from} as q limit 1`).map((r) => ({ d: berlinDay(now), v: r.v }));
             return t`select to_char(${t(e.date)}::date, 'YYYY-MM-DD') as d, ${t(e.value)} as v from ${from} as q where ${t(e.date)}::date >= (${berlinDay(now)}::date - 31) order by 1 desc limit 32`;
