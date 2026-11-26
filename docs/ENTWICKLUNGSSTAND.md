@@ -1,7 +1,7 @@
 # Zentrale Entwicklungsübersicht: Vivalink Management AI
 
 **Fortsetzungsdokument für alle weiteren Entwicklungsaufträge.** Bei jedem Auftrag zuerst lesen und am Ende aktualisieren. Arbeitsweise (Tests, Gerätetests, Grenzen): **`CLAUDE.md`**.
-Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.7.1** (`main`, veröffentlicht am 25.11.2026) · Entwicklungszweig: gleicher Stand
+Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.7.1** (`main`, veröffentlicht am 25.11.2026) · Entwicklungszweig: **Version 2.8.0** (Meetup-Karte automatisch, noch nicht veröffentlicht)
 
 ## 1. Umgesetzt und getestet (noch nicht veröffentlicht)
 
@@ -69,6 +69,20 @@ Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
 3. **Wirkungsmessung über Zeit:** mehrere Wochen echter Daten, damit Trends und Maßnahmenkontrolle belastbar werden.
 4. **Reaktion in Echtzeit:** heute wöchentlich bzw. beim Öffnen; schneller nur mit kostenpflichtiger KI-API (nur mit Zustimmung).
 5. **Weitere Aufgabenbereiche** (später): E-Mail/Newsletter-Entwürfe, Meetup-Organisation, Auswertung der Website.
+
+### Stand Verwaltungsanbindung (26.11.2026)
+- Erste Bestandsaufnahme ausgewertet.
+- Die Zuordnung deckt 9 von 12 Kennzahlen ab, dazu das nächste Meetup (Datum, Plätze).
+- In der getrennten Testumgebung auf der nachgebildeten echten Struktur geprüft, inklusive Sonderfällen: Reservierungen, freigegebene Vormerkungen, Teilerstattungen, Tester, Beispiel-Meetups.
+- Schemaspezifische Dateien liegen lokal in `private/` als eigenes Git-Repository und sollen in ein privates GitHub-Repository; sie stehen nie im öffentlichen Repository.
+- **Offen:**
+  - eng begrenzte zweite Bestandsaufnahme (Admin-Prüfung, Testkonten, Statuswerte)
+  - privates Repository anlegen
+  - Supabase-Tarif und Projektzahl klären
+- **Kosten** (Stand 26.11.2026, offizielle Supabase-Angaben):
+  - Free-Tarif: 500.000 Aufrufe von Edge Functions pro Monat je Organisation, ohne Nachberechnung; erwartet sind etwa 250.
+  - Höchstens 2 aktive Free-Projekte; Free-Projekte pausieren nach 1 Woche Inaktivität.
+  - Ein eigenes Supabase-Testprojekt ist nur möglich, wenn ein Free-Platz frei ist. Alternativ: lokale Testumgebung (vorhanden), danach direkt produktiv mit Rückbauplan.
 
 ## 4. Offene Entscheidungen (nur du)
 1. ✅ Version 2.4 freigegeben und veröffentlicht (25.11.2026).

@@ -210,6 +210,9 @@ test("App ↔ echte Gegenstelle: Kopplung in der Oberfläche, Historie, automati
   const vals = async (k) => (await state(p)).metrics.find((m) => m.key === k).entries.filter((e) => !e.deleted && e.src === "verwaltung");
   expect((await vals("reg_total")).find((e) => e.date === today()).value).toBe(regNow);
   expect((await vals("reg_total")).length).toBeGreaterThanOrEqual(30); // Verlauf übernommen
+  // Nächstes Meetup automatisch aus der Verwaltung (Datum aus „Tage bis“, Ziel = Plätze)
+  const [{ nd }] = await env.sql`select to_char((min(starts_at) at time zone 'Europe/Berlin')::date, 'YYYY-MM-DD') as nd from meetups where not is_demo and starts_at > now()`;
+  expect((await state(p)).meetup).toMatchObject({ date: nd, goal: "12" });
   expect((await kv(p, "kpi-config")).token).toMatch(/^[0-9a-f]{64}$/);
   // Startseite zeigt den übernommenen Wert, keine Fehler
   await p.click('#sheet button[data-a="close"]');

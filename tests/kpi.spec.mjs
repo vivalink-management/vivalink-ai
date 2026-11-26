@@ -129,3 +129,56 @@ test("App ↔ Gegenstelle: koppeln in der Oberfläche, Werte als Historie, autom
   expect(vals("reg_total")).toEqual([321]);
   await ctx.close();
 });
+
+// ---------- Nächstes Meetup automatisch aus der Verwaltung (Datum, Ziel = Plätze); eigene Eingaben haben Vorrang ----------
+async function meetupDev(browser, meetup) {
+  const ctx = await browser.newContext({ serviceWorkers: "block" });
+  await ctx.addInitScript(() => (window.VL_KPI_URL = "http://127.0.0.1:4173/kpi/meetup-5-15"));
+  const p = await ctx.newPage();
+  await p.clock.setFixedTime(new Date("2026-03-10T10:00:00"));
+  await p.goto("/");
+  await ready(p);
+  if (meetup) await p.evaluate(async (m) => ((S.meetup = { ...S.meetup, ...m, updatedAt: 1 }), await save()), meetup);
+  await p.evaluate(() => kpiPair("123456"));
+  return p;
+}
+const setUrl = (p, v) => p.evaluate((u) => (window.VL_KPI_URL = u), "http://127.0.0.1:4173/kpi/" + v);
+
+test("Meetup-Karte füllt sich aus der Verwaltung: leer → Datum und Ziel; Verschiebung folgt; eigenes Ziel bleibt", async ({ browser }) => {
+  const p = await meetupDev(browser);
+  const r = await p.evaluate(() => kpiSync());
+  expect(r).toMatchObject({ ok: true, meetup: "Meetup-Datum aus der Verwaltung übernommen" });
+  expect((await state(p)).meetup).toMatchObject({ date: "2026-03-14", goal: "15", place: "" });
+  expect(await p.evaluate(() => ACTIONS.some((a) => a.name === "meetup.auto" && a.ok))).toBe(true);
+  // Kennzahl-Karten entstehen für diese Angaben nicht
+  expect(await p.evaluate(() => S.metrics.some((m) => /meetup_/.test(m.key)))).toBe(false);
+  // Verschiebung in der Verwaltung → automatisch gesetztes Datum folgt
+  await setUrl(p, "meetup-6-15");
+  await p.evaluate(() => kpiSync());
+  expect((await state(p)).meetup.date).toBe("2026-03-15");
+  // Eigenes Ziel und eigener Ort bleiben bei weiteren Abrufen erhalten
+  await p.evaluate(async () => ((S.meetup.goal = "20"), (S.meetup.place = "Testcafé"), touch(S.meetup), await save()));
+  await setUrl(p, "meetup-6-18");
+  await p.evaluate(() => kpiSync());
+  expect((await state(p)).meetup).toMatchObject({ date: "2026-03-15", goal: "20", place: "Testcafé" });
+});
+
+test("Selbst eingetragenes Datum wird nie überschrieben; Abweichung erscheint als Hinweis und verschwindet nach Korrektur", async ({ browser }) => {
+  const p = await meetupDev(browser, { date: "2026-03-20", place: "Eigener Ort", goal: "10" });
+  const r = await p.evaluate(() => kpiSync());
+  expect(r.meetup).toBe("Meetup-Datum weicht von der Verwaltung ab");
+  expect((await state(p)).meetup).toMatchObject({ date: "2026-03-20", place: "Eigener Ort", goal: "10" });
+  const f = await p.evaluate(() => findings().find((x) => x.id === "mt-verw"));
+  expect(f.action).toContain("14.3.2026");
+  await p.evaluate(async () => ((S.meetup.date = "2026-03-14"), touch(S.meetup), await save()));
+  await p.evaluate(() => kpiSync());
+  expect(await p.evaluate(() => findings().some((x) => x.id === "mt-verw"))).toBe(false);
+});
+
+test("Vergangenes Meetup: Angaben werden archiviert, das nächste Meetup aus der Verwaltung übernommen", async ({ browser }) => {
+  const p = await meetupDev(browser, { date: "2026-03-01", place: "Alter Ort", goal: "8", note: "Rückblick offen" });
+  await p.evaluate(() => kpiSync());
+  expect((await state(p)).meetup).toMatchObject({ date: "2026-03-14", goal: "15", place: "", note: "" });
+  const h = await kv(p, "meetup-history");
+  expect(h[h.length - 1]).toMatchObject({ date: "2026-03-01", place: "Alter Ort", goal: "8", note: "Rückblick offen" });
+});

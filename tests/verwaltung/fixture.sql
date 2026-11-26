@@ -9,7 +9,7 @@ create table public.profiles (
   is_test_account boolean not null default false,
   created_at timestamptz not null, last_seen_at timestamptz
 );
-create table public.meetups (id serial primary key, title text not null, starts_at timestamptz not null, is_demo boolean not null default false);
+create table public.meetups (id serial primary key, title text not null, starts_at timestamptz not null, is_demo boolean not null default false, capacity int not null default 12);
 create table public.meetup_participants (
   meetup_id int not null references public.meetups, profile_id uuid not null references public.profiles,
   status text not null check (status in ('angemeldet', 'teilgenommen', 'abgesagt', 'nicht_erschienen')),
@@ -57,7 +57,9 @@ select
   (select count(*) from public.meetup_participants mp join public.meetups m on m.id = mp.meetup_id join public.profiles p on p.id = mp.profile_id
      where not m.is_demo and not p.is_test_account and mp.status = 'teilgenommen' and m.starts_at = (select max(starts_at) from public.meetups where not is_demo and starts_at <= now())) as last_attended,
   (select count(*) from public.meetup_participants mp join public.meetups m on m.id = mp.meetup_id join public.profiles p on p.id = mp.profile_id
-     where not m.is_demo and not p.is_test_account and mp.status in ('abgesagt', 'nicht_erschienen') and m.starts_at = (select max(starts_at) from public.meetups where not is_demo and starts_at <= now())) as last_noshow;
+     where not m.is_demo and not p.is_test_account and mp.status in ('abgesagt', 'nicht_erschienen') and m.starts_at = (select max(starts_at) from public.meetups where not is_demo and starts_at <= now())) as last_noshow,
+  (select (m.starts_at at time zone 'Europe/Berlin')::date - (now() at time zone 'Europe/Berlin')::date from public.meetups m where not m.is_demo and m.starts_at > now() order by m.starts_at limit 1) as next_days,
+  (select m.capacity from public.meetups m where not m.is_demo and m.starts_at > now() order by m.starts_at limit 1) as next_capacity;
 
 create view public.admin_invitation_stats as
 select d::date as day,

@@ -1,16 +1,77 @@
 {
   "_hinweis": "Zuordnung für die KÜNSTLICHE Testverwaltung (tests/verwaltung/fixture.sql), nicht für die echte Verwaltung.",
-  "_meta": { "excludesTestAccounts": true, "excludesDemoMeetups": true },
-  "reg_total": { "source": "public.admin_stats_daily", "date": "day", "value": "registrations_total" },
-  "reg_week": { "source": "public.admin_stats_daily", "date": "day", "value": "registrations_7d" },
-  "active_users": { "source": "public.admin_stats_daily", "date": "day", "value": "active_users_30d" },
-  "signups": { "source": "public.admin_meetup_overview", "value": "next_signups", "snapshot": true },
-  "attend": { "source": "public.admin_meetup_overview", "value": "last_attended", "snapshot": true },
-  "noshow": { "source": "public.admin_meetup_overview", "value": "last_noshow", "snapshot": true },
-  "invites": { "source": "public.admin_invitation_stats", "date": "day", "value": "invites_7d" },
-  "invite_rate": { "source": "public.admin_invitation_stats", "date": "day", "value": "acceptance_rate" },
-  "payments": { "source": "public.admin_finance_summary()", "value": "payments_30d_eur", "snapshot": true },
-  "refunds": { "source": "public.admin_finance_summary()", "value": "refunds_30d_eur", "snapshot": true },
-  "inc": { "source": "", "date": "", "value": "" },
-  "exp": { "source": "", "date": "", "value": "" }
+  "_meta": {
+    "excludesTestAccounts": true,
+    "excludesDemoMeetups": true
+  },
+  "reg_total": {
+    "source": "public.admin_stats_daily",
+    "date": "day",
+    "value": "registrations_total"
+  },
+  "reg_week": {
+    "source": "public.admin_stats_daily",
+    "date": "day",
+    "value": "registrations_7d"
+  },
+  "active_users": {
+    "source": "public.admin_stats_daily",
+    "date": "day",
+    "value": "active_users_30d"
+  },
+  "signups": {
+    "source": "public.admin_meetup_overview",
+    "value": "next_signups",
+    "snapshot": true
+  },
+  "attend": {
+    "source": "public.admin_meetup_overview",
+    "value": "last_attended",
+    "snapshot": true
+  },
+  "noshow": {
+    "source": "public.admin_meetup_overview",
+    "value": "last_noshow",
+    "snapshot": true
+  },
+  "invites": {
+    "source": "public.admin_invitation_stats",
+    "date": "day",
+    "value": "invites_7d"
+  },
+  "invite_rate": {
+    "source": "public.admin_invitation_stats",
+    "date": "day",
+    "value": "acceptance_rate"
+  },
+  "payments": {
+    "source": "public.admin_finance_summary()",
+    "value": "payments_30d_eur",
+    "snapshot": true
+  },
+  "refunds": {
+    "source": "public.admin_finance_summary()",
+    "value": "refunds_30d_eur",
+    "snapshot": true
+  },
+  "inc": {
+    "source": "",
+    "date": "",
+    "value": ""
+  },
+  "exp": {
+    "source": "",
+    "date": "",
+    "value": ""
+  },
+  "meetup_days": {
+    "source": "public.admin_meetup_overview",
+    "value": "next_days",
+    "snapshot": true
+  },
+  "meetup_capacity": {
+    "source": "public.admin_meetup_overview",
+    "value": "next_capacity",
+    "snapshot": true
+  }
 }

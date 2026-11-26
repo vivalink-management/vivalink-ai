@@ -77,7 +77,11 @@ Die Gegenstelle **berechnet nichts selbst**. Sie liest ausschließlich die Auswe
 | 7 | **Koppeln:** <ul><li>In Supabase `select management_ai.new_pair_code();` ausführen.</li><li>Den Code in der App unter „Mehr › Verwaltung“ eingeben.</li><li>Später kann das eine Schaltfläche in der Verwaltung übernehmen. Das ist der einzige Teil, der Rork betreffen würde, und ist optional.</li></ul> | Gründer | nein |
 
 - **Rork-Credits:** Für die Schritte 1–7 werden keine gebraucht. Alles läuft über SQL und die Edge Function. Nur eine spätere Schaltfläche in der Verwaltung wäre ein Rork-Auftrag, und der ist optional.
-- **Kosten:** Edge Functions und Datenbankzugriffe liegen im kostenlosen Rahmen von Supabase. Erwartet werden höchstens 4 Abrufe pro Tag und Gerät.
+- **Kosten (geprüft am 26.11.2026):**
+  - Supabase Free: 500.000 Aufrufe von Edge Functions pro Monat je Organisation; im Free-Tarif gibt es keine Nachberechnung.
+  - Bedarf: höchstens 4 Abrufe pro Tag und Gerät, also etwa 250 pro Monat.
+  - Datenbanklast: wenige zählende Abfragen.
+  - Ein zusätzliches Supabase-Testprojekt braucht einen freien Platz (höchstens 2 aktive Free-Projekte).
 - **Bitte vor Schritt 5 prüfen:** <ul><li>Supabase-Tarif und Projektgrenzen (Anzahl Edge Functions, Aufrufe).</li><li>Ob die zugeordneten Views mit `security_invoker` laufen. Dann bräuchte die Rolle Leserechte auf Basistabellen, was nicht gewollt ist; solche Auswertungen würden übersprungen.</li></ul>
 
 ## Rückbau

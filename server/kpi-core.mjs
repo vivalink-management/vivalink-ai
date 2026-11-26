@@ -15,7 +15,8 @@
 //   aggregates() → [{key, date, value}]   (aus den vorhandenen Auswertungen gemäß mapping.json)
 //   meta() → {excludesTestAccounts, excludesDemoMeetups}  (vom Gründer bestätigte Angaben aus mapping.json, sonst false)
 
-export const KPI_KEYS = ["reg_total", "reg_week", "active_users", "signups", "attend", "noshow", "invites", "invite_rate", "payments", "refunds", "inc", "exp"];
+export const KPI_KEYS = ["reg_total", "reg_week", "active_users", "signups", "attend", "noshow", "invites", "invite_rate", "payments", "refunds", "inc", "exp", "meetup_days", "meetup_capacity"];
+// meetup_days: Tage bis zum nächsten Meetup (0 = heute), meetup_capacity: Plätze des nächsten Meetups – füllen die Meetup-Karte der App
 export const MAX_CALLS_PER_HOUR = 60;
 // Schutz vor dem Durchprobieren von Kopplungscodes: höchstens 10 Fehlversuche je 10 Minuten (insgesamt), danach 429
 export const MAX_PAIR_FAILS = 10;

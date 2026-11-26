@@ -1,5 +1,19 @@
 # Änderungsprotokoll
 
+## 2.8.0 (Entwicklungszweig, noch nicht veröffentlicht) – Meetup-Karte automatisch, Verwaltungsanbindung verfeinert
+
+- **Nächstes Meetup automatisch aus der Verwaltung** (sobald angebunden):
+  - Datum und Ziel (= Plätze) werden eingetragen, Verschiebungen übernommen
+  - eigene Eingaben haben Vorrang
+  - ein abweichendes eigenes Datum ergibt einen Hinweis statt einer Änderung
+  - ein vergangenes Meetup wird lokal archiviert
+- **Gegenstelle:** zwei neue Angaben (`meetup_days`, `meetup_capacity`, nur Zahlen)
+- **Zweite Bestandsaufnahme nur noch eng begrenzt:**
+  - nur genannte Funktionen und Tabellen
+  - Zeichenketten mit Adressen oder Zugangsdaten werden geleert
+  - die umfassende Fassung wurde entfernt
+- Schemaspezifische Dateien liegen in einem getrennten, privaten Repository (vorbereitet)
+
 ## 2.7.1 (veröffentlicht am 25.11.2026) – Geräte zusammenführen, Anbindung der Vivalink-Verwaltung
 
 - **Synchronisierung: zwei getrennte Datenspeicher zusammenführen** (wenn beide Geräte „Synchronisierung einrichten“ gewählt haben):

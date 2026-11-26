@@ -33,6 +33,9 @@ const kpiBody = (variant) => {
   const base = { format: "vivalink-kpis", version: 1, generatedAt: "2026-03-10T06:00:00Z", meta: { excludesTestAccounts: true, excludesDemoMeetups: true }, values: [{ key: "reg_total", date: "2026-03-09", value: 321, source: "supabase" }, { key: "active_users", date: "2026-03-09", value: 88 }, { key: "invite_rate", date: "2026-03-09", value: 41.5 }, { key: "zukunft", date: "2026-03-09", value: 1 }] };
   if (variant === "pii") base.values.push({ key: "signups", date: "2026-03-09", value: 3, email: "person@example.invalid" });
   if (variant === "extra") base.users = [{ id: 1 }];
+  // „meetup-<Tage>-<Plätze>“: nächstes Meetup aus der Verwaltung
+  const mu = /^meetup-(\d+)-(\d+)$/.exec(variant || "");
+  if (mu) base.values.push({ key: "meetup_days", date: "2026-03-09", value: Number(mu[1]), source: "verwaltung" }, { key: "meetup_capacity", date: "2026-03-09", value: Number(mu[2]), source: "verwaltung" });
   return base;
 };
 
