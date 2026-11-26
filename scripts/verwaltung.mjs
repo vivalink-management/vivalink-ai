@@ -228,6 +228,10 @@ declare
   et_fremd text;
   et_rls boolean;
   et_grund text;
+  sr record;
+  sr_wirksam text[] := '{}';
+  sr_gesperrt int := 0;
+  sr_schemas text[] := '{}';
 begin
  begin
 
@@ -352,12 +356,42 @@ ${keyChecks}
     zeilen := zeilen || ('Rechte: weitere lesbare Tabellen der Verwaltung|' || case when basis = 0 then 'keine' else basis || ' (PROBLEM)' end);
     -- keine Schreib-/Löschrechte auf irgendeine Tabelle außerhalb des eigenen Schemas; keine Anmeldung, kein Superuser,
     -- keine Rollen-/Datenbankerstellung, keine Umgehung von RLS; nicht Mitglied privilegierter Rollen
-    select count(*) into n from pg_class c join pg_namespace s on s.oid = c.relnamespace
-     where s.nspname <> 'management_ai' and s.nspname not like 'pg\\_%' and s.nspname <> 'information_schema' and c.relkind in ('r', 'p', 'v', 'm', 'f')
-       and (has_table_privilege('management_ai', c.oid, 'insert') or has_table_privilege('management_ai', c.oid, 'update')
-            or has_table_privilege('management_ai', c.oid, 'delete') or has_table_privilege('management_ai', c.oid, 'truncate'));
-    zeilen := zeilen || ('Rechte: Schreibrechte außerhalb des eigenen Bereichs|' || case when n = 0 then 'keine' else n || ' (PROBLEM)' end);
-    if n > 0 then fehler := fehler + 1; end if;
+    -- Jedes Schreibrecht (insert/update/delete/truncate) der Rolle auf Tabellen/Views außerhalb des eigenen Schemas wird bewertet:
+    --  * direkt an management_ai vergeben (die Einrichtung tut das nie) → PROBLEM
+    --  * geerbt (z. B. über PUBLIC) und die Rolle darf das Schema benutzen (USAGE) → wirksam → PROBLEM
+    --  * geerbt, aber ohne USAGE auf dem Schema → in PostgreSQL nicht nutzbar (ohne USAGE ist kein Objekt des Schemas
+    --    ansprechbar). Zusätzlich aktiver Nachweis je Objekt: EXPLAIN eines DELETE als management_ai muss mit
+    --    „keine Berechtigung“ (42501) scheitern. EXPLAIN ohne ANALYZE führt nichts aus und verändert nichts.
+    --    Gelingt es unerwartet → PROBLEM.
+    for sr in select s.nspname as sn, c.relname as rn, has_schema_privilege('management_ai', s.oid, 'usage') as nutzbar,
+                     exists (select 1 from aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) a
+                              where a.grantee = (select oid from pg_roles where rolname = 'management_ai')) as direkt
+                from pg_class c join pg_namespace s on s.oid = c.relnamespace
+               where s.nspname <> 'management_ai' and s.nspname not like 'pg\\_%' and s.nspname <> 'information_schema' and c.relkind in ('r', 'p', 'v', 'm', 'f')
+                 and (has_table_privilege('management_ai', c.oid, 'insert') or has_table_privilege('management_ai', c.oid, 'update')
+                      or has_table_privilege('management_ai', c.oid, 'delete') or has_table_privilege('management_ai', c.oid, 'truncate'))
+               order by 1, 2
+    loop
+      if sr.nutzbar or sr.direkt then
+        sr_wirksam := sr_wirksam || (sr.sn || '.' || sr.rn);
+      else
+        begin
+          set local role management_ai;
+          execute format('explain (costs off) delete from %I.%I', sr.sn, sr.rn);
+          reset role;
+          sr_wirksam := sr_wirksam || (sr.sn || '.' || sr.rn); -- unerwartet ansprechbar
+        exception when insufficient_privilege then
+          reset role;
+          sr_gesperrt := sr_gesperrt + 1;
+          if not (sr.sn = any (sr_schemas)) then sr_schemas := sr_schemas || sr.sn::text; end if;
+        end;
+      end if;
+    end loop;
+    zeilen := zeilen || ('Rechte: Schreibrechte außerhalb des eigenen Bereichs|' || case
+      when cardinality(sr_wirksam) > 0 then cardinality(sr_wirksam) || ' wirksam (PROBLEM): ' || array_to_string(sr_wirksam, ', ')
+      when sr_gesperrt = 0 then 'keine'
+      else 'keine wirksamen – ' || sr_gesperrt || ' geerbte Einträge in Schemas ohne Zugriff (' || array_to_string(sr_schemas, ', ') || '); Schreibversuch nachweislich abgewiesen' end);
+    if cardinality(sr_wirksam) > 0 then fehler := fehler + 1; end if;
     select count(*) into n from pg_roles where rolname = 'management_ai' and (rolcanlogin or rolsuper or rolcreaterole or rolcreatedb or rolbypassrls or rolreplication);
     select n + count(*) into n from pg_auth_members m where m.member = (select oid from pg_roles where rolname = 'management_ai');
     zeilen := zeilen || ('Rechte: Rolle management_ai ohne Anmeldung und ohne Sonderrechte|' || case when n = 0 then 'ja' else 'nein (PROBLEM)' end);

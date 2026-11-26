@@ -749,7 +749,7 @@ test("Einrichtung: COMMIT nur bei vollständigem Erfolg; bei jedem Fehler bleibt
         ["neue Spalte in bestehender Tabelle", "alter table public.meetups add column vl_x int;", "Teilnachweis: bestehende Tabellen, Funktionen, Rollen, Rechte, Richtlinien, Trigger unverändert (neu nur Schema und Rolle management_ai)", "NEIN (PROBLEM)"],
         ["neue Prüfregel an bestehender Tabelle", "alter table public.meetups add constraint vl_k check (capacity >= 0);", "Teilnachweis: bestehende Tabellen, Funktionen, Rollen, Rechte, Richtlinien, Trigger unverändert (neu nur Schema und Rolle management_ai)", "NEIN (PROBLEM)"],
         ["Rechte an API-Rolle geändert", "revoke select on public.profiles from anon;", "Teilnachweis: bestehende Tabellen, Funktionen, Rollen, Rechte, Richtlinien, Trigger unverändert (neu nur Schema und Rolle management_ai)", "NEIN (PROBLEM)"],
-        ["Schreibrecht für management_ai", "grant insert on public.meetups to management_ai;", "Rechte: Schreibrechte außerhalb des eigenen Bereichs", "1 (PROBLEM)"],
+        ["Schreibrecht für management_ai", "grant insert on public.meetups to management_ai;", "Rechte: Schreibrechte außerhalb des eigenen Bereichs", "1 wirksam (PROBLEM): public.meetups"],
         ["Daten verändert", "update public.meetups set capacity = capacity;", "GESAMT", null],
       ]) {
         const rr = await run(dryRunSql(TEST_MAPPING, [extra], { einrichtung: true }));
@@ -757,6 +757,41 @@ test("Einrichtung: COMMIT nur bei vollständigem Erfolg; bei jedem Fehler bleibt
         expect(rr["GESAMT"], name).toMatch(/^PROBLEM/);
         expect(await has(), name).toBe(0);
         expect((await db`select count(*)::int n from information_schema.columns where table_name = 'meetups' and column_name = 'vl_x'`)[0].n, name).toBe(0);
+      }
+      // e) An PUBLIC (jede Rolle) vergebene Schreibrechte, wie sie Erweiterungen in eigenen Schemas anlegen:
+      //    in einem Schema OHNE Zugriff → nicht nutzbar → Einrichtung OK; echte Schreibversuche als management_ai scheitern.
+      //    Im nutzbaren Schema oder auf einer bestehenden Verwaltungstabelle → wirksam → PROBLEM, nichts gespeichert.
+      const SR = "Rechte: Schreibrechte außerhalb des eigenen Bereichs";
+      await db.unsafe("create schema vl_intern; create table vl_intern.warteschlange (id int); insert into vl_intern.warteschlange values (1); grant all on vl_intern.warteschlange to public; create view vl_intern.sicht as select * from vl_intern.warteschlange; grant all on vl_intern.sicht to public;");
+      try {
+        r = await run(dryRunSql(TEST_MAPPING, [], { einrichtung: true }));
+        expect(r["GESAMT"], JSON.stringify(r)).toMatch(/^OK – Anbindung eingerichtet/);
+        expect(r[SR]).toBe("keine wirksamen – 2 geerbte Einträge in Schemas ohne Zugriff (vl_intern); Schreibversuch nachweislich abgewiesen");
+        for (const q of ["insert into vl_intern.warteschlange values (2)", "update vl_intern.warteschlange set id = 3", "delete from vl_intern.warteschlange", "truncate vl_intern.warteschlange", "delete from vl_intern.sicht", "insert into public.meetups default values", "update public.meetups set capacity = capacity", "delete from public.meetups", "truncate public.meetups"]) {
+          const e = await db.begin(async (t) => {
+            await t.unsafe("set local role management_ai");
+            await t.unsafe(q);
+          }).then(() => null, (x) => x);
+          expect(e?.code, "als management_ai: " + q).toBe("42501");
+        }
+        expect((await db`select count(*)::int n from vl_intern.warteschlange`)[0].n).toBe(1);
+        await db.unsafe(RUECKBAU_SQL);
+        for (const [name, vorher, nachher, erwartet] of [
+          ["Schema für alle nutzbar", "grant usage on schema vl_intern to public;", "revoke usage on schema vl_intern from public;", "2 wirksam (PROBLEM): vl_intern.sicht, vl_intern.warteschlange"],
+          ["Schreibrecht für alle auf Verwaltungstabelle", "grant insert on public.meetups to public;", "revoke insert on public.meetups from public;", "1 wirksam (PROBLEM): public.meetups"],
+        ]) {
+          await db.unsafe(vorher);
+          try {
+            const rr = await run(dryRunSql(TEST_MAPPING, [], { einrichtung: true }));
+            expect(rr[SR], name).toBe(erwartet);
+            expect(rr["GESAMT"], name).toMatch(/^PROBLEM .* nichts eingerichtet, alle Änderungen zurückgenommen$/);
+            expect(await has(), name).toBe(0);
+          } finally {
+            await db.unsafe(nachher);
+          }
+        }
+      } finally {
+        await db.unsafe("drop schema vl_intern cascade;");
       }
       r = await run(dryRunSql(TEST_MAPPING, [], { einrichtung: true }));
       expect(r["GESAMT"]).toMatch(/^OK – Anbindung eingerichtet/);
