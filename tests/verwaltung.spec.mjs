@@ -42,7 +42,15 @@ test("Gegenstelle liefert genau die Werte der vorhandenen Auswertungen; Testkont
   const tok = await newToken();
   let j = await (await kpis(tok)).json();
   expect(Object.keys(j).sort()).toEqual(["format", "generatedAt", "meta", "values", "version"]);
-  expect(j.meta).toEqual({ excludesTestAccounts: true, excludesDemoMeetups: true, timezone: "Europe/Berlin" });
+  // Testdaten getrennt: nur Summen der Testkonten, unabhängig aus den Basistabellen berechnet
+  const testSums = async () => (await env.sql`select
+    (select count(*)::int from profiles where is_test_account) as accounts,
+    (select count(*)::int from meetup_participants mp join profiles p on p.id = mp.profile_id where p.is_test_account) as bookings,
+    (select count(*)::int from invitations i join profiles p on p.id = i.inviter_id where p.is_test_account) as invitations,
+    (select (coalesce(sum(amount_cents), 0) / 100.0)::float from payments x join profiles p on p.id = x.profile_id where p.is_test_account and kind = 'zahlung') as payments,
+    (select (coalesce(sum(amount_cents), 0) / 100.0)::float from payments x join profiles p on p.id = x.profile_id where p.is_test_account and kind = 'erstattung') as refunds`)[0];
+  expect(j.meta).toEqual({ excludesTestAccounts: true, excludesDemoMeetups: true, timezone: "Europe/Berlin", testData: await testSums() });
+  expect(j.meta.testData.accounts).toBe(12);
   // Unabhängig aus den künstlichen Basistabellen berechnet (nicht über die Views)
   const [x] = await env.sql`select
     (select count(*)::int from profiles where not is_test_account) as reg_total,
@@ -60,6 +68,8 @@ test("Gegenstelle liefert genau die Werte der vorhandenen Auswertungen; Testkont
   await env.sql`insert into meetup_participants (meetup_id, profile_id, status) select 3, id, 'angemeldet' from profiles where is_test_account`;
   j = await (await kpis(tok)).json();
   expect([valueOf(j, "reg_total"), valueOf(j, "signups")]).toEqual([x.reg_total, x.signups]);
+  expect(j.meta.testData).toEqual(await testSums());
+  expect(j.meta.testData.accounts).toBe(13);
   await env.sql`insert into profiles (full_name, email, created_at) values ('Person neu', 'pneu@example.invalid', now())`;
   j = await (await kpis(tok)).json();
   expect(valueOf(j, "reg_total")).toBe(x.reg_total + 1);

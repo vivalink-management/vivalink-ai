@@ -11,6 +11,8 @@
 // - Fehler einzelner Auswertungen überspringen nur diesen Schlüssel; Einzelheiten gehen nicht nach außen.
 
 export const ROLE = "management_ai";
+// Spalten der Testdaten-Auswertung → Felder in meta.testData (nur Anzahlen und Summen, keine Einzelangaben)
+export const TEST_COLS = { konten: "accounts", buchungen: "bookings", einladungen: "invitations", zahlungen_eur: "payments", erstattungen_eur: "refunds" };
 const IDENT = /^[a-z_][a-z0-9_]{0,62}$/;
 const SOURCE = /^([a-z_][a-z0-9_]{0,62}\.)?[a-z_][a-z0-9_]{0,62}(\(\))?$/;
 
@@ -32,7 +34,14 @@ export function parseMapping(mapping, keys) {
     else entries.push({ key, source: src.replace(/\(\)$/, ""), fn: src.endsWith("()"), date: m.snapshot ? null : m.date, value: m.value, snapshot: !!m.snapshot });
   }
   const meta = mapping && mapping._meta ? mapping._meta : {};
-  return { entries, meta: { excludesTestAccounts: meta.excludesTestAccounts === true, excludesDemoMeetups: meta.excludesDemoMeetups === true }, errors };
+  // Getrennt ausgewiesene Testdaten (optional): Auswertung mit genau den Spalten TEST_COLS, eine Zeile, nur Summen
+  let testSource = null;
+  if (meta.testdaten != null && meta.testdaten !== "") {
+    const t = String(meta.testdaten);
+    if (!SOURCE.test(t) || t.endsWith("()")) errors.push("_meta.testdaten: ungültige Quelle");
+    else testSource = t;
+  }
+  return { entries, meta: { excludesTestAccounts: meta.excludesTestAccounts === true, excludesDemoMeetups: meta.excludesDemoMeetups === true, testSource }, errors };
 }
 
 /* Tagesdatum in Europe/Berlin (für Momentaufnahmen ohne eigenes Datum) */
@@ -82,7 +91,22 @@ export function pgRepo(sql, mapping, keys, { onError = () => {} } = {}) {
     touch: (h, now) => call((t) => t`select management_ai.beruehren(${h}, ${iso(now)})`).then(() => undefined),
     calls: (h, since) => read(async (t) => Number((await t`select count(*)::int as n from management_ai.calls where token_hash = ${h} and at > ${iso(since)}`)[0].n)),
     logCall: (h, now) => call((t) => t`select management_ai.protokollieren(${h}, ${iso(now)})`).then(() => undefined),
-    meta: async () => M.meta,
+    // Angaben zur Datenbasis: gekennzeichnete Testkonten (Anzahl > 0) gelten als ausgeschlossen; ihre Daten werden
+    // getrennt als Summen gemeldet. Fehler → keine Testdaten-Angabe und kein „ausgeschlossen“ (sicherer Zustand).
+    meta: async () => {
+      const out = { excludesTestAccounts: M.meta.excludesTestAccounts, excludesDemoMeetups: M.meta.excludesDemoMeetups };
+      if (!M.meta.testSource) return out;
+      try {
+        const [r] = await read((t) => t`select ${t(Object.keys(TEST_COLS))} from ${t(M.meta.testSource)} as q limit 1`);
+        if (r) {
+          out.testData = Object.fromEntries(Object.entries(TEST_COLS).map(([c, k]) => [k, r[c] === null ? 0 : Number(r[c])]));
+          if (out.testData.accounts > 0) out.excludesTestAccounts = true;
+        }
+      } catch (err) {
+        onError("testdaten", err);
+      }
+      return out;
+    },
     // Kennzahlen aus den VORHANDENEN Auswertungen: nur lesend, nur Datum und Wert, letzte 31 Tage
     aggregates: async (now = Date.now()) => {
       const rows = [];

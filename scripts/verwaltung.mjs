@@ -10,7 +10,7 @@ import { createHash } from "node:crypto";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { KPI_KEYS } from "../server/kpi-core.mjs";
-import { parseMapping } from "../server/kpi-pg.mjs";
+import { parseMapping, TEST_COLS } from "../server/kpi-pg.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const FN = join(ROOT, "server/supabase/functions/management-kpis");
@@ -24,7 +24,7 @@ export function grantsSql(mapping) {
   const out = ["-- Leserechte der Rolle management_ai NUR auf die in mapping.json zugeordneten, vorhandenen Auswertungen.", "-- Erzeugt von scripts/verwaltung.mjs – keine Rechte auf Basistabellen."];
   const schemas = new Set(),
     objs = new Set();
-  for (const e of M.entries) {
+  for (const e of [...M.entries, ...(M.meta.testSource ? [{ source: M.meta.testSource, fn: false }] : [])]) {
     const schema = e.source.includes(".") ? e.source.split(".")[0] : "public";
     schemas.add(schema);
     objs.add((e.fn ? "function " : "table ") + q(e.source.includes(".") ? e.source : "public." + e.source) + (e.fn ? "()" : ""));
@@ -173,7 +173,7 @@ export function dryRunSql(mapping, extraSql = [], { rlsAutoMd5 = [], einrichtung
   if (body.includes(tag) || body.includes(inner)) throw new Error("Marke kommt im SQL vor");
   if (/\b(commit|rollback|savepoint)\b/i.test(body.replace(/--.*$/gm, ""))) throw new Error("Transaktionsbefehle im Einrichtungs-SQL sind nicht erlaubt");
   const q = (x) => x.replace(/'/g, "''");
-  const sources = [...new Set(M.entries.map((e) => (e.source.includes(".") ? e.source : "public." + e.source)))];
+  const sources = [...new Set([...M.entries.map((e) => e.source), ...(M.meta.testSource ? [M.meta.testSource] : [])].map((x) => (x.includes(".") ? x : "public." + x)))];
   const keyChecks = M.entries
     .map((e) => {
       const src = (e.source.includes(".") ? e.source : "public." + e.source).split(".").map((x) => `"${x}"`).join(".") + (e.fn ? "()" : "");
@@ -185,6 +185,19 @@ export function dryRunSql(mapping, extraSql = [], { rlsAutoMd5 = [], einrichtung
       zeilen := zeilen || ('Kennzahl ${e.key}|FEHLER E-KZ (SQLSTATE ' || sqlstate || ')'); fehler := fehler + 1;
     end;`;
     })
+    .concat(
+      M.meta.testSource
+        ? [
+            `    begin
+      execute 'select count(*) from (select ${Object.keys(TEST_COLS).map((c) => '"' + c + '"').join(", ")} from ${q(M.meta.testSource.split(".").map((x) => `"${x}"`).join("."))} as q limit 1) z' into n;
+      zeilen := zeilen || ('Testdaten getrennt auswertbar|' || case when n = 1 then 'ja' else 'nein (keine Zeile)' end);
+      if n <> 1 then fehler := fehler + 1; end if;
+    exception when others then
+      zeilen := zeilen || ('Testdaten getrennt auswertbar|FEHLER E-KZ (SQLSTATE ' || sqlstate || ')'); fehler := fehler + 1;
+    end;`,
+          ]
+        : [],
+    )
     .join("\n");
   const kopf = E
     ? `-- Vivalink Management AI: DAUERHAFTE EINRICHTUNG der Verwaltungsanbindung – nur nach ausdrücklicher Freigabe ausführen.
@@ -596,8 +609,14 @@ export function abgleichSql(mapping) {
     const v = e.snapshot ? `(select "${e.value}"::text from ${src} limit 1)` : `(select "${e.value}"::text from ${src} order by "${e.date}" desc limit 1)`;
     return `select ${M.entries.indexOf(e)} as nr, '${q(KPI_LABELS[e.key] || e.key)}' as "Kennzahl", ${v} as "Wert heute"`;
   });
+  // Testdaten getrennt (nur Summen der gekennzeichneten Testkonten) – zum Abgleich, was NICHT in den Kennzahlen steckt
+  if (M.meta.testSource) {
+    const ts = M.meta.testSource.split(".").map((x) => `"${x}"`).join(".");
+    const lab = { konten: "Testdaten: gekennzeichnete Testkonten", buchungen: "Testdaten: Buchungen (gesamt)", einladungen: "Testdaten: Einladungen (gesamt)", zahlungen_eur: "Testdaten: Zahlungen (gesamt, €)", erstattungen_eur: "Testdaten: Erstattungen (gesamt, €)" };
+    Object.keys(TEST_COLS).forEach((c, i) => parts.push(`select ${100 + i} as nr, '${lab[c]}' as "Kennzahl", (select "${c}"::text from ${ts} limit 1) as "Wert heute"`));
+  }
   return `-- Vivalink Management AI: Abgleich mit dem Admin-Dashboard (nur lesend). Zeigt die Werte, die die Management AI erhält.
--- Hinweis: Admin-Konten sind ausgeschlossen; ob weitere Testkonten enthalten sind, ist nicht bekannt.
+-- Hinweis: Admin-Konten sind immer ausgeschlossen${M.meta.testSource ? "; gekennzeichnete Testkonten ebenfalls – ihre Daten stehen getrennt unten (Testdaten)" : "; ob weitere Testkonten enthalten sind, ist nicht bekannt"}.
 select "Kennzahl", "Wert heute" from (
 ${parts.join("\n union all\n")}
 ) t order by nr;

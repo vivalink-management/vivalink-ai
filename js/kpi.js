@@ -7,7 +7,8 @@ const KPI_FORMAT = "vivalink-kpis";
 const kpiUrl = () => window.VL_KPI_URL || "";
 const KPI_TOP = ["format", "version", "generatedAt", "values", "meta"];
 const KPI_VAL = ["key", "date", "value", "source"];
-const KPI_META = ["excludesTestAccounts", "excludesDemoMeetups", "timezone"];
+const KPI_META = ["excludesTestAccounts", "excludesDemoMeetups", "timezone", "testData"];
+const KPI_TEST = ["accounts", "bookings", "invitations", "payments", "refunds"]; // getrennt ausgewiesene Testdaten (nur Summen)
 const KPI_MEETUP = ["meetup_days", "meetup_capacity"]; // keine Kennzahl-Karten, sondern Angaben zum nächsten Meetup
 const PII_RE = /@|\+?\d[\d ()/-]{7,}\d|\b(name|email|telefon|phone|vorname|nachname|adresse|address|user_?id|uid)\b/i;
 
@@ -18,6 +19,9 @@ function validateKpis(j) {
   if (extra.length) return { ok: false, error: "Unerwartete Felder (" + extra.slice(0, 3).join(", ") + ") – aus Datenschutzgründen nichts übernommen" };
   if (j.format !== KPI_FORMAT || j.version !== 1 || !Array.isArray(j.values)) return { ok: false, error: "Unbekanntes Format – nichts übernommen" };
   if (j.meta && (typeof j.meta !== "object" || Object.keys(j.meta).some((k) => !KPI_META.includes(k)))) return { ok: false, error: "Unerwartete Zusatzangaben – nichts übernommen" };
+  const td = j.meta && j.meta.testData;
+  if (td != null && (typeof td !== "object" || Array.isArray(td) || Object.keys(td).sort().join() !== [...KPI_TEST].sort().join() || KPI_TEST.some((k) => typeof td[k] !== "number" || !isFinite(td[k]) || td[k] < 0)))
+    return { ok: false, error: "Unerwartete Testdaten-Angaben – nichts übernommen" };
   const known = new Set([...MT.map((t) => t.k), ...KPI_MEETUP]);
   const vals = [];
   for (const v of j.values) {
@@ -103,13 +107,16 @@ async function kpiSync() {
     return kpiFail(cfg, v.error);
   }
   let n = 0;
+  // Verifiziert echt nur, wenn die Verwaltung bestätigt, dass Testkonten ausgeschlossen sind. Sonst bleiben die Werte
+  // gespeichert (nichts wird gelöscht), fließen aber in keine Anzeige, Auswertung, Empfehlung oder Instagram-Analyse ein.
+  const real = !!(j.meta && j.meta.excludesTestAccounts === true);
   const mu = await kpiMeetup(v.values);
   for (const x of v.values) {
     if (KPI_MEETUP.includes(x.key)) continue;
     const m = S.metrics.find((y) => y.key === x.key);
-    if (m && addVal(m.id, { date: x.date, value: Math.round(x.value * 100) / 100, status: "confirmed", src: "verwaltung" })) n++;
+    if (m && addVal(m.id, { date: x.date, value: Math.round(x.value * 100) / 100, status: "confirmed", src: "verwaltung", real })) n++;
   }
-  Object.assign(cfg, { last: Date.now(), fails: 0, lastError: null, count: v.values.length, meta: j.meta ? { excludesTestAccounts: j.meta.excludesTestAccounts === true, excludesDemoMeetups: j.meta.excludesDemoMeetups === true } : null });
+  Object.assign(cfg, { last: Date.now(), fails: 0, lastError: null, count: v.values.length, meta: j.meta ? { excludesTestAccounts: real, excludesDemoMeetups: j.meta.excludesDemoMeetups === true, testData: j.meta.testData ? { ...j.meta.testData } : null } : null });
   await kvPut("kpi-config", cfg);
   await loadKpiState();
   await save();
@@ -182,12 +189,24 @@ function kpiFinding() {
   if (c.revoked) return { title: "Verwaltung: Zugang widerrufen", detail: "Kennzahlen werden nicht mehr automatisch übernommen. Unter „Mehr › Verwaltung“ neu koppeln." };
   const since = c.last || c.since;
   if ((c.fails || 0) >= 3 && Date.now() - since > 24 * 3600e3) return { title: "Verwaltung: Kennzahlen seit " + Math.round((Date.now() - since) / 3600e3) + " Stunden nicht abrufbar", detail: "Letzter Fehler: " + ((c.lastError && c.lastError.msg) || "unbekannt") + ". Die App versucht es automatisch weiter." };
+  if (c.meta && !c.meta.excludesTestAccounts && c.last)
+    return { title: "Verwaltung: Kennzahlen enthalten möglicherweise Testkonten", detail: "Werte aus der Verwaltung werden erst verwendet, wenn Testkonten gekennzeichnet sind (Anleitung: Mehr › Verwaltung). Bis dahin beruhen Empfehlungen nur auf deinen eigenen Eingaben." };
   return null;
 }
 async function kpiRemove() {
   await kvPut("kpi-config", null);
   await loadKpiState();
   logEvent("info", "kpi.remove", "Kopplung mit der Verwaltung entfernt");
+}
+/* Datenbasis: echte Kennzahlen vs. getrennt ausgewiesene Testdaten */
+function kpiTestHtml(cfg) {
+  const m = cfg.meta;
+  if (!m) return "";
+  if (!m.excludesTestAccounts)
+    return '<div class="card rec warn" id="kpTest" style="margin-top:6px">Testkonten sind in der Verwaltung noch nicht gekennzeichnet. Die übernommenen Werte können Testdaten enthalten und werden deshalb <b>nicht</b> angezeigt und nicht für Empfehlungen oder Instagram-Analysen verwendet (sie bleiben gespeichert).</div>';
+  const t = m.testData;
+  const eur = (x) => Number(x).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+  return `<div class="mut" id="kpTest" style="margin-top:6px">✅ Echte Kennzahlen: gekennzeichnete Testkonten und Admin-Konten sind ausgeschlossen.</div>${t ? `<div class="card" id="kpTestData" style="margin-top:6px"><b>Testdaten (getrennt, fließen nirgends ein)</b><div class="mut">${num(t.accounts)} Testkonten · ${num(t.bookings)} Buchungen · ${num(t.invitations)} Einladungen · Zahlungen ${eur(t.payments)} · Erstattungen ${eur(t.refunds)}</div></div>` : ""}`;
 }
 /* ---------- Oberfläche („Mehr › Kennzahlen aus der Verwaltung“) ---------- */
 async function kpiSheet() {
@@ -197,7 +216,7 @@ async function kpiSheet() {
     !kpiUrl()
       ? '<div class="card rec warn">Vorbereitet. Die Gegenstelle in der Verwaltung (Supabase) ist noch nicht eingerichtet – das braucht deine gesonderte Freigabe (Anleitung: docs/AUFTRAG-VERWALTUNG.md). Bis dahin trägst du Kennzahlen auf der Startseite ein.</div>'
       : cfg && !cfg.revoked
-        ? `<div class="card"><div>Status: <b>${cfg.lastError ? "Problem beim Abruf" : "gekoppelt"}</b></div><div class="mut">Zuletzt abgerufen: ${cfg.last ? new Date(cfg.last).toLocaleString("de-DE") : "noch nie"} · übernommene Werte: ${fromV}</div>${cfg.lastError ? `<div class="mut">Letzter Fehler (${new Date(cfg.lastError.at).toLocaleString("de-DE")}): ${esc(cfg.lastError.msg)} – neuer Versuch automatisch.</div>` : ""}<div class="mut">Abruf automatisch höchstens alle 6 Stunden beim Öffnen der App.</div>${cfg.meta && !cfg.meta.excludesTestAccounts ? '<div class="mut" id="kpTest" style="margin-top:4px">Hinweis: Admin-Konten sind ausgeschlossen. Ob weitere Testkonten mitgezählt werden, ist nicht bekannt – leichte Abweichungen zum Admin-Dashboard sind möglich.</div>' : ""}</div><div class="row"><button class="p" data-a="kpNow">Jetzt abrufen</button><button data-a="kpOff">Kopplung entfernen</button></div>`
+        ? `<div class="card"><div>Status: <b>${cfg.lastError ? "Problem beim Abruf" : "gekoppelt"}</b></div><div class="mut">Zuletzt abgerufen: ${cfg.last ? new Date(cfg.last).toLocaleString("de-DE") : "noch nie"} · übernommene Werte: ${fromV}</div>${cfg.lastError ? `<div class="mut">Letzter Fehler (${new Date(cfg.lastError.at).toLocaleString("de-DE")}): ${esc(cfg.lastError.msg)} – neuer Versuch automatisch.</div>` : ""}<div class="mut">Abruf automatisch höchstens alle 6 Stunden beim Öffnen der App.</div>${kpiTestHtml(cfg)}</div><div class="row"><button class="p" data-a="kpNow">Jetzt abrufen</button><button data-a="kpOff">Kopplung entfernen</button></div>`
         : `${cfg && cfg.revoked ? '<div class="card rec warn" id="kpRevoked">Der Zugang wurde in der Verwaltung widerrufen. Bisherige Kennzahlen bleiben erhalten. Für neue Werte einen neuen Kopplungscode erzeugen und hier eingeben.</div>' : ""}<div class="card"><b>Mit der Verwaltung koppeln</b><p class="mut">Im Supabase-Dashboard (SQL Editor) mit <b>4-kopplungscode.sql</b> einen Kopplungscode erzeugen (8 Ziffern, 10 Minuten gültig, nur einmal verwendbar) und hier eingeben. Für jedes Gerät einen eigenen Code.</p><input id="kpCode" inputmode="numeric" autocomplete="off" placeholder="Kopplungscode"><button class="p" data-a="kpPair">Koppeln</button></div>`
   }<button data-a="close">Schließen</button>`);
 }

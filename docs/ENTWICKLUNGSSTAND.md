@@ -1,7 +1,7 @@
 # Zentrale Entwicklungsübersicht: Vivalink Management AI
 
 **Fortsetzungsdokument für alle weiteren Entwicklungsaufträge.** Bei jedem Auftrag zuerst lesen und am Ende aktualisieren. Arbeitsweise (Tests, Gerätetests, Grenzen): **`CLAUDE.md`**.
-Stand: 26.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.9.0** (`main`, veröffentlicht am 26.11.2026: Verwaltungsanbindung aktiv, dazu 2.8.2/2.8.3) · Testversion „VL Test“: 2.8.3 (Synchronisierungscode identisch)
+Stand: 26.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.9.0** (`main`, veröffentlicht am 26.11.2026: Verwaltungsanbindung aktiv, dazu 2.8.2/2.8.3) · Entwicklungszweig: **2.10.0** (echte Kennzahlen, Testdaten getrennt; nicht veröffentlicht) · Testversion „VL Test“: 2.8.3
 
 ## 1. Umgesetzt und getestet (noch nicht veröffentlicht)
 
@@ -88,7 +88,9 @@ Stand: 26.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
   - **Diagnose (26.11.2026):** Zwei Tabellen der Netzwerk-Erweiterung sind an PUBLIC beschreibbar und ihr Schema ist für alle nutzbar; eine Tabelle der Zeitplan-Erweiterung liegt in einem Schema ohne Zugriff. PUBLIC-Rechte lassen sich in PostgreSQL nicht für eine einzelne Rolle entziehen. Lösung ohne Änderung an Supabase-Rechten: Die Rolle liest nur (READ ONLY), schreibt nur über drei festgelegte Funktionen, und ein Schreibschutz bricht beim Abschluss jede Transaktion ab, die außerhalb von management_ai schreibt. Die Einrichtung prüft alle Schutzschichten; Rechte von Erweiterungen werden nur dann toleriert, sonst Abbruch.
   - ✅ **26.11.2026 produktiv eingerichtet** (GESAMT OK), Edge Function bereitgestellt, /version und 401 ohne Zugang vom Gründer bestätigt, JWT-Prüfung aus.
   - ✅ **2.9.0 veröffentlicht (26.11.2026)**: alle 24 Dateien auf GitHub Pages identisch mit `main`, Update 2.8.1 → 2.9.0 mit Daten geprüft.
-  - **Offen:** Kopplung von iPhone und iPad (Gründer), Abgleich mit dem Admin-Dashboard (`bereitstellung/ABGLEICH.md`); früher offen: **Offen (Freigabe Gründer):** Einrichtung und Edge Function in Supabase, danach App-Version mit der Adresse der Edge Function.
+  - ✅ Kopplung und Abgleich durch den Gründer (26.11.2026): alle neun Kennzahlen stimmen überein. Die vier gezählten Konten sind Testkonten des Gründers.
+  - **2.10.0 vorbereitet (nicht veröffentlicht):** Testkonten werden ausdrücklich gekennzeichnet (Tabelle im eigenen Schema, nur Konto-Kennungen); Kennzahlen ohne Testkonten; Testdaten (Konten, Buchungen, Einladungen, Zahlungen, Erstattungen) getrennt in `meta.testData`. Die App verwendet Verwaltungswerte nur verifiziert (Kennzeichen `real`). Ablauf für den Gründer: privat `bereitstellung/UMSTELLUNG-TESTDATEN.md`. Reihenfolge: erst App 2.10.0, dann Server.
+  - **Offen (Freigabe Gründer):** Veröffentlichung 2.10.0, danach Rückbau und Neueinrichtung, neue Edge Function, Testkonten kennzeichnen, Geräte neu koppeln; früher offen: **Offen (Freigabe Gründer):** Einrichtung und Edge Function in Supabase, danach App-Version mit der Adresse der Edge Function.
   - Testkonten mit Nutzerrolle: nicht bekannt → gekennzeichnet (keine erfundenen Merkmale)
   - Einrichtung (Freigabe)
 - **Kosten** (Stand 26.11.2026, offizielle Supabase-Angaben):
