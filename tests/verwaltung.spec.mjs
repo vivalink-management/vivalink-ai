@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { startEnv, pgBin, TEST_MAPPING } from "./verwaltung/env.mjs";
 import { pgRepo, parseMapping } from "../server/kpi-pg.mjs";
 import { KPI_KEYS, buildKpis, MAX_PAIR_FAILS } from "../server/kpi-core.mjs";
-import { grantsSql, INVENTORY_SQL, factsSql } from "../scripts/verwaltung.mjs";
+import { grantsSql, INVENTORY_SQL, factsSql, dryRunSql } from "../scripts/verwaltung.mjs";
 import { ready, state, kv, expectToast } from "./helpers.mjs";
 
 test.describe.configure({ mode: "serial", timeout: 120_000 });
@@ -317,6 +317,34 @@ test("Zweite Bestandsaufnahme (datensparsam): kein Programmcode, nur Treffer aus
   expect(() => factsSql({ functions: ["a"], terms: ["x$t$; drop"] })).toThrow();
   expect(() => factsSql({})).toThrow();
   await env.sql.unsafe("drop function public.admin_geheim()");
+});
+
+test("Probelauf ohne bleibende Wirkung: richtet alles ein, prüft es, nimmt alles zurück; meldet nur ja/nein", async ({}, info) => {
+  serverOnly(info);
+  // eigene, frische Datenbank mit der künstlichen Verwaltung, aber OHNE Anbindung (wie die produktive vor der Freigabe)
+  await env.sql.unsafe("drop database if exists probe");
+  await env.sql.unsafe("create database probe");
+  const db = postgres(`postgres://postgres@127.0.0.1:${54400 + info.parallelIndex}/probe`, { max: 1, onnotice: () => {} });
+  try {
+    for (const f of ["supabase-stub.sql", "fixture.sql"]) await db.unsafe(readFileSync(new URL("./verwaltung/" + f, import.meta.url), "utf8"));
+    const snap = async () => JSON.stringify(await db`select (select count(*) from pg_namespace where nspname = 'management_ai') s, (select count(*) from profiles) p, (select count(*) from pg_class where relnamespace = 'public'::regnamespace) o`);
+    const before = await snap();
+    const run = async (sql) => db.unsafe(sql).then(() => "ohne Meldung", (e) => e.message);
+    const msg = await run(dryRunSql(TEST_MAPPING));
+    expect(msg).toMatch(/^PROBELAUF OK \(alles zurückgenommen\)/);
+    expect(msg).toContain("reg_total=ja");
+    expect(msg).toContain("weitere lesbare Tabellen=0, API-Zugriff=nein");
+    expect(msg).not.toMatch(/\d{2,}/); // keine Kennzahlen in der Meldung
+    expect(await snap()).toBe(before); // nichts geblieben: kein Schema, keine Objekte, Daten unverändert
+    // Fehlerhafte Zuordnung → PROBLEM, ebenfalls ohne bleibende Wirkung
+    const bad = await run(dryRunSql({ ...TEST_MAPPING, reg_week: { source: "public.gibt_es_nicht", date: "d", value: "v" } }));
+    expect(bad).toMatch(/^PROBELAUF PROBLEM/);
+    expect(bad).toMatch(/reg_week=FEHLER|Einrichtung fehlgeschlagen: .*gibt_es_nicht/);
+    expect(await snap()).toBe(before);
+  } finally {
+    await db.end();
+    await env.sql.unsafe("drop database if exists probe");
+  }
 });
 
 test("Rückbau entfernt nur die Anbindung; Daten und Auswertungen der Verwaltung bleiben unverändert", async ({}, info) => {

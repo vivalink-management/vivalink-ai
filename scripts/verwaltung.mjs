@@ -3,6 +3,7 @@
 //   node scripts/verwaltung.mjs grants [mapping.json]        → Leserechte der Rolle management_ai auf die zugeordneten Auswertungen
 //   node scripts/verwaltung.mjs bundle [mapping.json] <ziel> → Bereitstellungsordner (Edge Function + Migration + Rechte)
 //   node scripts/verwaltung.mjs check [mapping.json]         → Zuordnung prüfen
+//   node scripts/verwaltung.mjs dryrun <mapping.json> [zusatz.sql …] → Probelauf ohne bleibende Wirkung (alles wird zurückgenommen)
 //   node scripts/verwaltung.mjs facts <fragen.json>          → datensparsame zweite Bestandsaufnahme ({functions, tables, terms})
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -104,6 +105,65 @@ order by 1, 2;
 `;
 }
 
+/* Probelauf OHNE bleibende Wirkung (für den Free-Tarif ohne eigenes Testprojekt): richtet Schema, Rolle, Kennzahl-
+   Auswertungen und Rechte in EINEM Block ein, prüft alles und bricht am Ende absichtlich mit einer Meldung ab –
+   PostgreSQL nimmt dadurch ALLE Änderungen vollständig zurück (auch wenn der SQL-Editor automatisch bestätigt).
+   Die Meldung enthält nur Prüfergebnisse (ja/nein), keine Kennzahlen und keine Daten. */
+export function dryRunSql(mapping, extraSql = []) {
+  const M = parseMapping(mapping, KPI_KEYS);
+  if (M.errors.length) throw new Error("mapping.json fehlerhaft: " + M.errors.join("; "));
+  const body = [readFileSync(MIGRATION, "utf8"), ...extraSql, grantsSql(mapping)].join("\n");
+  const tag = "$vlprobe$",
+    inner = "$vlsql$";
+  if (body.includes(tag) || body.includes(inner)) throw new Error("Marke kommt im SQL vor");
+  const q = (x) => x.replace(/'/g, "''");
+  const sources = [...new Set(M.entries.map((e) => (e.source.includes(".") ? e.source : "public." + e.source)))];
+  const keyChecks = M.entries
+    .map((e) => {
+      const src = (e.source.includes(".") ? e.source : "public." + e.source).split(".").map((x) => `"${x}"`).join(".") + (e.fn ? "()" : "");
+      return `  begin
+    execute 'select count("${e.value}") from ${q(src)} as q' into n;
+    ergebnis := ergebnis || ' ${e.key}=' || case when n > 0 then 'ja' else 'leer' end;
+    if n = 0 then fehler := fehler + 1; end if;
+  exception when others then
+    ergebnis := ergebnis || ' ${e.key}=FEHLER'; fehler := fehler + 1;
+  end;`;
+    })
+    .join("\n");
+  return `-- Vivalink Management AI: PROBELAUF ohne bleibende Wirkung.
+-- Richtet die Anbindung probeweise ein, prüft sie und nimmt ALLES automatisch wieder zurück.
+-- Das Ergebnis erscheint als rote Fehlermeldung „PROBELAUF … (alles zurückgenommen)“ – das ist so gewollt.
+-- Die Meldung enthält nur ja/nein-Prüfungen, keine Kennzahlen und keine Daten.
+do ${tag}
+declare
+  n bigint;
+  ergebnis text := '';
+  fehler int := 0;
+  basis int;
+  api boolean;
+begin
+  begin
+    execute ${inner}${body}${inner};
+  exception when others then
+    raise exception 'PROBELAUF PROBLEM (alles zurückgenommen) | Einrichtung fehlgeschlagen: %', sqlerrm;
+  end;
+  -- Kennzahlen: als eingeschränkte Rolle lesbar und nicht leer?
+  set local role management_ai;
+${keyChecks}
+  reset role;
+  -- Rechte: darf die Rolle irgendeine Tabelle/View in public direkt lesen (außer den zugeordneten Quellen)?
+  select count(*) into basis from pg_class c join pg_namespace s on s.oid = c.relnamespace
+   where s.nspname = 'public' and c.relkind in ('r', 'p', 'v', 'm')
+     and (s.nspname || '.' || c.relname) not in (${sources.map((x) => `'${q(x)}'`).join(", ") || "''"})
+     and has_table_privilege('management_ai', c.oid, 'select');
+  select has_schema_privilege('anon', 'management_ai', 'usage') or has_schema_privilege('authenticated', 'management_ai', 'usage') into api;
+  if basis > 0 or api then fehler := fehler + 1; end if;
+  raise exception 'PROBELAUF % (alles zurückgenommen) | Kennzahlen:% | Rechte: weitere lesbare Tabellen=%, API-Zugriff=%',
+    case when fehler = 0 then 'OK' else 'PROBLEM' end, ergebnis, basis, case when api then 'ja' else 'nein' end;
+end ${tag};
+`;
+}
+
 export function bundle(mapping, dir) {
   const fn = join(dir, "supabase/functions/management-kpis");
   mkdirSync(fn, { recursive: true });
@@ -121,6 +181,7 @@ export function bundle(mapping, dir) {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const [cmd, a, b] = process.argv.slice(2);
   if (cmd === "inventory") process.stdout.write(INVENTORY_SQL);
+  else if (cmd === "dryrun") process.stdout.write(dryRunSql(load(a), process.argv.slice(4).map((f) => readFileSync(f, "utf8"))));
   else if (cmd === "facts") process.stdout.write(factsSql(JSON.parse(readFileSync(a, "utf8"))));
   else if (cmd === "grants") process.stdout.write(grantsSql(load(a)));
   else if (cmd === "check") {
