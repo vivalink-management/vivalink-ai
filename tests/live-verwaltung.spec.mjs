@@ -37,10 +37,14 @@ test("Live: Version, CORS und Ablehnung ohne gültigen Gerätezugang (nur lesend
   ];
   for (const [name, h] of cases) {
     r = await get("/kpis", h);
-    expect(r.status, name).toBe(401);
     const t = await r.text();
-    expect(t, name).toBe('{"error":"unauthorized"}');
     clean(t);
+    expect(t, name).not.toContain("values");
+    // Auffällige Einschleusungsmuster weist bereits die Schutzschicht von Supabase VOR der Funktion ab (403, festgestellt
+    // am 26.11.2026). Beides ist eine Ablehnung ohne Daten; jeder andere Status wäre ein Fehler.
+    if (name === "Einschleusungsversuch" && r.status === 403) continue;
+    expect(r.status, name).toBe(401);
+    expect(t, name).toBe('{"error":"unauthorized"}');
   }
   r = await get("/kpis?token=" + randomBytes(32).toString("hex"));
   expect(r.status, "Zugang in der Adresse wird ignoriert").toBe(401);
