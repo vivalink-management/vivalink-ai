@@ -3,6 +3,8 @@
 //   node scripts/verwaltung.mjs grants [mapping.json]        → Leserechte der Rolle management_ai auf die zugeordneten Auswertungen
 //   node scripts/verwaltung.mjs bundle [mapping.json] <ziel> → Bereitstellungsordner (Edge Function + Migration + Rechte)
 //   node scripts/verwaltung.mjs check [mapping.json]         → Zuordnung prüfen
+//   node scripts/verwaltung.mjs dryrun <mapping.json> [zusatz.sql …] → Probelauf ohne bleibende Wirkung (alles wird zurückgenommen)
+//   node scripts/verwaltung.mjs facts <fragen.json>          → datensparsame zweite Bestandsaufnahme ({functions, tables, terms})
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -61,6 +63,107 @@ where p.pronargs = 0 and p.prokind = 'f'
 order by 1 desc, 2;
 `;
 
+/* Zweite Bestandsaufnahme, datensparsam: gibt KEINEN Programmcode aus. Für die genannten Funktionen wird nur gemeldet,
+   welche Begriffe aus einer VORGEGEBENEN Liste darin vorkommen (z. B. ob eine Admin-Prüfung erfolgt oder Beispiel-
+   Meetups ausgeschlossen werden) – die Ausgabe ist also immer eine Teilmenge unserer eigenen Liste, nie Text aus der
+   Datenbank. Für die genannten Tabellen werden aus den Prüfregeln (CHECK) nur kurze Codes aus Kleinbuchstaben und
+   Unterstrich ausgegeben (z. B. Statuswerte). Nur Systemkatalog, keine Tabelleninhalte, keine Änderungen.
+   Die echten Namen stehen nur im privaten Repository – hier ist nur der Baukasten. */
+const IDENT_RE = /^[a-z_][a-z0-9_]{0,62}$/;
+const TERM_RE = /^('[a-z_]{1,30}'|[a-z_][a-z0-9_.]{0,40}(\(\))?)$/;
+export function factsSql({ functions = [], tables = [], terms = [] }) {
+  for (const n of [...functions, ...tables]) if (!IDENT_RE.test(n)) throw new Error("Ungültiger Name: " + n);
+  for (const t of terms) if (!TERM_RE.test(t)) throw new Error("Ungültiger Begriff: " + t);
+  if (!functions.length && !tables.length) throw new Error("Keine Namen angegeben");
+  const list = (a) => a.map((x) => `'${x}'`).join(", ") || "''";
+  const pattern = (t) => {
+    if (t.startsWith("'")) return "'" + t.slice(1, -1) + "'"; // Code in Anführungszeichen
+    const body = t.replace(/\./g, "\\.").replace(/\(\)$/, "\\s*\\(");
+    return "\\m" + body + (t.endsWith("()") ? "" : "\\M");
+  };
+  const label = (t) => (t.startsWith("'") ? "code:" + t.slice(1, -1) : t);
+  const checks = terms.map((t) => `case when d ~* $t$${pattern(t)}$t$ then '${label(t)}' end`);
+  return `-- Vivalink Management AI: zweite lesende Bestandsaufnahme (datensparsam).
+-- Gibt keinen Programmcode aus: je Funktion nur, welche Begriffe aus einer vorgegebenen Liste vorkommen;
+-- je Tabelle nur kurze Codes aus den Prüfregeln. Geprüft wird nur der Funktionsrumpf (ohne Kopfzeile). Keine Inhalte, keine Änderungen.
+with f as (
+  select p.proname as name, p.prosecdef as definer, p.prosrc as d
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and p.prokind = 'f' and p.proname in (${list(functions)})
+)
+select 'funktion' as art, name,
+       concat_ws(', ', case when definer then 'security_definer' end${checks.length ? ",\n         " + checks.join(",\n         ") : ""}) as befund
+from f
+union all
+select 'regel', c.relname || '.' || k.conname,
+       (select string_agg(distinct m[1], ', ') from regexp_matches(pg_get_constraintdef(k.oid), $re$'([a-z_]{1,30})'$re$, 'g') as m)
+from pg_constraint k
+join pg_class c on c.oid = k.conrelid
+join pg_namespace n on n.oid = c.relnamespace
+where n.nspname = 'public' and k.contype = 'c' and c.relname in (${list(tables)})
+order by 1, 2;
+`;
+}
+
+/* Probelauf OHNE bleibende Wirkung (für den Free-Tarif ohne eigenes Testprojekt): richtet Schema, Rolle, Kennzahl-
+   Auswertungen und Rechte in EINEM Block ein, prüft alles und bricht am Ende absichtlich mit einer Meldung ab –
+   PostgreSQL nimmt dadurch ALLE Änderungen vollständig zurück (auch wenn der SQL-Editor automatisch bestätigt).
+   Die Meldung enthält nur Prüfergebnisse (ja/nein), keine Kennzahlen und keine Daten. */
+export function dryRunSql(mapping, extraSql = []) {
+  const M = parseMapping(mapping, KPI_KEYS);
+  if (M.errors.length) throw new Error("mapping.json fehlerhaft: " + M.errors.join("; "));
+  const body = [readFileSync(MIGRATION, "utf8"), ...extraSql, grantsSql(mapping)].join("\n");
+  const tag = "$vlprobe$",
+    inner = "$vlsql$";
+  if (body.includes(tag) || body.includes(inner)) throw new Error("Marke kommt im SQL vor");
+  const q = (x) => x.replace(/'/g, "''");
+  const sources = [...new Set(M.entries.map((e) => (e.source.includes(".") ? e.source : "public." + e.source)))];
+  const keyChecks = M.entries
+    .map((e) => {
+      const src = (e.source.includes(".") ? e.source : "public." + e.source).split(".").map((x) => `"${x}"`).join(".") + (e.fn ? "()" : "");
+      return `  begin
+    execute 'select count("${e.value}") from ${q(src)} as q' into n;
+    ergebnis := ergebnis || ' ${e.key}=' || case when n > 0 then 'ja' else 'leer' end;
+    if n = 0 then fehler := fehler + 1; end if;
+  exception when others then
+    ergebnis := ergebnis || ' ${e.key}=FEHLER'; fehler := fehler + 1;
+  end;`;
+    })
+    .join("\n");
+  return `-- Vivalink Management AI: PROBELAUF ohne bleibende Wirkung.
+-- Richtet die Anbindung probeweise ein, prüft sie und nimmt ALLES automatisch wieder zurück.
+-- Das Ergebnis erscheint als rote Fehlermeldung „PROBELAUF … (alles zurückgenommen)“ – das ist so gewollt.
+-- Die Meldung enthält nur ja/nein-Prüfungen, keine Kennzahlen und keine Daten.
+do ${tag}
+declare
+  n bigint;
+  ergebnis text := '';
+  fehler int := 0;
+  basis int;
+  api boolean;
+begin
+  begin
+    execute ${inner}${body}${inner};
+  exception when others then
+    raise exception 'PROBELAUF PROBLEM (alles zurückgenommen) | Einrichtung fehlgeschlagen: %', sqlerrm;
+  end;
+  -- Kennzahlen: als eingeschränkte Rolle lesbar und nicht leer?
+  set local role management_ai;
+${keyChecks}
+  reset role;
+  -- Rechte: darf die Rolle irgendeine Tabelle/View in public direkt lesen (außer den zugeordneten Quellen)?
+  select count(*) into basis from pg_class c join pg_namespace s on s.oid = c.relnamespace
+   where s.nspname = 'public' and c.relkind in ('r', 'p', 'v', 'm')
+     and (s.nspname || '.' || c.relname) not in (${sources.map((x) => `'${q(x)}'`).join(", ") || "''"})
+     and has_table_privilege('management_ai', c.oid, 'select');
+  select has_schema_privilege('anon', 'management_ai', 'usage') or has_schema_privilege('authenticated', 'management_ai', 'usage') into api;
+  if basis > 0 or api then fehler := fehler + 1; end if;
+  raise exception 'PROBELAUF % (alles zurückgenommen) | Kennzahlen:% | Rechte: weitere lesbare Tabellen=%, API-Zugriff=%',
+    case when fehler = 0 then 'OK' else 'PROBLEM' end, ergebnis, basis, case when api then 'ja' else 'nein' end;
+end ${tag};
+`;
+}
+
 export function bundle(mapping, dir) {
   const fn = join(dir, "supabase/functions/management-kpis");
   mkdirSync(fn, { recursive: true });
@@ -78,6 +181,8 @@ export function bundle(mapping, dir) {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const [cmd, a, b] = process.argv.slice(2);
   if (cmd === "inventory") process.stdout.write(INVENTORY_SQL);
+  else if (cmd === "dryrun") process.stdout.write(dryRunSql(load(a), process.argv.slice(4).map((f) => readFileSync(f, "utf8"))));
+  else if (cmd === "facts") process.stdout.write(factsSql(JSON.parse(readFileSync(a, "utf8"))));
   else if (cmd === "grants") process.stdout.write(grantsSql(load(a)));
   else if (cmd === "check") {
     const M = parseMapping(load(a), KPI_KEYS);

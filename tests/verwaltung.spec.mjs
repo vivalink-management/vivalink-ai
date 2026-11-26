@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { startEnv, pgBin, TEST_MAPPING } from "./verwaltung/env.mjs";
 import { pgRepo, parseMapping } from "../server/kpi-pg.mjs";
 import { KPI_KEYS, buildKpis, MAX_PAIR_FAILS } from "../server/kpi-core.mjs";
-import { grantsSql, INVENTORY_SQL } from "../scripts/verwaltung.mjs";
+import { grantsSql, INVENTORY_SQL, factsSql, dryRunSql } from "../scripts/verwaltung.mjs";
 import { ready, state, kv, expectToast } from "./helpers.mjs";
 
 test.describe.configure({ mode: "serial", timeout: 120_000 });
@@ -210,6 +210,9 @@ test("App ↔ echte Gegenstelle: Kopplung in der Oberfläche, Historie, automati
   const vals = async (k) => (await state(p)).metrics.find((m) => m.key === k).entries.filter((e) => !e.deleted && e.src === "verwaltung");
   expect((await vals("reg_total")).find((e) => e.date === today()).value).toBe(regNow);
   expect((await vals("reg_total")).length).toBeGreaterThanOrEqual(30); // Verlauf übernommen
+  // Nächstes Meetup automatisch aus der Verwaltung (Datum aus „Tage bis“, Ziel = Plätze)
+  const [{ nd }] = await env.sql`select to_char((min(starts_at) at time zone 'Europe/Berlin')::date, 'YYYY-MM-DD') as nd from meetups where not is_demo and starts_at > now()`;
+  expect((await state(p)).meetup).toMatchObject({ date: nd, goal: "12" });
   expect((await kv(p, "kpi-config")).token).toMatch(/^[0-9a-f]{64}$/);
   // Startseite zeigt den übernommenen Wert, keine Fehler
   await p.click('#sheet button[data-a="close"]');
@@ -283,6 +286,65 @@ test("Bestandsaufnahme: nur Namen, Spalten und Datentypen – keine Inhalte, kei
   expect(stmt.replace(/;\s*$/, "")).not.toContain(";");
   // Die Datei für den SQL-Editor entspricht genau dieser geprüften Abfrage
   expect(readFileSync(new URL("../docs/bestandsaufnahme-verwaltung.sql", import.meta.url), "utf8")).toBe(INVENTORY_SQL);
+});
+
+test("Zweite Bestandsaufnahme (datensparsam): kein Programmcode, nur Treffer aus unserer Begriffsliste und kurze Codes", async ({}, info) => {
+  serverOnly(info);
+  // Funktion mit Geheimnissen in jeder denkbaren Form (auch solche, die ein Muster nicht erkennen würde)
+  await env.sql.unsafe(`create function public.admin_geheim() returns text language sql security definer as $$ select 'sk_live_abcdef' || 'meinpasswort' || 'leitung@example.invalid' || 'x' from public.payments where auth.uid() is not null $$`);
+  const q = factsSql({ functions: ["admin_finance_summary", "admin_kontakt", "admin_geheim"], tables: ["meetup_participants"], terms: ["auth.uid()", "is_admin()", "payments", "is_test_account", "'zahlung'", "'tester'"] });
+  const rows = await env.sql.begin("read only", (t) => t.unsafe(q));
+  expect(Object.keys(rows[0])).toEqual(["art", "name", "befund"]);
+  const by = Object.fromEntries(rows.map((r) => [r.name, r.befund]));
+  expect(by.admin_finance_summary).toBe("security_definer, payments, code:zahlung");
+  expect(by.admin_geheim).toBe("security_definer, auth.uid(), payments");
+  expect(by.admin_kontakt).toBe("");
+  // Prüfregel der Tabelle: nur kurze Codes
+  const rule = rows.find((r) => r.art === "regel");
+  expect(rule.befund.split(", ").sort()).toEqual(["abgesagt", "angemeldet", "nicht_erschienen", "teilgenommen"]);
+  // Jede Ausgabe stammt aus unserer Liste bzw. besteht nur aus kurzen Codes – kein Text aus dem Programmcode
+  const allowed = new Set(["security_definer", "auth.uid()", "is_admin()", "payments", "is_test_account", "code:zahlung", "code:tester"]);
+  for (const r of rows.filter((x) => x.art === "funktion")) for (const w of r.befund.split(", ").filter(Boolean)) expect(allowed.has(w), w).toBe(true);
+  const out = JSON.stringify(rows);
+  expect(out).not.toMatch(/sk_live|meinpasswort|@|select|from public/i);
+  const people = await env.sql`select full_name, email from profiles`;
+  expect(people.flatMap((p) => [p.full_name, p.email]).filter((x) => out.includes(x))).toEqual([]);
+  // Nur ein lesendes SELECT; Einschleusen über Namen oder Begriffe unmöglich
+  const stmt = q.replace(/--.*$/gm, "").trim();
+  expect(stmt).toMatch(/^with f as/);
+  expect(stmt).not.toMatch(/\b(insert|update|delete|drop|alter|create|grant|revoke|truncate|copy|call)\b/i);
+  expect(() => factsSql({ functions: ["x'; drop table profiles; --"] })).toThrow();
+  expect(() => factsSql({ functions: ["a"], terms: ["x$t$; drop"] })).toThrow();
+  expect(() => factsSql({})).toThrow();
+  await env.sql.unsafe("drop function public.admin_geheim()");
+});
+
+test("Probelauf ohne bleibende Wirkung: richtet alles ein, prüft es, nimmt alles zurück; meldet nur ja/nein", async ({}, info) => {
+  serverOnly(info);
+  // eigene, frische Datenbank mit der künstlichen Verwaltung, aber OHNE Anbindung (wie die produktive vor der Freigabe)
+  await env.sql.unsafe("drop database if exists probe");
+  await env.sql.unsafe("create database probe");
+  const db = postgres(`postgres://postgres@127.0.0.1:${54400 + info.parallelIndex}/probe`, { max: 1, onnotice: () => {} });
+  try {
+    for (const f of ["supabase-stub.sql", "fixture.sql"]) await db.unsafe(readFileSync(new URL("./verwaltung/" + f, import.meta.url), "utf8"));
+    const snap = async () => JSON.stringify(await db`select (select count(*) from pg_namespace where nspname = 'management_ai') s, (select count(*) from profiles) p, (select count(*) from pg_class where relnamespace = 'public'::regnamespace) o`);
+    const before = await snap();
+    const run = async (sql) => db.unsafe(sql).then(() => "ohne Meldung", (e) => e.message);
+    const msg = await run(dryRunSql(TEST_MAPPING));
+    expect(msg).toMatch(/^PROBELAUF OK \(alles zurückgenommen\)/);
+    expect(msg).toContain("reg_total=ja");
+    expect(msg).toContain("weitere lesbare Tabellen=0, API-Zugriff=nein");
+    expect(msg).not.toMatch(/\d{2,}/); // keine Kennzahlen in der Meldung
+    expect(await snap()).toBe(before); // nichts geblieben: kein Schema, keine Objekte, Daten unverändert
+    // Fehlerhafte Zuordnung → PROBLEM, ebenfalls ohne bleibende Wirkung
+    const bad = await run(dryRunSql({ ...TEST_MAPPING, reg_week: { source: "public.gibt_es_nicht", date: "d", value: "v" } }));
+    expect(bad).toMatch(/^PROBELAUF PROBLEM/);
+    expect(bad).toMatch(/reg_week=FEHLER|Einrichtung fehlgeschlagen: .*gibt_es_nicht/);
+    expect(await snap()).toBe(before);
+  } finally {
+    await db.end();
+    await env.sql.unsafe("drop database if exists probe");
+  }
 });
 
 test("Rückbau entfernt nur die Anbindung; Daten und Auswertungen der Verwaltung bleiben unverändert", async ({}, info) => {

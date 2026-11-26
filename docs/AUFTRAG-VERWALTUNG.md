@@ -11,6 +11,19 @@
 | Migration (`server/supabase/migrations/20261126_management_kpis.sql`) | fertig, in der Testumgebung ausgeführt; **nicht in Supabase ausgeführt** |
 | Zuordnung zu den vorhandenen Auswertungen (`mapping.json`) | **offen:** braucht die lesende Bestandsaufnahme der echten Verwaltung |
 
+## Ergebnis der Bestandsaufnahme (26.11.2026)
+- Die Bestandsaufnahme wurde ausgeführt: 71 Einträge, nur Struktur.
+- **Keine Views.** Die vorhandenen Auswertungen sind Admin-Funktionen (Security Definer). Sie liefern teils JSON, teils Werte je Meetup und prüfen vermutlich die Admin-Rolle des angemeldeten Kontos.
+- Ob die Gegenstelle sie direkt wiederverwenden kann, klärt eine **datensparsame zweite Bestandsaufnahme** (`node scripts/verwaltung.mjs facts …`): Sie gibt **keinen Programmcode** aus, sondern je Funktion nur Treffer aus einer vorgegebenen Begriffsliste und je Tabelle nur kurze Statuscodes aus den Prüfregeln. Automatisch geprüft, auch mit Schlüsseln, Passwörtern und Adressen im Code. Die konkrete Abfrage liegt im privaten Repository.
+- **Zuordnung im Entwurf:**
+  - Abgedeckt sind 9 von 12 Kennzahlen (Registrierungen, aktive Nutzer, Anmeldungen, Absagen, Einladungen, Annahmequote, Zahlungen, Erstattungen).
+  - Schlanke, nur zählende Auswertungen im Schema `management_ai`.
+  - In der getrennten Testumgebung auf der nachgebildeten echten Struktur mit künstlichen Daten geprüft: Werte, Ausschluss von Testkonten und Beispiel-Meetups, keine Personendaten, Rechte, App Ende-zu-Ende.
+  - Die schemaspezifischen Dateien liegen aus Datenschutzgründen nicht im öffentlichen Repository.
+- **Nicht abgedeckt:**
+  - tatsächliche Teilnahme (wird nicht erfasst)
+  - Einnahmen und Ausgaben (keine Buchhaltungsdaten)
+
 ## Keine Doppelentwicklung
 Die Gegenstelle **berechnet nichts selbst**. Sie liest ausschließlich die Auswertungen, die die Verwaltung schon hat (Views oder parameterlose Funktionen), und zwar je Kennzahl nur zwei Spalten: Datum und Zahl. Welche Auswertung welche Kennzahl liefert, steht in `mapping.json`:
 
@@ -64,7 +77,11 @@ Die Gegenstelle **berechnet nichts selbst**. Sie liest ausschließlich die Auswe
 | 7 | **Koppeln:** <ul><li>In Supabase `select management_ai.new_pair_code();` ausführen.</li><li>Den Code in der App unter „Mehr › Verwaltung“ eingeben.</li><li>Später kann das eine Schaltfläche in der Verwaltung übernehmen. Das ist der einzige Teil, der Rork betreffen würde, und ist optional.</li></ul> | Gründer | nein |
 
 - **Rork-Credits:** Für die Schritte 1–7 werden keine gebraucht. Alles läuft über SQL und die Edge Function. Nur eine spätere Schaltfläche in der Verwaltung wäre ein Rork-Auftrag, und der ist optional.
-- **Kosten:** Edge Functions und Datenbankzugriffe liegen im kostenlosen Rahmen von Supabase. Erwartet werden höchstens 4 Abrufe pro Tag und Gerät.
+- **Kosten (geprüft am 26.11.2026):**
+  - Supabase Free: 500.000 Aufrufe von Edge Functions pro Monat je Organisation; im Free-Tarif gibt es keine Nachberechnung.
+  - Bedarf: höchstens 4 Abrufe pro Tag und Gerät, also etwa 250 pro Monat.
+  - Datenbanklast: wenige zählende Abfragen.
+  - Ein zusätzliches Supabase-Testprojekt braucht einen freien Platz (höchstens 2 aktive Free-Projekte).
 - **Bitte vor Schritt 5 prüfen:** <ul><li>Supabase-Tarif und Projektgrenzen (Anzahl Edge Functions, Aufrufe).</li><li>Ob die zugeordneten Views mit `security_invoker` laufen. Dann bräuchte die Rolle Leserechte auf Basistabellen, was nicht gewollt ist; solche Auswertungen würden übersprungen.</li></ul>
 
 ## Rückbau

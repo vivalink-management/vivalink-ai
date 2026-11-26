@@ -64,5 +64,15 @@
     "source": "",
     "date": "",
     "value": ""
+  },
+  "meetup_days": {
+    "source": "",
+    "value": "",
+    "snapshot": true
+  },
+  "meetup_capacity": {
+    "source": "",
+    "value": "",
+    "snapshot": true
   }
 }

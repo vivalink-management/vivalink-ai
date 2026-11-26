@@ -1,6 +1,31 @@
 # Änderungsprotokoll
 
-## 2.7.1 – Geräte zusammenführen, Anbindung der Vivalink-Verwaltung
+## 2.8.1 (Entwicklungszweig, noch nicht veröffentlicht) – mehr Selbstständigkeit, Verwaltungsanbindung verfeinert
+
+- **Strategische Empfehlungen aus echten Kennzahlen:** Absagequote, Erstattungsquote, Aktivierung der Registrierten, Annahmequote der Einladungen. Nur mit aktuellen Werten, Schwellen als Annahme gekennzeichnet.
+- **Instagram:** Die wöchentlichen Entwürfe erhalten automatisch einen Schwerpunkt aus den Kennzahlen (z. B. Werbung für ein schwach gefülltes Meetup); Zahlen werden nicht veröffentlicht.
+- **Weniger wiederholte Hinweise:** Nie genutzte Kennzahlen ohne Ziel werden nicht dauernd nachgefragt; automatisch gelieferte Werte erzeugen keine Eingabe-Hinweise.
+- **Selbstreparatur erweitert:** exakt doppelte Kennzahl-Einträge (z. B. nach dem Zusammenführen der Geräte) und Konflikte zu gelöschten Einträgen, mit Rückgängig-Punkt.
+- **Verwaltung:**
+  - zweite Bestandsaufnahme ohne Ausgabe von Programmcode (nur Treffer aus einer vorgegebenen Begriffsliste)
+  - Probelauf ohne bleibende Wirkung für den Free-Tarif
+- **Aus 2.8.0:** Meetup-Karte automatisch aus der Verwaltung (eigene Eingaben haben Vorrang).
+
+**2.8.0 (nicht veröffentlicht):**
+
+- **Nächstes Meetup automatisch aus der Verwaltung** (sobald angebunden):
+  - Datum und Ziel (= Plätze) werden eingetragen, Verschiebungen übernommen
+  - eigene Eingaben haben Vorrang
+  - ein abweichendes eigenes Datum ergibt einen Hinweis statt einer Änderung
+  - ein vergangenes Meetup wird lokal archiviert
+- **Gegenstelle:** zwei neue Angaben (`meetup_days`, `meetup_capacity`, nur Zahlen)
+- **Zweite Bestandsaufnahme nur noch eng begrenzt:**
+  - nur genannte Funktionen und Tabellen
+  - Zeichenketten mit Adressen oder Zugangsdaten werden geleert
+  - die umfassende Fassung wurde entfernt
+- Schemaspezifische Dateien liegen in einem getrennten, privaten Repository (vorbereitet)
+
+## 2.7.1 (veröffentlicht am 25.11.2026) – Geräte zusammenführen, Anbindung der Vivalink-Verwaltung
 
 - **Synchronisierung: zwei getrennte Datenspeicher zusammenführen** (wenn beide Geräte „Synchronisierung einrichten“ gewählt haben):
   - Hinweis „Nur dieses Gerät ist verbunden“ mit Zusammenführen per Code und Prüfzahl
