@@ -1,7 +1,7 @@
 # Zentrale Entwicklungsübersicht: Vivalink Management AI
 
 **Fortsetzungsdokument für alle weiteren Entwicklungsaufträge.** Bei jedem Auftrag zuerst lesen und am Ende aktualisieren. Arbeitsweise (Tests, Gerätetests, Grenzen): **`CLAUDE.md`**.
-Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.8.1** (`main`, veröffentlicht am 26.11.2026) · Entwicklungszweig: **Version 2.8.2** (Synchronisierung überwacht sich selbst; noch nicht veröffentlicht)
+Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.8.1** (`main`, veröffentlicht am 26.11.2026) · Entwicklungszweig: **Version 2.8.3** (Synchronisierungs-Hinweis, Testkonten-Kennzeichnung; noch nicht veröffentlicht)
 
 ## 1. Umgesetzt und getestet (noch nicht veröffentlicht)
 
@@ -78,8 +78,9 @@ Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
 - **Zweite Bestandsaufnahme (datensparsam)** liegt im privaten Repository als `verwaltung/bestandsaufnahme-2.sql`. Sie gibt keinen Programmcode aus, nur Treffer aus einer vorgegebenen Begriffsliste und kurze Statuscodes.
 - **Probelauf ohne bleibende Wirkung** liegt als `verwaltung/probelauf.sql` vor (Ersatz für ein Supabase-Testprojekt im Free-Tarif). Er richtet alles ein, prüft es und nimmt alles zurück; die Meldung enthält nur ja/nein. Ausführen nur mit Freigabe.
 - **Offen:**
-  - zweite Bestandsaufnahme (nur Positivlisten): Gründer führt `verwaltung/bestandsaufnahme-2.sql` aus dem privaten Repository einmal aus
-  - Probelauf (Freigabe)
+  - ✅ zweite Bestandsaufnahme ausgewertet (Admin-Auswertungen nur mit Admin-Anmeldung nutzbar → eigene Zählungen mit denselben Filtern)
+  - Probelauf: grundsätzlich freigegeben (26.11.2026), `verwaltung/probelauf.sql` im privaten Repository; Gründer führt ihn selbst aus
+  - Testkonten mit Nutzerrolle: nicht bekannt → gekennzeichnet (keine erfundenen Merkmale)
   - Einrichtung (Freigabe)
 - **Kosten** (Stand 26.11.2026, offizielle Supabase-Angaben):
   - Free-Tarif: 500.000 Aufrufe von Edge Functions pro Monat je Organisation, ohne Nachberechnung; erwartet sind etwa 250.

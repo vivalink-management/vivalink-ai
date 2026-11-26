@@ -182,3 +182,24 @@ test("Vergangenes Meetup: Angaben werden archiviert, das nächste Meetup aus der
   const h = await kv(p, "meetup-history");
   expect(h[h.length - 1]).toMatchObject({ date: "2026-03-01", place: "Alter Ort", goal: "8", note: "Rückblick offen" });
 });
+
+test("Unsicherheit bei Testkonten wird gekennzeichnet (Verwaltung meldet „Testkonten nicht sicher ausgeschlossen“)", async ({ browser }) => {
+  const ctx = await browser.newContext({ serviceWorkers: "block" });
+  await ctx.addInitScript(() => (window.VL_KPI_URL = "http://127.0.0.1:4173/kpi/ok"));
+  const p = await ctx.newPage();
+  await p.goto("/");
+  await ready(p);
+  await p.evaluate(() => kpiPair("123456"));
+  await p.route("**/kpi/ok/kpis", async (route) => {
+    const r = await route.fetch();
+    const j = await r.json();
+    j.meta.excludesTestAccounts = false;
+    await route.fulfill({ response: r, json: j });
+  });
+  expect((await p.evaluate(() => kpiSync())).ok).toBe(true);
+  await p.click('nav button[data-id="more"]');
+  await p.click('button[data-a="kpi"]');
+  await expect(p.locator("#kpTest")).toContainText("Abweichungen zum Admin-Dashboard");
+  expect(await p.evaluate(() => weeklyReport().text)).toContain("ob weitere Testkonten enthalten sind, ist nicht bekannt");
+  await ctx.close();
+});

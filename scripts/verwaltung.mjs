@@ -115,62 +115,131 @@ order by 1, 2;
 `;
 }
 
-/* Probelauf OHNE bleibende Wirkung (für den Free-Tarif ohne eigenes Testprojekt): richtet Schema, Rolle, Kennzahl-
-   Auswertungen und Rechte in EINEM Block ein, prüft alles und bricht am Ende absichtlich mit einer Meldung ab –
-   PostgreSQL nimmt dadurch ALLE Änderungen vollständig zurück (auch wenn der SQL-Editor automatisch bestätigt).
-   Die Meldung enthält nur Prüfergebnisse (ja/nein), keine Kennzahlen und keine Daten. */
+/* Probelauf OHNE bleibende Wirkung (Free-Tarif, kein eigenes Testprojekt). Aufbau:
+     BEGIN  →  Zeitlimits  →  Ergebnistabelle (temporär, verschwindet mit der Transaktion)
+     DO-Block: Fingerabdruck VORHER → [Sicherungspunkt: Einrichtung + Prüfungen → absichtliche Ausnahme = Rücknahme]
+               → Fingerabdruck NACHHER, Schreibzähler → Ergebniszeilen
+     SELECT Ergebnis  →  ROLLBACK (ausdrücklich)
+   Alle Fehler werden im DO-Block abgefangen, damit das abschließende ROLLBACK immer ausgeführt wird; selbst wenn
+   nicht, wird eine abgebrochene Transaktion nie bestätigt. Ausgegeben werden nur Prüfungen (ja/nein/Fehlertext),
+   keine Kennzahlen und keine Daten. */
+const FINGERPRINT = `(select md5(coalesce(string_agg(x, '|' order by x), '')) from (
+      select 'c:' || n.nspname || '.' || c.relname || ':' || c.relkind::text || ':' || coalesce(c.relacl::text, '') || ':' || c.relrowsecurity::text || ':' || c.relforcerowsecurity::text as x
+        from pg_class c join pg_namespace n on n.oid = c.relnamespace
+       where n.nspname not in ('pg_catalog', 'information_schema', 'pg_toast') and n.nspname not like 'pg\\_temp%' and n.nspname not like 'pg\\_toast\\_temp%'
+      union all
+      select 'f:' || n.nspname || '.' || p.proname || '(' || pg_get_function_identity_arguments(p.oid) || '):' || md5(coalesce(p.prosrc, '')) || ':' || coalesce(p.proacl::text, '') || ':' || p.prosecdef::text
+        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+       where n.nspname not in ('pg_catalog', 'information_schema') and n.nspname not like 'pg\\_temp%'
+      union all
+      select 'n:' || nspname || ':' || coalesce(nspacl::text, '') from pg_namespace where nspname not like 'pg\\_temp%' and nspname not like 'pg\\_toast\\_temp%'
+      union all
+      select 'r:' || rolname || ':' || rolsuper::text || ':' || rolcanlogin::text || ':' || rolbypassrls::text from pg_roles
+      union all
+      select 'm:' || roleid::text || '>' || member::text from pg_auth_members
+      union all
+      select 'p:' || schemaname || '.' || tablename || '.' || policyname || ':' || coalesce(qual, '') || ':' || coalesce(with_check, '') from pg_policies
+      union all
+      select 't:' || tgrelid::text || '.' || tgname || ':' || tgenabled::text from pg_trigger where not tgisinternal
+      union all
+      select 'e:' || evtname || ':' || evtenabled::text from pg_event_trigger
+      union all
+      select 'd:' || defaclrole::text || ':' || defaclnamespace::text || ':' || defaclobjtype::text || ':' || coalesce(defaclacl::text, '') from pg_default_acl
+    ) s)`;
 export function dryRunSql(mapping, extraSql = []) {
   const M = parseMapping(mapping, KPI_KEYS);
   if (M.errors.length) throw new Error("mapping.json fehlerhaft: " + M.errors.join("; "));
-  const body = [readFileSync(MIGRATION, "utf8"), ...extraSql, grantsSql(mapping)].join("\n");
+  // ganze Kommentarzeilen entfernen (z. B. Rückbau-Hinweise), damit nur ausführbare Anweisungen im Probelauf stehen
+  const body = [readFileSync(MIGRATION, "utf8"), ...extraSql, grantsSql(mapping)]
+    .join("\n")
+    .split("\n")
+    .filter((l) => !/^\s*--/.test(l))
+    .join("\n");
   const tag = "$vlprobe$",
     inner = "$vlsql$";
   if (body.includes(tag) || body.includes(inner)) throw new Error("Marke kommt im SQL vor");
+  if (/\b(commit|rollback|savepoint)\b/i.test(body.replace(/--.*$/gm, ""))) throw new Error("Transaktionsbefehle im Einrichtungs-SQL sind nicht erlaubt");
   const q = (x) => x.replace(/'/g, "''");
   const sources = [...new Set(M.entries.map((e) => (e.source.includes(".") ? e.source : "public." + e.source)))];
   const keyChecks = M.entries
     .map((e) => {
       const src = (e.source.includes(".") ? e.source : "public." + e.source).split(".").map((x) => `"${x}"`).join(".") + (e.fn ? "()" : "");
-      return `  begin
-    execute 'select count("${e.value}") from ${q(src)} as q' into n;
-    ergebnis := ergebnis || ' ${e.key}=' || case when n > 0 then 'ja' else 'leer' end;
-    if n = 0 then fehler := fehler + 1; end if;
-  exception when others then
-    ergebnis := ergebnis || ' ${e.key}=FEHLER'; fehler := fehler + 1;
-  end;`;
+      return `    begin
+      execute 'select count("${e.value}") from ${q(src)} as q' into n;
+      zeilen := zeilen || ('Kennzahl ${e.key}|' || case when n > 0 then 'lieferbar' else 'leer' end);
+      if n = 0 then fehler := fehler + 1; end if;
+    exception when others then
+      zeilen := zeilen || ('Kennzahl ${e.key}|FEHLER: ' || sqlerrm); fehler := fehler + 1;
+    end;`;
     })
     .join("\n");
-  return `-- Vivalink Management AI: PROBELAUF ohne bleibende Wirkung.
--- Richtet die Anbindung probeweise ein, prüft sie und nimmt ALLES automatisch wieder zurück.
--- Das Ergebnis erscheint als rote Fehlermeldung „PROBELAUF … (alles zurückgenommen)“ – das ist so gewollt.
--- Die Meldung enthält nur ja/nein-Prüfungen, keine Kennzahlen und keine Daten.
+  return `-- Vivalink Management AI: PROBELAUF der Verwaltungsanbindung – ohne bleibende Wirkung.
+-- Läuft vollständig in einer ausdrücklich gestarteten Transaktion, die am Ende mit ROLLBACK zurückgenommen wird.
+-- Ändert keine Daten, löst keine Zahlungen, Buchungen, Benachrichtigungen oder Netzwerkaufrufe aus.
+-- Ausgabe: eine Tabelle mit Prüfungen (ja/nein bzw. Fehlertext) – keine Kennzahlen, keine Personendaten.
+begin;
+set local statement_timeout = '60s';
+set local lock_timeout = '3s';
+create temporary table vl_probelauf (nr int, pruefung text, ergebnis text) on commit drop;
 do ${tag}
 declare
   n bigint;
-  ergebnis text := '';
   fehler int := 0;
+  zeilen text[] := '{}';
+  vorher text;
+  nachher text;
   basis int;
   api boolean;
+  schreib bigint;
+  schreib0 bigint;
 begin
+ begin
+  -- Schreibzähler zu Beginn (enthält ggf. noch nicht verbuchte Vorgänge früherer Abfragen – deshalb zählt die Differenz)
+  select coalesce(sum(n_tup_ins + n_tup_upd + n_tup_del), 0) into schreib0 from pg_stat_xact_user_tables;
+  vorher := ${FINGERPRINT};
+  -- Sicherungspunkt: alles in diesem Block wird am Ende durch eine absichtliche Ausnahme zurückgenommen
   begin
-    execute ${inner}${body}${inner};
-  exception when others then
-    raise exception 'PROBELAUF PROBLEM (alles zurückgenommen) | Einrichtung fehlgeschlagen: %', sqlerrm;
-  end;
-  -- Kennzahlen: als eingeschränkte Rolle lesbar und nicht leer?
-  set local role management_ai;
+    begin
+      execute ${inner}${body}${inner};
+      zeilen := zeilen || 'Einrichtung (probeweise)|ok'::text;
+    exception when others then
+      zeilen := zeilen || ('Einrichtung (probeweise)|FEHLER: ' || sqlerrm); fehler := fehler + 1;
+      raise exception 'vl_probelauf_zuruecknehmen';
+    end;
+    -- Kennzahlen als eingeschränkte Rolle lesen
+    set local role management_ai;
 ${keyChecks}
-  reset role;
-  -- Rechte: darf die Rolle irgendeine Tabelle/View in public direkt lesen (außer den zugeordneten Quellen)?
-  select count(*) into basis from pg_class c join pg_namespace s on s.oid = c.relnamespace
-   where s.nspname = 'public' and c.relkind in ('r', 'p', 'v', 'm')
-     and (s.nspname || '.' || c.relname) not in (${sources.map((x) => `'${q(x)}'`).join(", ") || "''"})
-     and has_table_privilege('management_ai', c.oid, 'select');
-  select has_schema_privilege('anon', 'management_ai', 'usage') or has_schema_privilege('authenticated', 'management_ai', 'usage') into api;
-  if basis > 0 or api then fehler := fehler + 1; end if;
-  raise exception 'PROBELAUF % (alles zurückgenommen) | Kennzahlen:% | Rechte: weitere lesbare Tabellen=%, API-Zugriff=%',
-    case when fehler = 0 then 'OK' else 'PROBLEM' end, ergebnis, basis, case when api then 'ja' else 'nein' end;
+    reset role;
+    -- Rechte: keine weitere Tabelle/View in public lesbar, kein Zugriff für die API-Rollen
+    select count(*) into basis from pg_class c join pg_namespace s on s.oid = c.relnamespace
+     where s.nspname = 'public' and c.relkind in ('r', 'p', 'v', 'm')
+       and (s.nspname || '.' || c.relname) not in (${sources.map((x) => `'${q(x)}'`).join(", ") || "''"})
+       and has_table_privilege('management_ai', c.oid, 'select');
+    select has_schema_privilege('anon', 'management_ai', 'usage') or has_schema_privilege('authenticated', 'management_ai', 'usage') into api;
+    zeilen := zeilen || ('Rechte: weitere lesbare Tabellen der Verwaltung|' || case when basis = 0 then 'keine' else basis || ' (PROBLEM)' end);
+    zeilen := zeilen || ('Rechte: Zugriff über die Supabase-API|' || case when api then 'ja (PROBLEM)' else 'nein' end);
+    if basis > 0 or api then fehler := fehler + 1; end if;
+    raise exception 'vl_probelauf_zuruecknehmen';
+  exception when others then
+    if sqlerrm <> 'vl_probelauf_zuruecknehmen' then
+      zeilen := zeilen || ('Prüfung abgebrochen|FEHLER: ' || sqlerrm); fehler := fehler + 1;
+    end if;
+  end;
+  -- Nachweise nach der Rücknahme des Sicherungspunkts
+  nachher := ${FINGERPRINT};
+  select coalesce(sum(n_tup_ins + n_tup_upd + n_tup_del), 0) - schreib0 into schreib from pg_stat_xact_user_tables;
+  zeilen := zeilen || ('Bestehende Tabellen, Funktionen, Rollen und Rechte unverändert|' || case when vorher = nachher then 'ja' else 'NEIN (PROBLEM)' end);
+  zeilen := zeilen || ('Schreibvorgänge in Daten (auch Warteschlangen für Benachrichtigungen/Netzwerk)|' || schreib);
+  if vorher <> nachher or schreib <> 0 then fehler := fehler + 1; end if;
+  exception when others then
+    -- Sicherheitsnetz: jeder unerwartete Fehler wird gemeldet, damit das abschließende ROLLBACK sicher ausgeführt wird
+    zeilen := zeilen || ('Unerwarteter Fehler|' || sqlerrm); fehler := fehler + 1;
+ end;
+  zeilen := zeilen || ('GESAMT|' || case when fehler = 0 then 'OK – alles wird mit ROLLBACK zurückgenommen' else 'PROBLEM (' || fehler || ') – alles wird mit ROLLBACK zurückgenommen' end);
+  insert into vl_probelauf select i, split_part(zeilen[i], '|', 1), substr(zeilen[i], length(split_part(zeilen[i], '|', 1)) + 2) from generate_subscripts(zeilen, 1) i;
 end ${tag};
+select pruefung as "Prüfung", ergebnis as "Ergebnis" from vl_probelauf order by nr;
+rollback;
 `;
 }
 

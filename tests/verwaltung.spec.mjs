@@ -326,28 +326,68 @@ test("Zweite Bestandsaufnahme (nur Positivlisten): kein Programmcode, keine unbe
   await env.sql.unsafe("drop function public.admin_geheim(); drop table public.regeltest;");
 });
 
-test("Probelauf ohne bleibende Wirkung: richtet alles ein, prüft es, nimmt alles zurück; meldet nur ja/nein", async ({}, info) => {
+test("Probelauf: ausdrückliche Transaktion mit ROLLBACK, nichts bleibt zurück, keine Schreibvorgänge, nur Prüfzeilen – auch im Fehlerfall", async ({}, info) => {
   serverOnly(info);
-  // eigene, frische Datenbank mit der künstlichen Verwaltung, aber OHNE Anbindung (wie die produktive vor der Freigabe)
   await env.sql.unsafe("drop database if exists probe");
   await env.sql.unsafe("create database probe");
   const db = postgres(`postgres://postgres@127.0.0.1:${54400 + info.parallelIndex}/probe`, { max: 1, onnotice: () => {} });
   try {
     for (const f of ["supabase-stub.sql", "fixture.sql"]) await db.unsafe(readFileSync(new URL("./verwaltung/" + f, import.meta.url), "utf8"));
-    const snap = async () => JSON.stringify(await db`select (select count(*) from pg_namespace where nspname = 'management_ai') s, (select count(*) from profiles) p, (select count(*) from pg_class where relnamespace = 'public'::regnamespace) o`);
+    // Fingerabdruck des gesamten Katalogs + Daten-Prüfsumme (vorher/nachher von außen gemessen)
+    const snap = async () =>
+      JSON.stringify(
+        await db`select
+          (select md5(string_agg(n.nspname || c.relname || c.relkind::text || coalesce(c.relacl::text, ''), '|' order by n.nspname, c.relname)) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname not like 'pg\_%' and n.nspname <> 'information_schema') k,
+          (select md5(string_agg(p.proname || md5(p.prosrc) || coalesce(p.proacl::text, ''), '|' order by p.oid)) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname not like 'pg\_%' and n.nspname <> 'information_schema') f,
+          (select string_agg(rolname, ',' order by rolname) from pg_roles where rolname not like 'pg\_%') r,
+          (select md5(string_agg(t::text, '|' order by t::text)) from public.profiles t) d1,
+          (select md5(string_agg(t::text, '|' order by t::text)) from public.payments t) d2`,
+      );
+    // Ist nach dem Lauf keine Transaktion mehr offen? (eine „on commit drop“-Tabelle verschwindet nur, wenn sofort bestätigt wird)
+    const frei = async () => {
+      await db.unsafe("create temp table vl_frei (a int) on commit drop");
+      return (await db`select to_regclass('pg_temp.vl_frei') is null as frei`)[0].frei;
+    };
+    const roleBefore = await env.sql`select count(*)::int n from pg_roles where rolname = 'management_ai'`;
     const before = await snap();
-    const run = async (sql) => db.unsafe(sql).then(() => "ohne Meldung", (e) => e.message);
-    const msg = await run(dryRunSql(TEST_MAPPING));
-    expect(msg).toMatch(/^PROBELAUF OK \(alles zurückgenommen\)/);
-    expect(msg).toContain("reg_total=ja");
-    expect(msg).toContain("weitere lesbare Tabellen=0, API-Zugriff=nein");
-    expect(msg).not.toMatch(/\d{2,}/); // keine Kennzahlen in der Meldung
-    expect(await snap()).toBe(before); // nichts geblieben: kein Schema, keine Objekte, Daten unverändert
-    // Fehlerhafte Zuordnung → PROBLEM, ebenfalls ohne bleibende Wirkung
-    const bad = await run(dryRunSql({ ...TEST_MAPPING, reg_week: { source: "public.gibt_es_nicht", date: "d", value: "v" } }));
-    expect(bad).toMatch(/^PROBELAUF PROBLEM/);
-    expect(bad).toMatch(/reg_week=FEHLER|Einrichtung fehlgeschlagen: .*gibt_es_nicht/);
+    const sql = dryRunSql(TEST_MAPPING);
+    // Aufbau: ausdrücklich BEGIN … ROLLBACK, keine weiteren Transaktionsbefehle, keine Netzwerk-/Benachrichtigungsfunktionen
+    const stmts = sql.replace(/--.*$/gm, "");
+    expect(stmts.trim().startsWith("begin;")).toBe(true);
+    expect(stmts.trim().endsWith("rollback;")).toBe(true);
+    expect(stmts.replace(/on commit drop/gi, "").match(/\bcommit\b/gi)).toBeNull(); // nur „on commit drop“ der temporären Ergebnistabelle
+    expect(stmts).not.toMatch(/\b(pg_notify|notify|http_|net\.|dblink|copy|pg_sleep|lo_export)\b/i);
+    // Ausführung wie im Supabase-SQL-Editor: EIN Aufruf mit mehreren Anweisungen
+    const run = async (q) => {
+      const r = await db.unsafe(q).simple();
+      const sets = Array.isArray(r[0]) ? r : [r];
+      return sets.filter((x) => x.length && "Prüfung" in x[0]).pop() || [];
+    };
+    const rows = await run(sql);
+    const by = Object.fromEntries(rows.map((r) => [r["Prüfung"], r["Ergebnis"]]));
+    expect(by["GESAMT"]).toMatch(/^OK/);
+    expect(by["Einrichtung (probeweise)"]).toBe("ok");
+    expect(by["Kennzahl reg_total"]).toBe("lieferbar");
+    expect(by["Bestehende Tabellen, Funktionen, Rollen und Rechte unverändert"]).toBe("ja");
+    expect(by["Schreibvorgänge in Daten (auch Warteschlangen für Benachrichtigungen/Netzwerk)"]).toBe("0");
+    expect(by["Rechte: Zugriff über die Supabase-API"]).toBe("nein");
+    // keine Kennzahlen, keine Personendaten in der Ausgabe
+    const out = JSON.stringify(rows);
+    expect(out).not.toMatch(/@|Testperson|\b1\d\d\b/);
+    // nichts geblieben; Verbindung nicht in einer offenen Transaktion
     expect(await snap()).toBe(before);
+    expect((await db`select count(*)::int n from pg_namespace where nspname = 'management_ai'`)[0].n).toBe(0);
+    expect((await env.sql`select count(*)::int n from pg_roles where rolname = 'management_ai'`)[0].n).toBe(roleBefore[0].n);
+    expect(await frei()).toBe(true); // keine offene Transaktion zurückgeblieben
+    // Fehlerfall: kaputte Zuordnung → PROBLEM, ROLLBACK wird trotzdem ausgeführt, nichts bleibt zurück
+    const bad = await run(dryRunSql({ ...TEST_MAPPING, reg_week: { source: "public.gibt_es_nicht", date: "d", value: "v" } }));
+    const bb = Object.fromEntries(bad.map((r) => [r["Prüfung"], r["Ergebnis"]]));
+    expect(bb["GESAMT"]).toMatch(/^PROBLEM/);
+    expect(bb["Einrichtung (probeweise)"]).toMatch(/^FEHLER/);
+    expect(await snap()).toBe(before);
+    expect(await frei()).toBe(true);
+    // Transaktionsbefehle im Einrichtungs-SQL werden abgelehnt
+    expect(() => dryRunSql(TEST_MAPPING, ["commit;"])).toThrow();
   } finally {
     await db.end();
     await env.sql.unsafe("drop database if exists probe");
