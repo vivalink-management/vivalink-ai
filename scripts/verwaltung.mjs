@@ -200,6 +200,7 @@ declare
   et_bekannt int;
   et_unbekannt int;
   et_namen text;
+  et_fremd text;
 begin
  begin
 
@@ -210,15 +211,18 @@ begin
   -- tatsächlicher Zuordnung. Als unbedenklich gilt ein aktiver Ereignistrigger nur, wenn ALLES zutrifft:
   --  * Name, Ereignis und Funktion entsprechen genau dem Supabase-Standard (Funktion im Schema extensions, erwarteter Name),
   --  * die Befehlsfilter (WHEN TAG) stimmen: issue_pg_net/cron nur CREATE EXTENSION, issue_graphql_placeholder nur
-  --    DROP EXTENSION, issue_pg_graphql_access nur CREATE FUNCTION,
+  --    DROP EXTENSION, issue_pg_graphql_access nur CREATE EXTENSION (aktuelle Supabase-Form seit Migration
+  --    20260421000001_rescope_pg_graphql_access_trigger) oder – ältere Form – nur CREATE FUNCTION mit Inhaltsprüfung,
   --  * Trigger, die bei unseren Befehlen anspringen können (pgrst_ddl_watch, pgrst_drop_watch, issue_pg_graphql_access),
   --    enthalten im Funktionsrumpf (ohne Kommentare und Zeichenketten) keine Netzwerk-, Datei- oder Hintergrundaufrufe
   --    (http, net., dblink, pg_background, copy, lo_, pg_read, pg_write, pg_file); pgrst_* zusätzlich keine Schreib-/
   --    Strukturbefehle und müssen eine Benachrichtigung (NOTIFY) enthalten. NOTIFY wird nur beim Bestätigen zugestellt.
   -- Jeder andere, veränderte oder abweichend zugeordnete aktive Ereignistrigger → Abbruch ohne jede Änderung (E-ET).
+  -- Ausgegeben werden dann nur die Namen (Bezeichner) der abweichenden Trigger, nie ihr Inhalt.
   select count(*) filter (where ok), count(*) filter (where not ok),
-         coalesce(string_agg(evtname, ', ' order by evtname) filter (where not ok and bekannt), '')
-    into et_bekannt, et_unbekannt, et_namen
+         coalesce(string_agg(evtname, ', ' order by evtname) filter (where not ok and bekannt), ''),
+         coalesce(string_agg(evtname, ', ' order by evtname) filter (where not ok and not bekannt), '')
+    into et_bekannt, et_unbekannt, et_namen, et_fremd
   from (
     select e.evtname,
       e.evtname in ('pgrst_ddl_watch', 'pgrst_drop_watch', 'issue_pg_net_access', 'issue_pg_cron_access', 'issue_pg_graphql_access', 'issue_graphql_placeholder') as bekannt,
@@ -229,9 +233,11 @@ begin
           or (e.evtname = 'issue_pg_net_access' and e.evtevent = 'ddl_command_end' and p.proname = 'grant_pg_net_access' and e.evttags is not null and e.evttags <@ array['CREATE EXTENSION'])
           or (e.evtname = 'issue_pg_cron_access' and e.evtevent = 'ddl_command_end' and p.proname = 'grant_pg_cron_access' and e.evttags is not null and e.evttags <@ array['CREATE EXTENSION'])
           or (e.evtname = 'issue_graphql_placeholder' and e.evtevent = 'sql_drop' and p.proname = 'set_graphql_placeholder' and e.evttags is not null and e.evttags <@ array['DROP EXTENSION'])
-          or (e.evtname = 'issue_pg_graphql_access' and e.evtevent = 'ddl_command_end' and p.proname = 'grant_pg_graphql_access' and e.evttags is not null and e.evttags <@ array['CREATE FUNCTION'])
+          or (e.evtname = 'issue_pg_graphql_access' and e.evtevent = 'ddl_command_end' and p.proname = 'grant_pg_graphql_access' and e.evttags is not null
+              and (e.evttags <@ array['CREATE EXTENSION'] or e.evttags <@ array['CREATE FUNCTION']))
         )
         and (e.evtname not in ('pgrst_ddl_watch', 'pgrst_drop_watch', 'issue_pg_graphql_access')
+             or (e.evtname = 'issue_pg_graphql_access' and e.evttags <@ array['CREATE EXTENSION'])
              or (b.rumpf !~* '(\\mhttp|\\mnet\\.|\\mdblink|\\mpg_background|\\mcopy\\M|\\mlo_|\\mpg_read|\\mpg_write|\\mpg_file)'))
         and (e.evtname not in ('pgrst_ddl_watch', 'pgrst_drop_watch')
              or (b.rumpf ~* '\\mnotify\\M' and b.rumpf !~* '\\m(insert|update|delete|truncate|merge|create|alter|drop|grant|revoke|execute|perform|call|set_config|copy)\\M'))
@@ -245,6 +251,7 @@ begin
   zeilen := zeilen || ('Ereignistrigger: geprüft und unbedenklich (Supabase-Standard, Zuordnung und Inhalt passen)|' || et_bekannt);
   zeilen := zeilen || ('Ereignistrigger: unbekannt oder verändert|' || et_unbekannt
     || case when et_namen <> '' then ' (bekannter Name, aber abweichend: ' || et_namen || ')' else '' end
+    || case when et_fremd <> '' then ' (unbekannter Name: ' || et_fremd || ')' else '' end
     || case when et_unbekannt > 0 then ' – ABBRUCH E-ET, nichts eingerichtet' else '' end);
   if et_unbekannt > 0 then
     fehler := fehler + 1;
@@ -299,6 +306,37 @@ rollback;
 `;
 }
 
+/* Diagnose der Ereignistrigger (nur lesend): je Trigger nur technische Eigenschaften – Ereignis, Befehlsfilter, Status,
+   zugeordnete Funktion, Sprache, Eigentümer, Security Definer, eine Prüfsumme des Funktionsrumpfs (MD5, kein Inhalt) und
+   welche Begriffe aus UNSERER Liste im Rumpf vorkommen (ohne Kommentare/Zeichenketten), außerdem ob der Rumpf auf eine
+   bestimmte Erweiterung prüft (nur Namen aus unserer Liste). Kein Programmcode, keine Daten, keine Änderungen. */
+export const ET_TERMS = ["notify", "insert", "update", "delete", "truncate", "merge", "create", "alter", "drop", "grant", "revoke", "execute", "perform", "call", "set_config", "copy", "http", "net.", "dblink", "pg_background", "lo_", "pg_read", "pg_write", "pg_file", "security label", "raise"];
+export const ET_EXT = ["pg_graphql", "pg_cron", "pg_net", "pgsodium", "supabase_vault", "pg_stat_statements", "pgmq", "postgis", "pg_jsonschema"];
+export function eventTriggerDiagSql() {
+  const strip = "regexp_replace(regexp_replace(coalesce(p.prosrc, ''), '--[^\\n]*', '', 'g'), '''[^'']*''', '''''', 'g')";
+  const term = (t) => `case when r.rumpf ~* $t$${t === "net." ? "\\mnet\\." : t.endsWith("_") ? "\\m" + t : "\\m" + t.replace(/ /g, "\\s+") + "\\M"}$t$ then '${t}' end`;
+  const ext = (x) => `case when coalesce(p.prosrc, '') ~ $t$'${x}'$t$ then '${x}' end`;
+  return `-- Vivalink Management AI: Diagnose der Ereignistrigger (nur lesend; kein Programmcode, keine Daten, keine Änderungen).
+select e.evtname as trigger,
+       e.evtevent as ereignis,
+       coalesce(array_to_string(e.evttags, ', '), '(alle Befehle)') as befehlsfilter,
+       case e.evtenabled when 'D' then 'aus' else 'aktiv' end as status,
+       n.nspname || '.' || p.proname as funktion,
+       l.lanname as sprache,
+       pg_get_userbyid(p.proowner) as eigentuemer,
+       p.prosecdef as security_definer,
+       md5(coalesce(p.prosrc, '')) as rumpf_pruefsumme,
+       concat_ws(', ', ${ET_TERMS.map(term).join(", ")}) as befehle_im_rumpf,
+       concat_ws(', ', ${ET_EXT.map(ext).join(", ")}) as prueft_erweiterung
+from pg_event_trigger e
+join pg_proc p on p.oid = e.evtfoid
+join pg_namespace n on n.oid = p.pronamespace
+join pg_language l on l.oid = p.prolang
+cross join lateral (select ${strip} as rumpf) r
+order by 1;
+`;
+}
+
 export function bundle(mapping, dir) {
   const fn = join(dir, "supabase/functions/management-kpis");
   mkdirSync(fn, { recursive: true });
@@ -317,6 +355,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const [cmd, a, b] = process.argv.slice(2);
   if (cmd === "inventory") process.stdout.write(INVENTORY_SQL);
   else if (cmd === "dryrun") process.stdout.write(dryRunSql(load(a), process.argv.slice(4).map((f) => readFileSync(f, "utf8"))));
+  else if (cmd === "etdiag") process.stdout.write(eventTriggerDiagSql());
   else if (cmd === "facts") process.stdout.write(factsSql(JSON.parse(readFileSync(a, "utf8"))));
   else if (cmd === "grants") process.stdout.write(grantsSql(load(a)));
   else if (cmd === "check") {

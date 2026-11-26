@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { startEnv, pgBin, TEST_MAPPING } from "./verwaltung/env.mjs";
 import { pgRepo, parseMapping } from "../server/kpi-pg.mjs";
 import { KPI_KEYS, buildKpis, MAX_PAIR_FAILS } from "../server/kpi-core.mjs";
-import { grantsSql, INVENTORY_SQL, factsSql, dryRunSql } from "../scripts/verwaltung.mjs";
+import { grantsSql, INVENTORY_SQL, factsSql, dryRunSql, eventTriggerDiagSql, ET_TERMS, ET_EXT } from "../scripts/verwaltung.mjs";
 import { ready, state, kv, expectToast } from "./helpers.mjs";
 
 test.describe.configure({ mode: "serial", timeout: 120_000 });
@@ -356,7 +356,7 @@ test("Probelauf: ausdrückliche Transaktion mit ROLLBACK; leere Kennzahlen sind 
   };
   // Erlaubte Ausgabe: nur unsere festen Texte, Zahlen und Fehlercodes – nie Fehlertext der Datenbank
   const clean = (rows) => {
-    for (const r of rows) expect(r["Ergebnis"], r["Prüfung"]).toMatch(/^(ok|ja|nein|keine|\d+|funktioniert \((Werte vorhanden|derzeit keine Werte)\)|FEHLER E-(EINR|KZ|PRF|UNERW) \(SQLSTATE [0-9A-Z]{5}\)|\d+( \(bekannter Name, aber abweichend: [a-z_, ]+\))? – ABBRUCH E-ET, nichts eingerichtet|NEIN \(PROBLEM\)|\d+ \(PROBLEM\)|ja \(PROBLEM\)|Die Teilnachweise .*ROLLBACK\.|OK – alles wird mit ROLLBACK zurückgenommen|PROBLEM \(\d+\) – alles wird mit ROLLBACK zurückgenommen)$/);
+    for (const r of rows) expect(r["Ergebnis"], r["Prüfung"]).toMatch(/^(ok|ja|nein|keine|\d+|funktioniert \((Werte vorhanden|derzeit keine Werte)\)|FEHLER E-(EINR|KZ|PRF|UNERW) \(SQLSTATE [0-9A-Z]{5}\)|\d+( \(bekannter Name, aber abweichend: [a-z_, ]+\))?( \(unbekannter Name: [a-z0-9_, ]+\))? – ABBRUCH E-ET, nichts eingerichtet|NEIN \(PROBLEM\)|\d+ \(PROBLEM\)|ja \(PROBLEM\)|Die Teilnachweise .*ROLLBACK\.|OK – alles wird mit ROLLBACK zurückgenommen|PROBLEM \(\d+\) – alles wird mit ROLLBACK zurückgenommen)$/);
     expect(JSON.stringify(rows)).not.toMatch(/gibt_es_nicht|relation|column|does not exist|permission|@|Testperson/i);
   };
   const sql = dryRunSql(TEST_MAPPING);
@@ -429,12 +429,12 @@ test("Probelauf: ausdrückliche Transaktion mit ROLLBACK; leere Kennzahlen sind 
     expect(await snap(db)).toBe(before);
     // Hilfsprüfung: Abbruch E-ET, Einrichtung nie versucht, nichts verändert, Protokolltabelle leer
     await db.unsafe("create table public.vl_et_log (at timestamptz default now())");
-    const abort = async (variante, name) => {
+    const abort = async (variante, name, fremd = null) => {
       await db.unsafe("delete from public.vl_et_log");
       const b0 = await snap(db);
       const x = await run(db, sql);
       clean(x.rows);
-      expect(x.by["Ereignistrigger: unbekannt oder verändert"], variante).toMatch(new RegExp("^1 " + (name ? "\\(bekannter Name, aber abweichend: " + name + "\\) " : "") + "– ABBRUCH E-ET, nichts eingerichtet$"));
+      expect(x.by["Ereignistrigger: unbekannt oder verändert"], variante).toBe("1 " + (name ? "(bekannter Name, aber abweichend: " + name + ") " : "") + (fremd ? "(unbekannter Name: " + fremd + ") " : "") + "– ABBRUCH E-ET, nichts eingerichtet");
       expect(x.by["Einrichtung (probeweise)"], variante).toBeUndefined();
       expect(x.by["GESAMT"], variante).toMatch(/^PROBLEM/);
       expect((await db`select count(*)::int n from public.vl_et_log`)[0].n, variante).toBe(0);
@@ -463,13 +463,40 @@ test("Probelauf: ausdrückliche Transaktion mit ROLLBACK; leere Kennzahlen sind 
     await db.unsafe(`drop event trigger issue_pg_cron_access; create event trigger issue_pg_cron_access on ddl_command_end when tag in ('CREATE EXTENSION') execute function extensions.grant_pg_net_access();`);
     await abort("andere Funktion", "issue_pg_cron_access");
     await db.unsafe(`drop event trigger issue_pg_cron_access; create event trigger issue_pg_cron_access on ddl_command_end when tag in ('CREATE EXTENSION') execute function extensions.grant_pg_cron_access();`);
+    // 5f) issue_pg_graphql_access in der ÄLTEREN Supabase-Form (CREATE FUNCTION, Inhalt ohne Netzwerkaufrufe) → unbedenklich
+    await db.unsafe(`drop event trigger issue_pg_graphql_access; create event trigger issue_pg_graphql_access on ddl_command_end when tag in ('CREATE FUNCTION') execute function extensions.grant_pg_graphql_access();`);
+    expect((await run(db, sql)).by["GESAMT"], "ältere graphql-Form").toMatch(/^OK/);
+    // 5g) aktuelle Form (CREATE EXTENSION), aber andere Funktion zugeordnet → Abbruch
+    await db.unsafe(`drop event trigger issue_pg_graphql_access; create event trigger issue_pg_graphql_access on ddl_command_end when tag in ('CREATE EXTENSION') execute function extensions.grant_pg_net_access();`);
+    await abort("graphql: andere Funktion", "issue_pg_graphql_access");
+    // 5h) Befehlsfilter erweitert (CREATE EXTENSION und CREATE TABLE) → Abbruch
+    await db.unsafe(`drop event trigger issue_pg_graphql_access; create event trigger issue_pg_graphql_access on ddl_command_end when tag in ('CREATE EXTENSION', 'CREATE TABLE') execute function extensions.grant_pg_graphql_access();`);
+    await abort("graphql: Filter erweitert", "issue_pg_graphql_access");
+    await db.unsafe(`drop event trigger issue_pg_graphql_access; create event trigger issue_pg_graphql_access on ddl_command_end when tag in ('CREATE EXTENSION') execute function extensions.grant_pg_graphql_access();`);
     // wieder Standard → OK
     expect((await run(db, sql)).by["GESAMT"]).toMatch(/^OK/);
+    // Diagnose der Ereignistrigger: nur lesend, nur technische Eigenschaften, kein Programmcode
+    const diag = await db.begin("read only", (t) => t.unsafe(eventTriggerDiagSql()));
+    expect(diag.map((d) => d.trigger).sort()).toEqual(["issue_graphql_placeholder", "issue_pg_cron_access", "issue_pg_graphql_access", "issue_pg_net_access", "pgrst_ddl_watch", "pgrst_drop_watch"]);
+    const g = diag.find((d) => d.trigger === "issue_pg_graphql_access");
+    expect(g).toMatchObject({ ereignis: "ddl_command_end", befehlsfilter: "CREATE EXTENSION", status: "aktiv", funktion: "extensions.grant_pg_graphql_access", sprache: "plpgsql", prueft_erweiterung: "pg_graphql" });
+    expect(diag.find((d) => d.trigger === "pgrst_ddl_watch").befehle_im_rumpf).toBe("notify");
+    for (const d of diag) {
+      expect(Object.keys(d)).toEqual(["trigger", "ereignis", "befehlsfilter", "status", "funktion", "sprache", "eigentuemer", "security_definer", "rumpf_pruefsumme", "befehle_im_rumpf", "prueft_erweiterung"]);
+      expect(d.rumpf_pruefsumme).toMatch(/^[0-9a-f]{32}$/);
+      for (const w of d.befehle_im_rumpf.split(", ").filter(Boolean)) expect(ET_TERMS).toContain(w);
+      for (const w of d.prueft_erweiterung.split(", ").filter(Boolean)) expect(ET_EXT).toContain(w);
+    }
+    expect(JSON.stringify(diag)).not.toMatch(/reload schema|pg_event_trigger_ddl_commands|begin|loop/i);
+    const dq = eventTriggerDiagSql().replace(/--.*$/gm, "");
+    // genau EINE Anweisung, und zwar ein SELECT (Suchbegriffe wie „insert“ stehen nur als Text in der Begriffsliste)
+    expect(dq.trim()).toMatch(/^select /);
+    expect(dq.trim().replace(/;\s*$/, "").replace(/\$t\$[^$]*\$t\$/g, "").replace(/'[^']*'/g, "")).not.toContain(";");
 
     // 6) Unbekannter Ereignistrigger (schreibt bei Strukturänderungen in ein Protokoll): Abbruch VOR jeder Änderung
     await db.unsafe(`create function public.vl_et_log() returns event_trigger language plpgsql as $$ begin insert into public.vl_et_log default values; end $$;
       create event trigger fremder_trigger on ddl_command_end execute function public.vl_et_log();`);
-    await abort("unbekannter Trigger", null);
+    await abort("unbekannter Trigger", null, "fremder_trigger");
 
     // Transaktionsbefehle im Einrichtungs-SQL werden abgelehnt
     expect(() => dryRunSql(TEST_MAPPING, ["commit;"])).toThrow();

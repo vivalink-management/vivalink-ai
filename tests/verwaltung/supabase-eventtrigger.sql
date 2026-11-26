@@ -52,7 +52,7 @@ create or replace function extensions.grant_pg_graphql_access() returns event_tr
 declare
   func_is_graphql_resolve bool;
 begin
-  func_is_graphql_resolve = (select n.proname = 'resolve' from pg_event_trigger_ddl_commands() as ev join pg_catalog.pg_proc as n on ev.objid = n.oid);
+  func_is_graphql_resolve = exists (select 1 from pg_event_trigger_ddl_commands() as ev join pg_extension as ext on ev.objid = ext.oid where ext.extname = 'pg_graphql');
   if func_is_graphql_resolve then
     grant usage on schema extensions to postgres;
   end if;
@@ -68,5 +68,6 @@ create event trigger pgrst_ddl_watch on ddl_command_end execute function extensi
 create event trigger pgrst_drop_watch on sql_drop execute function extensions.pgrst_drop_watch();
 create event trigger issue_pg_net_access on ddl_command_end when tag in ('CREATE EXTENSION') execute function extensions.grant_pg_net_access();
 create event trigger issue_pg_cron_access on ddl_command_end when tag in ('CREATE EXTENSION') execute function extensions.grant_pg_cron_access();
-create event trigger issue_pg_graphql_access on ddl_command_end when tag in ('CREATE FUNCTION') execute function extensions.grant_pg_graphql_access();
+-- aktuelle Form seit supabase/postgres 20260421000001_rescope_pg_graphql_access_trigger: nur CREATE EXTENSION
+create event trigger issue_pg_graphql_access on ddl_command_end when tag in ('CREATE EXTENSION') execute function extensions.grant_pg_graphql_access();
 create event trigger issue_graphql_placeholder on sql_drop when tag in ('DROP EXTENSION') execute function extensions.set_graphql_placeholder();
