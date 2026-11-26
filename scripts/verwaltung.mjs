@@ -146,7 +146,8 @@ const FINGERPRINT = `(select md5(coalesce(string_agg(x, '|' order by x), '')) fr
       union all
       select 'd:' || defaclrole::text || ':' || defaclnamespace::text || ':' || defaclobjtype::text || ':' || coalesce(defaclacl::text, '') from pg_default_acl
     ) s)`;
-export function dryRunSql(mapping, extraSql = []) {
+export function dryRunSql(mapping, extraSql = [], { rlsAutoMd5 = [] } = {}) {
+  for (const h of rlsAutoMd5) if (!/^[0-9a-f]{32}$/.test(h)) throw new Error("Ungültige Prüfsumme");
   const M = parseMapping(mapping, KPI_KEYS);
   if (M.errors.length) throw new Error("mapping.json fehlerhaft: " + M.errors.join("; "));
   // ganze Kommentarzeilen entfernen (z. B. Rückbau-Hinweise), damit nur ausführbare Anweisungen im Probelauf stehen
@@ -185,7 +186,6 @@ export function dryRunSql(mapping, extraSql = []) {
 begin;
 set local statement_timeout = '60s';
 set local lock_timeout = '3s';
-create temporary table vl_probelauf (nr int, pruefung text, ergebnis text) on commit drop;
 do ${tag}
 declare
   n bigint;
@@ -201,6 +201,8 @@ declare
   et_unbekannt int;
   et_namen text;
   et_fremd text;
+  et_rls boolean;
+  et_grund text;
 begin
  begin
 
@@ -217,16 +219,34 @@ begin
   --    enthalten im Funktionsrumpf (ohne Kommentare und Zeichenketten) keine Netzwerk-, Datei- oder Hintergrundaufrufe
   --    (http, net., dblink, pg_background, copy, lo_, pg_read, pg_write, pg_file); pgrst_* zusätzlich keine Schreib-/
   --    Strukturbefehle und müssen eine Benachrichtigung (NOTIFY) enthalten. NOTIFY wird nur beim Bestätigen zugestellt.
+  --  * ensure_rls (Funktion public.rls_auto_enable, „Row Level Security für neue Tabellen automatisch aktivieren“) nur, wenn:
+  --    Ereignis ddl_command_end, Befehlsfilter nur CREATE TABLE / CREATE TABLE AS / SELECT INTO, Sprache plpgsql,
+  --    Prüfsumme des Funktionsrumpfs exakt wie bei der Diagnose festgestellt, im Rumpf (ohne Kommentare/Zeichenketten)
+  --    keine Netzwerk-, Datei-, Schreib-, Rechte- oder Strukturbefehle außer EXECUTE/RAISE, und ALLE Zeichenketten im
+  --    Rumpf sind unbedenklich (keine solchen Befehlswörter außer den drei Befehlsnamen des Filters) und mindestens eine
+  --    enthält „enable row level security“ – damit kann der Trigger höchstens RLS für eine neu angelegte Tabelle einschalten.
   -- Jeder andere, veränderte oder abweichend zugeordnete aktive Ereignistrigger → Abbruch ohne jede Änderung (E-ET).
   -- Ausgegeben werden dann nur die Namen (Bezeichner) der abweichenden Trigger, nie ihr Inhalt.
   select count(*) filter (where ok), count(*) filter (where not ok),
          coalesce(string_agg(evtname, ', ' order by evtname) filter (where not ok and bekannt), ''),
-         coalesce(string_agg(evtname, ', ' order by evtname) filter (where not ok and not bekannt), '')
-    into et_bekannt, et_unbekannt, et_namen, et_fremd
+         coalesce(string_agg(evtname, ', ' order by evtname) filter (where not ok and not bekannt), ''),
+         coalesce(bool_or(ok and rls), false)
+    into et_bekannt, et_unbekannt, et_namen, et_fremd, et_rls
   from (
     select e.evtname,
-      e.evtname in ('pgrst_ddl_watch', 'pgrst_drop_watch', 'issue_pg_net_access', 'issue_pg_cron_access', 'issue_pg_graphql_access', 'issue_graphql_placeholder') as bekannt,
+      e.evtname in ('pgrst_ddl_watch', 'pgrst_drop_watch', 'issue_pg_net_access', 'issue_pg_cron_access', 'issue_pg_graphql_access', 'issue_graphql_placeholder', 'ensure_rls') as bekannt,
+      e.evtname = 'ensure_rls' as rls,
       coalesce(
+        (e.evtname = 'ensure_rls' and n.nspname = 'public' and p.proname = 'rls_auto_enable' and e.evtevent = 'ddl_command_end'
+          and e.evttags is not null and e.evttags <@ array['CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO'] and l.lanname = 'plpgsql'
+          and md5(coalesce(p.prosrc, '')) in (${rlsAutoMd5.map((h) => `'${h}'`).join(", ") || "''"})
+          and b.rumpf !~* '\\m(http\\w*|dblink\\w*|pg_background\\w*|copy|insert|update|delete|truncate|merge|grant|revoke|create|drop|call|perform|set_config|notify|listen|lo_\\w+|pg_read\\w*|pg_write\\w*|pg_file\\w*|dblink)\\M'
+          and b.rumpf !~* '\\mnet\\.'
+          and not exists (select 1 from regexp_matches(coalesce(p.prosrc, ''), '''([^'']*)''', 'g') as m
+                          where upper(m[1]) not in ('CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO')
+                            and (m[1] ~* '\\m(http\\w*|dblink\\w*|pg_background\\w*|copy|insert|update|delete|truncate|merge|grant|revoke|create|drop|call|perform|set_config|notify|lo_\\w+|pg_read\\w*|pg_write\\w*|pg_file\\w*)\\M' or m[1] ~* 'security\\s+definer|owner\\s+to|set\\s+role|session_authorization' or m[1] ~* '\\mnet\\.'))
+          and exists (select 1 from regexp_matches(coalesce(p.prosrc, ''), '''([^'']*)''', 'g') as m where m[1] ~* 'enable\\s+row\\s+level\\s+security'))
+        or
         n.nspname = 'extensions' and (
           (e.evtname = 'pgrst_ddl_watch' and e.evtevent = 'ddl_command_end' and p.proname = 'pgrst_ddl_watch')
           or (e.evtname = 'pgrst_drop_watch' and e.evtevent = 'sql_drop' and p.proname = 'pgrst_drop_watch')
@@ -245,10 +265,32 @@ begin
     from pg_event_trigger e
     join pg_proc p on p.oid = e.evtfoid
     join pg_namespace n on n.oid = p.pronamespace
+    join pg_language l on l.oid = p.prolang
     cross join lateral (select regexp_replace(regexp_replace(coalesce(p.prosrc, ''), '--[^\\n]*', '', 'g'), '''[^'']*''', '''''', 'g') as rumpf) b
     where e.evtenabled <> 'D'
   ) t;
   zeilen := zeilen || ('Ereignistrigger: geprüft und unbedenklich (Supabase-Standard, Zuordnung und Inhalt passen)|' || et_bekannt);
+  if et_rls then
+    zeilen := zeilen || 'Ereignistrigger ensure_rls (RLS automatisch aktivieren): geprüft – kann höchstens RLS für neue Tabellen einschalten|ja'::text;
+  elsif exists (select 1 from pg_event_trigger where evtname = 'ensure_rls' and evtenabled <> 'D') then
+    -- Welche Einzelprüfung scheitert? Nur feste Kürzel, kein Inhalt:
+    -- R1 Zuordnung (Schema/Funktion/Ereignis/Sprache), R2 Befehlsfilter, R3 Prüfsumme unbekannt, R4 Befehle im Rumpf,
+    -- R5 bedenkliche Zeichenkette, R6 kein „enable row level security“
+    select concat_ws(', ',
+        case when not (n.nspname = 'public' and p.proname = 'rls_auto_enable' and e.evtevent = 'ddl_command_end' and l.lanname = 'plpgsql') then 'R1' end,
+        case when not (e.evttags is not null and e.evttags <@ array['CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO']) then 'R2' end,
+        case when md5(coalesce(p.prosrc, '')) not in (${rlsAutoMd5.map((h) => `'${h}'`).join(", ") || "''"}) then 'R3' end,
+        case when b.rumpf ~* '\\m(http\\w*|dblink\\w*|pg_background\\w*|copy|insert|update|delete|truncate|merge|grant|revoke|create|drop|call|perform|set_config|notify|listen|lo_\\w+|pg_read\\w*|pg_write\\w*|pg_file\\w*|dblink)\\M' or b.rumpf ~* '\\mnet\\.' then 'R4' end,
+        case when exists (select 1 from regexp_matches(coalesce(p.prosrc, ''), '''([^'']*)''', 'g') as m
+                          where upper(m[1]) not in ('CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO')
+                            and (m[1] ~* '\\m(http\\w*|dblink\\w*|pg_background\\w*|copy|insert|update|delete|truncate|merge|grant|revoke|create|drop|call|perform|set_config|notify|lo_\\w+|pg_read\\w*|pg_write\\w*|pg_file\\w*)\\M' or m[1] ~* 'security\\s+definer|owner\\s+to|set\\s+role|session_authorization' or m[1] ~* '\\mnet\\.')) then 'R5' end,
+        case when not exists (select 1 from regexp_matches(coalesce(p.prosrc, ''), '''([^'']*)''', 'g') as m where m[1] ~* 'enable\\s+row\\s+level\\s+security') then 'R6' end)
+      into et_grund
+      from pg_event_trigger e join pg_proc p on p.oid = e.evtfoid join pg_namespace n on n.oid = p.pronamespace join pg_language l on l.oid = p.prolang
+      cross join lateral (select regexp_replace(regexp_replace(coalesce(p.prosrc, ''), '--[^\\n]*', '', 'g'), '''[^'']*''', '''''', 'g') as rumpf) b
+     where e.evtname = 'ensure_rls';
+    zeilen := zeilen || ('Ereignistrigger ensure_rls: nicht anerkannt, gescheiterte Prüfungen|' || coalesce(nullif(et_grund, ''), 'unbekannt'));
+  end if;
   zeilen := zeilen || ('Ereignistrigger: unbekannt oder verändert|' || et_unbekannt
     || case when et_namen <> '' then ' (bekannter Name, aber abweichend: ' || et_namen || ')' else '' end
     || case when et_fremd <> '' then ' (unbekannter Name: ' || et_fremd || ')' else '' end
@@ -299,9 +341,11 @@ ${keyChecks}
     end if;
  end;
   zeilen := zeilen || ('GESAMT|' || case when fehler = 0 then 'OK – alles wird mit ROLLBACK zurückgenommen' else 'PROBLEM (' || fehler || ') – alles wird mit ROLLBACK zurückgenommen' end);
-  insert into vl_probelauf select i, split_part(zeilen[i], '|', 1), substr(zeilen[i], length(split_part(zeilen[i], '|', 1)) + 2) from generate_subscripts(zeilen, 1) i;
+  -- Ergebnis ohne jede Strukturänderung weitergeben (transaktionslokale Einstellung, verschwindet mit dem ROLLBACK)
+  perform set_config('vl.probelauf', array_to_string(zeilen, chr(10)), true);
 end ${tag};
-select pruefung as "Prüfung", ergebnis as "Ergebnis" from vl_probelauf order by nr;
+select split_part(z, '|', 1) as "Prüfung", substr(z, length(split_part(z, '|', 1)) + 2) as "Ergebnis"
+  from unnest(string_to_array(current_setting('vl.probelauf', true), chr(10))) with ordinality as t(z, nr) order by nr;
 rollback;
 `;
 }
@@ -354,7 +398,7 @@ export function bundle(mapping, dir) {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const [cmd, a, b] = process.argv.slice(2);
   if (cmd === "inventory") process.stdout.write(INVENTORY_SQL);
-  else if (cmd === "dryrun") process.stdout.write(dryRunSql(load(a), process.argv.slice(4).map((f) => readFileSync(f, "utf8"))));
+  else if (cmd === "dryrun") process.stdout.write(dryRunSql(load(a), process.argv.slice(4).filter((f) => !f.startsWith("--rls-md5=")).map((f) => readFileSync(f, "utf8")), { rlsAutoMd5: process.argv.slice(4).filter((f) => f.startsWith("--rls-md5=")).map((f) => f.slice(10)) }));
   else if (cmd === "etdiag") process.stdout.write(eventTriggerDiagSql());
   else if (cmd === "facts") process.stdout.write(factsSql(JSON.parse(readFileSync(a, "utf8"))));
   else if (cmd === "grants") process.stdout.write(grantsSql(load(a)));

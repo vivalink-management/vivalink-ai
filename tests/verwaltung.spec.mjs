@@ -356,7 +356,7 @@ test("Probelauf: ausdrückliche Transaktion mit ROLLBACK; leere Kennzahlen sind 
   };
   // Erlaubte Ausgabe: nur unsere festen Texte, Zahlen und Fehlercodes – nie Fehlertext der Datenbank
   const clean = (rows) => {
-    for (const r of rows) expect(r["Ergebnis"], r["Prüfung"]).toMatch(/^(ok|ja|nein|keine|\d+|funktioniert \((Werte vorhanden|derzeit keine Werte)\)|FEHLER E-(EINR|KZ|PRF|UNERW) \(SQLSTATE [0-9A-Z]{5}\)|\d+( \(bekannter Name, aber abweichend: [a-z_, ]+\))?( \(unbekannter Name: [a-z0-9_, ]+\))? – ABBRUCH E-ET, nichts eingerichtet|NEIN \(PROBLEM\)|\d+ \(PROBLEM\)|ja \(PROBLEM\)|Die Teilnachweise .*ROLLBACK\.|OK – alles wird mit ROLLBACK zurückgenommen|PROBLEM \(\d+\) – alles wird mit ROLLBACK zurückgenommen)$/);
+    for (const r of rows) expect(r["Ergebnis"], r["Prüfung"]).toMatch(/^(ok|ja|nein|keine|\d+|funktioniert \((Werte vorhanden|derzeit keine Werte)\)|FEHLER E-(EINR|KZ|PRF|UNERW) \(SQLSTATE [0-9A-Z]{5}\)|\d+( \(bekannter Name, aber abweichend: [a-z_, ]+\))?( \(unbekannter Name: [a-z0-9_, ]+\))? – ABBRUCH E-ET, nichts eingerichtet|NEIN \(PROBLEM\)|\d+ \(PROBLEM\)|ja \(PROBLEM\)|Die Teilnachweise .*ROLLBACK\.|(R[1-6](, R[1-6])*|unbekannt)|OK – alles wird mit ROLLBACK zurückgenommen|PROBLEM \(\d+\) – alles wird mit ROLLBACK zurückgenommen)$/);
     expect(JSON.stringify(rows)).not.toMatch(/gibt_es_nicht|relation|column|does not exist|permission|@|Testperson/i);
   };
   const sql = dryRunSql(TEST_MAPPING);
@@ -493,10 +493,62 @@ test("Probelauf: ausdrückliche Transaktion mit ROLLBACK; leere Kennzahlen sind 
     expect(dq.trim()).toMatch(/^select /);
     expect(dq.trim().replace(/;\s*$/, "").replace(/\$t\$[^$]*\$t\$/g, "").replace(/'[^']*'/g, "")).not.toContain(";");
 
-    // 6) Unbekannter Ereignistrigger (schreibt bei Strukturänderungen in ein Protokoll): Abbruch VOR jeder Änderung
-    await db.unsafe(`create function public.vl_et_log() returns event_trigger language plpgsql as $$ begin insert into public.vl_et_log default values; end $$;
+    // 5i) ensure_rls (Supabase „RLS automatisch aktivieren“): nur mit exakter Prüfsumme UND unbedenklichem Inhalt
+    await db.unsafe(readFileSync(new URL("./verwaltung/supabase-rls-auto.sql", import.meta.url), "utf8"));
+    const rlsMd5 = (await db`select md5(prosrc) h from pg_proc where proname = 'rls_auto_enable'`)[0].h;
+    const sqlRls = dryRunSql(TEST_MAPPING, [], { rlsAutoMd5: [rlsMd5] });
+    r = await run(db, sqlRls);
+    clean(r.rows);
+    expect(r.by["Ereignistrigger: geprüft und unbedenklich (Supabase-Standard, Zuordnung und Inhalt passen)"]).toBe("7");
+    expect(r.by["Ereignistrigger ensure_rls (RLS automatisch aktivieren): geprüft – kann höchstens RLS für neue Tabellen einschalten"]).toBe("ja");
+    expect(r.by["GESAMT"]).toMatch(/^OK/);
+    // ohne bekannte Prüfsumme (z. B. Funktion verändert) → Abbruch
+    const abortWith = async (q, variante, name) => {
+      const b0 = await snap(db);
+      const x = await run(db, q);
+      clean(x.rows);
+      expect(x.by["Ereignistrigger: unbekannt oder verändert"], variante).toBe("1 (bekannter Name, aber abweichend: " + name + ") – ABBRUCH E-ET, nichts eingerichtet");
+      expect(x.by["Einrichtung (probeweise)"], variante).toBeUndefined();
+      expect(await snap(db), variante).toBe(b0);
+    };
+    await abortWith(sql, "ensure_rls ohne zugelassene Prüfsumme", "ensure_rls");
+    expect((await run(db, sql)).by["Ereignistrigger ensure_rls: nicht anerkannt, gescheiterte Prüfungen"]).toBe("R3");
+    // Inhalt verändert (führt zusätzlich eine Rechtevergabe aus) – selbst wenn diese Prüfsumme zugelassen wäre → Abbruch
+    const rlsSrc = (await db`select prosrc from pg_proc where proname = 'rls_auto_enable'`)[0].prosrc;
+    const evil = rlsSrc.replace("execute format('alter table if exists %s enable row level security', cmd.object_identity);", "execute format('alter table if exists %s enable row level security', cmd.object_identity); execute 'grant all on all tables in schema public to anon';");
+    await db.unsafe(`create or replace function public.rls_auto_enable() returns event_trigger language plpgsql security definer set search_path = pg_catalog as $f$${evil}$f$`);
+    const evilMd5 = (await db`select md5(prosrc) h from pg_proc where proname = 'rls_auto_enable'`)[0].h;
+    await abortWith(dryRunSql(TEST_MAPPING, [], { rlsAutoMd5: [evilMd5] }), "ensure_rls mit Rechtevergabe", "ensure_rls");
+    expect((await run(db, dryRunSql(TEST_MAPPING, [], { rlsAutoMd5: [evilMd5] }))).by["Ereignistrigger ensure_rls: nicht anerkannt, gescheiterte Prüfungen"]).toBe("R5");
+    // Netzwerkaufruf versteckt in einer Zeichenkette → Abbruch
+    const evil2 = rlsSrc.replace("execute format('alter table if exists %s enable row level security', cmd.object_identity);", "execute format('alter table if exists %s enable row level security', cmd.object_identity); execute 'select net.http_get(1)';");
+    await db.unsafe(`create or replace function public.rls_auto_enable() returns event_trigger language plpgsql security definer set search_path = pg_catalog as $f$${evil2}$f$`);
+    const evil2Md5 = (await db`select md5(prosrc) h from pg_proc where proname = 'rls_auto_enable'`)[0].h;
+    await abortWith(dryRunSql(TEST_MAPPING, [], { rlsAutoMd5: [evil2Md5] }), "ensure_rls mit Netzwerkaufruf", "ensure_rls");
+    // Befehlsfilter erweitert → Abbruch
+    await db.unsafe(`create or replace function public.rls_auto_enable() returns event_trigger language plpgsql security definer set search_path = pg_catalog as $f$${rlsSrc}$f$;
+      drop event trigger ensure_rls; create event trigger ensure_rls on ddl_command_end when tag in ('CREATE TABLE', 'ALTER TABLE') execute function public.rls_auto_enable();`);
+    await abortWith(sqlRls, "ensure_rls Filter erweitert", "ensure_rls");
+    expect((await run(db, sqlRls)).by["Ereignistrigger ensure_rls: nicht anerkannt, gescheiterte Prüfungen"]).toBe("R2");
+    await db.unsafe(`drop event trigger ensure_rls; create event trigger ensure_rls on ddl_command_end when tag in ('CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO') execute function public.rls_auto_enable();`);
+    expect((await run(db, sqlRls)).by["GESAMT"]).toMatch(/^OK/);
+    await db.unsafe("drop event trigger ensure_rls");
+
+    // 6) Unbekannter Ereignistrigger mit NICHT zurücknehmbarer Wirkung (Sequenz): Abbruch VOR jeder Strukturänderung –
+    //    die Sequenz bleibt unverändert, d. h. der Trigger ist nachweislich nie gelaufen (auch nicht für eine Ergebnistabelle)
+    await db.unsafe(`create sequence public.vl_et_seq;
+      create function public.vl_et_log() returns event_trigger language plpgsql as $$ begin perform nextval('public.vl_et_seq'); insert into public.vl_et_log default values; end $$;
       create event trigger fremder_trigger on ddl_command_end execute function public.vl_et_log();`);
-    await abort("unbekannter Trigger", null, "fremder_trigger");
+    const seq0 = (await db`select last_value, is_called from public.vl_et_seq`)[0];
+    const b6 = await snap(db);
+    const r6 = await run(db, sql);
+    clean(r6.rows);
+    // direkt nach dem Probelauf messen (jede spätere Strukturänderung im Test würde den Trigger selbst auslösen)
+    expect((await db`select last_value, is_called from public.vl_et_seq`)[0]).toEqual(seq0);
+    expect(r6.by["Ereignistrigger: unbekannt oder verändert"]).toBe("1 (unbekannter Name: fremder_trigger) – ABBRUCH E-ET, nichts eingerichtet");
+    expect(r6.by["Einrichtung (probeweise)"]).toBeUndefined();
+    expect((await db`select count(*)::int n from public.vl_et_log`)[0].n).toBe(0);
+    expect(await snap(db)).toBe(b6);
 
     // Transaktionsbefehle im Einrichtungs-SQL werden abgelehnt
     expect(() => dryRunSql(TEST_MAPPING, ["commit;"])).toThrow();
