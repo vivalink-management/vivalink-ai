@@ -69,34 +69,52 @@ export async function startEnv({ pgPort, fnPort, mapping = TEST_MAPPING, fixture
   if (migrate) await sql.unsafe(grantsSql(mapping));
   // Edge Function wie für Supabase bündeln und unter Deno starten
   // Standard: genau die EINE Datei, die im Supabase-Dashboard eingefügt wird (singleFile=false: Ordner wie für die CLI)
-  let fnDir;
-  if (singleFile) {
-    fnDir = join(dir, "single");
-    mkdirSync(fnDir, { recursive: true });
-    writeFileSync(join(fnDir, "index.ts"), edgeSingleFile(mapping));
-  } else fnDir = bundle(mapping, join(dir, "bundle"));
-  const deno = process.env.DENO || "npx";
-  const args = process.env.DENO ? [] : ["-y", "deno@2.9.6"];
-  const fn = spawn(deno, [...args, "run", "--allow-net", "--allow-env", "--allow-read", "--allow-sys", join(fnDir, "index.ts")], {
-    env: { ...process.env, SUPABASE_DB_URL: admin, DENO_SERVE_ADDRESS: `tcp:127.0.0.1:${fnPort}`, VL_ALLOWED_ORIGIN: "http://127.0.0.1:4173", NO_COLOR: "1" },
-    stdio: ["ignore", "pipe", "pipe"],
-    detached: true, // eigene Prozessgruppe: beim Beenden auch den von npx gestarteten Deno-Prozess stoppen
-  });
-  let log = "";
-  fn.stdout.on("data", (d) => (log += d));
-  fn.stderr.on("data", (d) => (log += d));
-  const url = `http://127.0.0.1:${fnPort}/functions/v1/management-kpis`;
-  for (let i = 0; i < 600; i++) {
-    if (fn.exitCode !== null) throw new Error("Edge Function beendet: " + log);
-    const ok = await fetch(url + "/kpis").then((r) => r.status === 401 || (!migrate && r.status === 503)).catch(() => false);
-    if (ok) break;
-    if (i === 599) throw new Error("Edge Function antwortet nicht: " + log);
-    await new Promise((r) => setTimeout(r, 200));
+  // startFn kann weitere Fassungen (andere Zuordnung) gegen DIESELBE Datenbank starten – z. B. alte und neue Edge Function
+  const fns = [];
+  async function startFn(fnMapping, port, single = singleFile) {
+    let fnDir;
+    if (single) {
+      fnDir = join(dir, "single-" + port);
+      mkdirSync(fnDir, { recursive: true });
+      writeFileSync(join(fnDir, "index.ts"), edgeSingleFile(fnMapping));
+    } else fnDir = bundle(fnMapping, join(dir, "bundle-" + port));
+    const deno = process.env.DENO || "npx";
+    const args = process.env.DENO ? [] : ["-y", "deno@2.9.6"];
+    const fn = spawn(deno, [...args, "run", "--allow-net", "--allow-env", "--allow-read", "--allow-sys", join(fnDir, "index.ts")], {
+      env: { ...process.env, SUPABASE_DB_URL: admin, DENO_SERVE_ADDRESS: `tcp:127.0.0.1:${port}`, VL_ALLOWED_ORIGIN: "http://127.0.0.1:4173", NO_COLOR: "1" },
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: true, // eigene Prozessgruppe: beim Beenden auch den von npx gestarteten Deno-Prozess stoppen
+    });
+    let log = "";
+    fn.stdout.on("data", (d) => (log += d));
+    fn.stderr.on("data", (d) => (log += d));
+    fns.push(fn);
+    const url = `http://127.0.0.1:${port}/functions/v1/management-kpis`;
+    for (let i = 0; i < 600; i++) {
+      if (fn.exitCode !== null) throw new Error("Edge Function beendet: " + log);
+      const ok = await fetch(url + "/kpis").then((r) => r.status === 401 || (!migrate && r.status === 503)).catch(() => false);
+      if (ok) break;
+      if (i === 599) throw new Error("Edge Function antwortet nicht: " + log);
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    return {
+      url,
+      log: () => log,
+      stop: () => {
+        try {
+          process.kill(-fn.pid, "SIGTERM");
+        } catch {}
+      },
+    };
   }
+  const first = await startFn(mapping, fnPort);
+  const url = first.url;
+  const log = first.log;
   return {
     url,
     sql,
-    log: () => log,
+    log,
+    startFn,
     /* Kopplungscode wie ein Admin der Verwaltung erzeugen (SQL-Funktion aus der Migration) */
     code: async () => (await sql`select management_ai.new_pair_code() as c`)[0].c,
     async stopPg() {
@@ -109,9 +127,10 @@ export async function startEnv({ pgPort, fnPort, mapping = TEST_MAPPING, fixture
       await done;
     },
     async stop() {
-      try {
-        process.kill(-fn.pid, "SIGTERM");
-      } catch {}
+      for (const f of fns)
+        try {
+          process.kill(-f.pid, "SIGTERM");
+        } catch {}
       await this.stopPg();
       rmSync(dir, { recursive: true, force: true });
     },

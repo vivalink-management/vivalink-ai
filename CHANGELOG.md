@@ -8,7 +8,9 @@
 - **Testdaten getrennt:** Die Verwaltungsansicht zeigt Testkonten, Buchungen, Einladungen, Zahlungen und Erstattungen der gekennzeichneten Testkonten als eigene Summen. Unvollständige oder fremde Angaben werden komplett abgelehnt.
 - **Hinweis**, solange Testkonten nicht gekennzeichnet sind.
 - **Gegenstelle:** liefert die Testdaten-Summen in `meta.testData` (strikt fünf Zahlen) und bestätigt den Ausschluss, sobald Testkonten gekennzeichnet sind.
-- **Tests:** Update und Rückbau mit dem Originalcode von 2.9.0; Kennzeichnung auf der nachgebildeten echten Struktur.
+- **Umstellung ohne Rückbau:** Änderungsmodus für eine bestehende Anbindung. Gekoppelte Geräte bleiben, mit Nachweis; Probelauf, Ausführung und Rückbau der Änderung; alle Sicherheitsprüfungen wie bei der Einrichtung.
+- **Schreibzähler** der Prüfungen zählt je Tabelle nur Zunahmen (kein Fehlalarm, wenn eine Tabelle der Anbindung entfernt wird).
+- **Tests:** Update und Rückbau mit dem Originalcode von 2.9.0; Kennzeichnung auf der nachgebildeten echten Struktur; Fehlerfälle der Änderung (Ereignistrigger, Kennzahl nicht lesbar, Geräte verändert, Änderung außerhalb, Schutz abgeschaltet).
 
 ## 2.9.0 (veröffentlicht am 26.11.2026) – Verwaltungsanbindung aktiv
 

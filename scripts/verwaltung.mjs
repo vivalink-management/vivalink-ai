@@ -157,13 +157,29 @@ const FP = (ohne) => `(select md5(coalesce(string_agg(x, '|' order by x), '')) f
       select 'd:' || defaclrole::text || ':' || defaclnamespace::text || ':' || defaclobjtype::text || ':' || coalesce(defaclacl::text, '') from pg_default_acl
     ) s${ohne ? `) s0 where x !~ '^(a|c|f|k|n|p|t):management_ai\\.' and x !~ '^n:management_ai:' and x !~ '^r:management_ai:' and x !~ '^m:management_ai>'` : ""})`;
 const FINGERPRINT = FP(false);
-export function dryRunSql(mapping, extraSql = [], { rlsAutoMd5 = [], einrichtung = false } = {}) {
+// Fingerabdruck aller Objekte AUSSERHALB von management_ai (für Tests und Nachweise)
+export const FINGERPRINT_OHNE_SQL = FP(true);
+// Daten der Anbindung (gekoppelte Geräte, Kopplungscodes, Abrufprotokoll) – für Änderungen an einer bestehenden Anbindung
+const DATEN_FP = `(select md5(coalesce((select string_agg(d::text, '|' order by d.token_hash) from management_ai.devices d), '') || '#'
+    || coalesce((select string_agg(c::text, '|' order by c.code_hash) from management_ai.pair_codes c), '') || '#'
+    || coalesce((select string_agg(a::text, '|' order by a.token_hash, a.at) from management_ai.calls a), '')))`;
+/* erweiterung (optional): Änderung einer BESTEHENDEN Anbindung statt Neueinrichtung (Gerätezugänge bleiben erhalten)
+     { name: "Erweiterung …", body: [sql…], merkmal: "management_ai.objekt", richtung: "hin" | "zurueck" }
+   - Voraussetzung: Grundeinrichtung vorhanden; „hin“: Merkmal fehlt noch, „zurueck“: Merkmal vorhanden (sonst Abbruch ohne Änderung)
+   - Zusätzlicher Nachweis: Gerätezugänge, Kopplungscodes und Abrufprotokoll unverändert
+   - alle übrigen Prüfungen (Ereignistrigger vor jeder Änderung, Kennzahlen, Rechte, Schutzschichten, Fingerabdruck außerhalb
+     von management_ai, Schreibzähler) wie bei der Einrichtung; COMMIT speichert nur bei vollständigem Erfolg */
+export function dryRunSql(mapping, extraSql = [], { rlsAutoMd5 = [], einrichtung = false, erweiterung = null } = {}) {
   const E = einrichtung; // true: dauerhafte Einrichtung (COMMIT nur bei vollständigem Erfolg), false: Probelauf (ROLLBACK)
+  const X = erweiterung;
+  if (X && (!/^management_ai\.[a-z_][a-z0-9_]{0,62}$/.test(X.merkmal || "") || !["hin", "zurueck"].includes(X.richtung) || !Array.isArray(X.body) || !X.name)) throw new Error("Erweiterung unvollständig");
   for (const h of rlsAutoMd5) if (!/^[0-9a-f]{32}$/.test(h)) throw new Error("Ungültige Prüfsumme");
   const M = parseMapping(mapping, KPI_KEYS);
   if (M.errors.length) throw new Error("mapping.json fehlerhaft: " + M.errors.join("; "));
+  const EIN = X ? X.name : E ? "Einrichtung" : "Einrichtung (probeweise)";
+  const ZIEL = X ? `(to_regclass('${X.merkmal}') is ${X.richtung === "hin" ? "not " : ""}null)` : null;
   // ganze Kommentarzeilen entfernen (z. B. Rückbau-Hinweise), damit nur ausführbare Anweisungen im Probelauf stehen
-  const body = [readFileSync(MIGRATION, "utf8"), ...extraSql, grantsSql(mapping)]
+  const body = (X ? X.body : [readFileSync(MIGRATION, "utf8"), ...extraSql, grantsSql(mapping)])
     .join("\n")
     .split("\n")
     .filter((l) => !/^\s*--/.test(l))
@@ -199,7 +215,16 @@ export function dryRunSql(mapping, extraSql = [], { rlsAutoMd5 = [], einrichtung
         : [],
     )
     .join("\n");
-  const kopf = E
+  const kopf = X
+    ? `-- Vivalink Management AI: ${E ? "ÄNDERUNG" : "PROBELAUF DER ÄNDERUNG"} der bestehenden Verwaltungsanbindung: ${X.name}${E ? " – nur nach ausdrücklicher Freigabe ausführen" : " – ohne bleibende Wirkung"}.
+-- Ablauf: BEGIN → Prüfung der Ereignistrigger (vor jeder Änderung) → Voraussetzungen → Änderung → Prüfungen → Ergebnis → ${E ? "COMMIT" : "ROLLBACK"}.
+-- Keine Neueinrichtung: Gerätezugänge (gekoppelte Geräte), Kopplungscodes und Abrufprotokoll bleiben erhalten und werden geprüft.
+-- Geändert werden nur Objekte im eigenen Schema management_ai; bestehende Tabellen, Funktionen, Rechte und Daten der
+-- Verwaltung werden nicht verändert.${E ? " Die Änderung bleibt NUR bestehen, wenn ALLE Prüfungen bestehen; sonst wird sie noch\n-- VOR dem COMMIT zurückgenommen und nachgeprüft – das COMMIT speichert dann nichts." : " Alles wird am Ende mit ROLLBACK zurückgenommen."}
+-- Voraussetzung fehlt oder Änderung schon erfolgt → Abbruch ohne Änderung.
+-- Schreibt in keine bestehende Tabelle und ruft keine Zahlungs-, Buchungs-, Benachrichtigungs- oder Netzwerkfunktionen auf.
+`
+    : E
     ? `-- Vivalink Management AI: DAUERHAFTE EINRICHTUNG der Verwaltungsanbindung – nur nach ausdrücklicher Freigabe ausführen.
 -- Ablauf: BEGIN → Prüfung der Ereignistrigger (vor jeder Änderung) → Einrichtung → Prüfungen → Ergebnis → COMMIT.
 -- Die Einrichtung bleibt NUR bestehen, wenn ALLE Prüfungen bestehen. Schlägt eine Prüfung fehl, werden sämtliche Änderungen
@@ -234,7 +259,8 @@ declare
   basis int;
   api boolean;
   schreib bigint;
-  schreib0 bigint;
+  schreib0 jsonb;
+  daten_vorher text;
   vorher_ohne text;
   et_bekannt int;
   et_unbekannt int;
@@ -253,7 +279,7 @@ begin
  begin
 
   -- Schreibzähler zu Beginn (enthält ggf. noch nicht verbuchte Vorgänge früherer Abfragen – deshalb zählt die Differenz)
-  select coalesce(sum(n_tup_ins + n_tup_upd + n_tup_del), 0) into schreib0 from pg_stat_xact_user_tables;
+  select coalesce(jsonb_object_agg(relid::text, n_tup_ins + n_tup_upd + n_tup_del), '{}'::jsonb) into schreib0 from pg_stat_xact_user_tables;
   vorher := ${FINGERPRINT};
   vorher_ohne := ${FP(true)};
   -- Ereignistrigger (laufen bei Strukturänderungen mit) VOR jeder Änderung prüfen – nicht nur nach Namen, sondern nach
@@ -345,7 +371,24 @@ begin
   if et_unbekannt > 0 then
     fehler := fehler + 1;
     raise exception 'vl_probelauf_et';
-  end if;${E ? `
+  end if;${X ? `
+  if not (exists (select 1 from pg_namespace where nspname = 'management_ai') and exists (select 1 from pg_roles where rolname = 'management_ai')
+          and to_regclass('management_ai.devices') is not null and to_regclass('management_ai.pair_codes') is not null and to_regclass('management_ai.calls') is not null) then
+    zeilen := zeilen || 'Grundeinrichtung vorhanden|nein – ABBRUCH, nichts verändert'::text;
+    fehler := fehler + 1;
+    raise exception 'vl_probelauf_et';
+  end if;
+  zeilen := zeilen || 'Grundeinrichtung vorhanden|ja'::text;
+  if ${ZIEL} then
+    zeilen := zeilen || 'Änderung bereits erfolgt|ja – nichts verändert'::text;
+    fehler := fehler + 1;
+    raise exception 'vl_probelauf_et';
+  end if;
+  -- Daten der Anbindung (gekoppelte Geräte, Kopplungscodes, Abrufprotokoll) vor der Änderung festhalten. Die drei Tabellen
+  -- sind bis zum Ende dieser kurzen Transaktion gegen Schreiben gesperrt (gleichzeitige Abrufe warten kurz), damit der
+  -- Nachweis „unverändert“ eindeutig ist. Lesen bleibt möglich.
+  lock table management_ai.devices, management_ai.pair_codes, management_ai.calls in share mode;
+  daten_vorher := ${DATEN_FP};` : E ? `
   if exists (select 1 from pg_namespace where nspname = 'management_ai') or exists (select 1 from pg_roles where rolname = 'management_ai') then
     zeilen := zeilen || 'Bereits eingerichtet|ja – nichts verändert (für eine Neueinrichtung zuerst den Rückbau ausführen)'::text;
     fehler := fehler + 1;
@@ -355,9 +398,9 @@ begin
   begin
     begin
       execute ${inner}${body}${inner};
-      zeilen := zeilen || '${E ? "Einrichtung" : "Einrichtung (probeweise)"}|ok'::text;
+      zeilen := zeilen || '${q(EIN)}|ok'::text;
     exception when others then
-      zeilen := zeilen || ('${E ? "Einrichtung" : "Einrichtung (probeweise)"}|FEHLER E-EINR (SQLSTATE ' || sqlstate || ')'); fehler := fehler + 1;
+      zeilen := zeilen || ('${q(EIN)}|FEHLER E-EINR (SQLSTATE ' || sqlstate || ')'); fehler := fehler + 1;
       raise exception 'vl_probelauf_zuruecknehmen';
     end;
     -- Kennzahlen als eingeschränkte Rolle lesen
@@ -454,7 +497,9 @@ ${keyChecks}
     zeilen := zeilen || ('Rechte: Rolle management_ai ohne Anmeldung und ohne Sonderrechte|' || case when n = 0 then 'ja' else 'nein (PROBLEM)' end);
     if n > 0 then fehler := fehler + 1; end if;
     zeilen := zeilen || ('Rechte: Zugriff über die Supabase-API|' || case when api then 'ja (PROBLEM)' else 'nein' end);
-    if basis > 0 or api then fehler := fehler + 1; end if;
+    if basis > 0 or api then fehler := fehler + 1; end if;${X ? `
+    zeilen := zeilen || ('Gekoppelte Geräte, Kopplungscodes und Abrufprotokoll unverändert|' || case when daten_vorher = ${DATEN_FP} then 'ja' else 'NEIN (PROBLEM)' end);
+    if daten_vorher <> ${DATEN_FP} then fehler := fehler + 1; end if;` : ""}
     ${E ? "-- Einrichtung: nur bei einem Fehler zurücknehmen, sonst bleibt alles für das abschließende COMMIT erhalten\n    if fehler > 0 then raise exception 'vl_probelauf_zuruecknehmen'; end if;" : "raise exception 'vl_probelauf_zuruecknehmen';"}
   exception when others then
     if sqlerrm <> 'vl_probelauf_zuruecknehmen' then
@@ -463,8 +508,9 @@ ${keyChecks}
   end;
   -- Nachweise nach der Rücknahme des Sicherungspunkts
   nachher := ${FINGERPRINT};
-  select coalesce(sum(n_tup_ins + n_tup_upd + n_tup_del), 0) - schreib0 into schreib from pg_stat_xact_user_tables;
-  ${E ? `zeilen := zeilen || ('Teilnachweis: bestehende Tabellen, Funktionen, Rollen, Rechte, Richtlinien, Trigger unverändert (neu nur Schema und Rolle management_ai)|' || case when vorher_ohne = ${FP(true)} then 'ja' else 'NEIN (PROBLEM)' end);
+  -- je Tabelle nur die Zunahme zählen (entfernte Tabellen der Anbindung verringern die Summe nicht)
+  select coalesce(sum(greatest(n_tup_ins + n_tup_upd + n_tup_del - coalesce((schreib0 ->> relid::text)::bigint, 0), 0)), 0) into schreib from pg_stat_xact_user_tables;
+  ${E ? `zeilen := zeilen || ('${X ? "Teilnachweis: bestehende Tabellen, Funktionen, Rollen, Rechte, Richtlinien, Trigger außerhalb von management_ai unverändert" : "Teilnachweis: bestehende Tabellen, Funktionen, Rollen, Rechte, Richtlinien, Trigger unverändert (neu nur Schema und Rolle management_ai)"}|' || case when vorher_ohne = ${FP(true)} then 'ja' else 'NEIN (PROBLEM)' end);
   if vorher_ohne <> ${FP(true)} then fehler := fehler + 1; end if;` : "zeilen := zeilen || ('Teilnachweis: Tabellen, Funktionen, Rollen, Rechte, Richtlinien, Trigger nach der Rücknahme unverändert|' || case when vorher = nachher then 'ja' else 'NEIN (PROBLEM)' end);"}
   zeilen := zeilen || ('Teilnachweis: Schreibvorgänge in Tabellen (auch Warteschlangen für Benachrichtigungen/Netzwerk)|' || schreib);
   zeilen := zeilen || ('Hinweis|Die Teilnachweise decken nur die geprüften Bereiche ab und sind kein vollständiger Nachweis für das Ausbleiben jeder Nebenwirkung; maßgeblich ist das abschließende ${E ? "COMMIT nur bei Erfolg" : "ROLLBACK"}.'::text);
@@ -478,11 +524,14 @@ ${keyChecks}
       zeilen := zeilen || ('Unerwarteter Fehler|FEHLER E-UNERW (SQLSTATE ' || sqlstate || ')'); fehler := fehler + 1;
     end if;
  end;
-  ${E ? `if fehler > 0 then
+  ${E && X ? `if fehler > 0 then
+    zeilen := zeilen || ('Änderung vor dem COMMIT vorhanden|' || case when ${ZIEL}
+      and not exists (select 1 from unnest(zeilen) z where z like 'Änderung bereits erfolgt|%' or z like 'Grundeinrichtung vorhanden|nein%') then 'ja (PROBLEM)' else 'nein – das COMMIT speichert nichts' end);
+  end if;` : E ? `if fehler > 0 then
     zeilen := zeilen || ('Objekte der Anbindung vor dem COMMIT vorhanden|' || case when exists (select 1 from pg_namespace where nspname = 'management_ai')
       and not exists (select 1 from unnest(zeilen) z where z like 'Bereits eingerichtet|%') then 'ja (PROBLEM)' else 'nein – das COMMIT speichert nichts' end);
   end if;` : ""}
-  zeilen := zeilen || ('GESAMT|' || case when fehler = 0 then '${E ? "OK – Anbindung eingerichtet (wird mit COMMIT dauerhaft gespeichert)" : "OK – alles wird mit ROLLBACK zurückgenommen"}' else 'PROBLEM (' || fehler || ') – ${E ? "nichts eingerichtet, alle Änderungen zurückgenommen" : "alles wird mit ROLLBACK zurückgenommen"}' end);
+  zeilen := zeilen || ('GESAMT|' || case when fehler = 0 then '${X && E ? "OK – Änderung ausgeführt (wird mit COMMIT dauerhaft gespeichert)" : E ? "OK – Anbindung eingerichtet (wird mit COMMIT dauerhaft gespeichert)" : "OK – alles wird mit ROLLBACK zurückgenommen"}' else 'PROBLEM (' || fehler || ') – ${X && E ? "nichts geändert, alle Änderungen zurückgenommen" : E ? "nichts eingerichtet, alle Änderungen zurückgenommen" : "alles wird mit ROLLBACK zurückgenommen"}' end);
   -- Ergebnis ohne jede Strukturänderung weitergeben (transaktionslokale Einstellung, verschwindet mit dem Ende der Transaktion)
   perform set_config('vl.probelauf', array_to_string(zeilen, chr(10)), true);
 end ${tag};
@@ -600,6 +649,18 @@ select count(*) as "aktive Zugänge" from management_ai.devices where revoked_at
 /* Abgleich mit dem Admin-Dashboard: zeigt die aktuellen Werte genau so, wie die Management AI sie erhält.
    Die Zahlen sieht nur, wer die Abfrage ausführt (Gründer im SQL-Editor); sie werden nirgends gespeichert. */
 const KPI_LABELS = { reg_total: "Registrierungen gesamt (ohne Admins)", reg_week: "Neue Registrierungen (7 Tage)", active_users: "Aktive Nutzer (30 Tage)", signups: "Anmeldungen nächstes Meetup", attend: "Teilnehmer letztes Meetup", noshow: "Absagen letztes Meetup", invites: "Einladungen (7 Tage)", invite_rate: "Annahmequote Einladungen (30 Tage, %)", payments: "Zahlungen (30 Tage, €)", refunds: "Erstattungen (30 Tage, €)", inc: "Einnahmen", exp: "Ausgaben", meetup_days: "Tage bis zum nächsten Meetup", meetup_capacity: "Plätze nächstes Meetup" };
+/* Dateien für die Änderung einer BESTEHENDEN Anbindung (gekoppelte Geräte bleiben): Probelauf, Ausführung, Rückbau */
+export function erweiterungDateien({ neu, zusatzNeu, alt, zusatzAlt, zurueck, merkmal, rlsAutoMd5 = [] }) {
+  const name = "Erweiterung „Testkonten kennzeichnen, Testdaten getrennt“";
+  const hin = { name, merkmal, richtung: "hin", body: [zusatzNeu, grantsSql(neu)] };
+  const zur = { name: "Rückbau der Erweiterung „Testkonten kennzeichnen, Testdaten getrennt“", merkmal, richtung: "zurueck", body: [zusatzAlt, zurueck] };
+  return {
+    "E1-probelauf-erweiterung.sql": dryRunSql(neu, [], { rlsAutoMd5, erweiterung: hin }),
+    "E2-erweiterung-testdaten.sql": dryRunSql(neu, [], { rlsAutoMd5, einrichtung: true, erweiterung: hin }),
+    "E9-rueckbau-erweiterung.sql": dryRunSql(alt, [], { rlsAutoMd5, einrichtung: true, erweiterung: zur }),
+  };
+}
+
 export function abgleichSql(mapping) {
   const M = parseMapping(mapping, KPI_KEYS);
   if (M.errors.length) throw new Error("mapping.json fehlerhaft: " + M.errors.join("; "));
@@ -661,6 +722,17 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     };
     for (const [f, t] of Object.entries(files)) writeFileSync(join(ziel, f), t);
     console.log("Paket: " + Object.keys(files).join(", "));
+  } else if (cmd === "erweiterung") {
+    // Änderung einer BESTEHENDEN Anbindung (gekoppelte Geräte bleiben):
+    // node scripts/verwaltung.mjs erweiterung <mapping-neu> <zusatz-neu.sql> <mapping-alt> <zusatz-alt.sql> <zurueck.sql> <ziel> --merkmal=management_ai.x [--rls-md5=…]
+    const args = process.argv.slice(3);
+    const md5 = args.filter((x) => x.startsWith("--rls-md5=")).map((x) => x.slice(10));
+    const merkmal = (args.find((x) => x.startsWith("--merkmal=")) || "").slice(10);
+    const [mpNeu, zusNeu, mpAlt, zusAlt, zur, ziel] = args.filter((x) => !x.startsWith("--"));
+    mkdirSync(ziel, { recursive: true });
+    const files = erweiterungDateien({ neu: load(mpNeu), zusatzNeu: readFileSync(zusNeu, "utf8"), alt: load(mpAlt), zusatzAlt: readFileSync(zusAlt, "utf8"), zurueck: readFileSync(zur, "utf8"), merkmal, rlsAutoMd5: md5 });
+    for (const [f, t] of Object.entries(files)) writeFileSync(join(ziel, f), t);
+    console.log("Erweiterung: " + Object.keys(files).join(", "));
   } else if (cmd === "etdiag") process.stdout.write(eventTriggerDiagSql());
   else if (cmd === "facts") process.stdout.write(factsSql(JSON.parse(readFileSync(a, "utf8"))));
   else if (cmd === "grants") process.stdout.write(grantsSql(load(a)));

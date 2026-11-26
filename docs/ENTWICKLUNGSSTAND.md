@@ -90,7 +90,13 @@ Stand: 26.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
   - ✅ **2.9.0 veröffentlicht (26.11.2026)**: alle 24 Dateien auf GitHub Pages identisch mit `main`, Update 2.8.1 → 2.9.0 mit Daten geprüft.
   - ✅ Kopplung und Abgleich durch den Gründer (26.11.2026): alle neun Kennzahlen stimmen überein. Die vier gezählten Konten sind Testkonten des Gründers.
   - **2.10.0 vorbereitet (nicht veröffentlicht):** Testkonten werden ausdrücklich gekennzeichnet (Tabelle im eigenen Schema, nur Konto-Kennungen); Kennzahlen ohne Testkonten; Testdaten (Konten, Buchungen, Einladungen, Zahlungen, Erstattungen) getrennt in `meta.testData`. Die App verwendet Verwaltungswerte nur verifiziert (Kennzeichen `real`). Ablauf für den Gründer: privat `bereitstellung/UMSTELLUNG-TESTDATEN.md`. Reihenfolge: erst App 2.10.0, dann Server.
-  - **Offen (Freigabe Gründer):** Veröffentlichung 2.10.0, danach Rückbau und Neueinrichtung, neue Edge Function, Testkonten kennzeichnen, Geräte neu koppeln; früher offen: **Offen (Freigabe Gründer):** Einrichtung und Edge Function in Supabase, danach App-Version mit der Adresse der Edge Function.
+  - **Additive Umstellung statt Rückbau (geprüft und getestet):** Die Änderungsdatei verändert die bestehende Anbindung (Modus „erweiterung“ im Generator), ohne Neueinrichtung.
+    - Gekoppelte Geräte, Kopplungscodes und Abrufprotokoll bleiben erhalten; die Datei weist das nach.
+    - Voraussetzungen werden geprüft, ebenso alle Rechte- und Schutzprüfungen und die Ereignistrigger vor jeder Änderung. COMMIT nur bei Erfolg.
+    - Eigene Rückbau-Datei für die Erweiterung. Der Stand „2.9 + Erweiterung“ ist gleichwertig mit einer Neueinrichtung (Test).
+    - Ablauf: privat `bereitstellung/UMSTELLUNG-TESTDATEN.md`.
+  - **Offen (Freigabe Gründer):** Veröffentlichung 2.10.0, danach E2-Erweiterung, neue Edge Function, Testkonten kennzeichnen (keine Neukopplung nötig);
+  - **Für KI-Chat / Sprachmodus (geplant):** Kennzahlen nur über `valid()`/`cur()`/`cmp()` lesen (liefern ausschließlich verifizierte Werte); Testdaten nur über `KPI_STATE.meta.testData` (Summen). So kann ein Chat keine Testdaten als echte Unternehmensdaten verwenden. früher offen: **Offen (Freigabe Gründer):** Einrichtung und Edge Function in Supabase, danach App-Version mit der Adresse der Edge Function.
   - Testkonten mit Nutzerrolle: nicht bekannt → gekennzeichnet (keine erfundenen Merkmale)
   - Einrichtung (Freigabe)
 - **Kosten** (Stand 26.11.2026, offizielle Supabase-Angaben):
