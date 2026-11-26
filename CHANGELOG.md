@@ -1,6 +1,11 @@
 # Änderungsprotokoll
 
-## 2.8.1 (Entwicklungszweig, noch nicht veröffentlicht) – mehr Selbstständigkeit, Verwaltungsanbindung verfeinert
+## 2.8.2 (Entwicklungszweig, noch nicht veröffentlicht) – Synchronisierung überwacht sich selbst
+
+- **Hinweis, wenn die Synchronisierung gestört ist:** Kopplung gesperrt, Abgleich seit mindestens 2 Tagen fehlgeschlagen oder nur ein Gerät verbunden (frühestens 3 Tage nach der Einrichtung). Kurze Aussetzer lösen keinen Hinweis aus.
+- **Verwaltung:** Die zweite Bestandsaufnahme gibt auch bei Tabellenregeln nur Codes aus einer Positivliste aus; Unbekanntes erscheint nur als Anzahl, Regelnamen werden nicht ausgegeben.
+
+## 2.8.1 (veröffentlicht am 26.11.2026) – mehr Selbstständigkeit, Verwaltungsanbindung verfeinert
 
 - **Strategische Empfehlungen aus echten Kennzahlen:** Absagequote, Erstattungsquote, Aktivierung der Registrierten, Annahmequote der Einladungen. Nur mit aktuellen Werten, Schwellen als Annahme gekennzeichnet.
 - **Instagram:** Die wöchentlichen Entwürfe erhalten automatisch einen Schwerpunkt aus den Kennzahlen (z. B. Werbung für ein schwach gefülltes Meetup); Zahlen werden nicht veröffentlicht.

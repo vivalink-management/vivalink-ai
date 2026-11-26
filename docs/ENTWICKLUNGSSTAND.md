@@ -1,7 +1,7 @@
 # Zentrale Entwicklungsübersicht: Vivalink Management AI
 
 **Fortsetzungsdokument für alle weiteren Entwicklungsaufträge.** Bei jedem Auftrag zuerst lesen und am Ende aktualisieren. Arbeitsweise (Tests, Gerätetests, Grenzen): **`CLAUDE.md`**.
-Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.7.1** (`main`, veröffentlicht am 25.11.2026) · Entwicklungszweig: **Version 2.8.1** (mehr Selbstständigkeit, Meetup-Karte automatisch; noch nicht veröffentlicht)
+Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.8.1** (`main`, veröffentlicht am 26.11.2026) · Entwicklungszweig: **Version 2.8.2** (Synchronisierung überwacht sich selbst; noch nicht veröffentlicht)
 
 ## 1. Umgesetzt und getestet (noch nicht veröffentlicht)
 
@@ -78,7 +78,7 @@ Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
 - **Zweite Bestandsaufnahme (datensparsam)** liegt im privaten Repository als `verwaltung/bestandsaufnahme-2.sql`. Sie gibt keinen Programmcode aus, nur Treffer aus einer vorgegebenen Begriffsliste und kurze Statuscodes.
 - **Probelauf ohne bleibende Wirkung** liegt als `verwaltung/probelauf.sql` vor (Ersatz für ein Supabase-Testprojekt im Free-Tarif). Er richtet alles ein, prüft es und nimmt alles zurück; die Meldung enthält nur ja/nein. Ausführen nur mit Freigabe.
 - **Offen:**
-  - eng begrenzte zweite Bestandsaufnahme (Admin-Prüfung, Testkonten, Statuswerte)
+  - zweite Bestandsaufnahme (nur Positivlisten): Gründer führt `verwaltung/bestandsaufnahme-2.sql` aus dem privaten Repository einmal aus
   - Probelauf (Freigabe)
   - Einrichtung (Freigabe)
 - **Kosten** (Stand 26.11.2026, offizielle Supabase-Angaben):
@@ -93,8 +93,8 @@ Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
 4. ✅ Geräte gekoppelt; Postfach-Schlüssel hinterlegt; wöchentliche Aufgaben „technische Wartung“ (Mo 4:43) und „Instagram-Entwürfe und Wochenanalyse“ (Mo 5:17) angelegt.
 5. ✅ Version 2.6 freigegeben und veröffentlicht (25.11.2026).
 6. **Verwaltung (höchste Priorität):** Bestandsaufnahme freigegeben (25.11.2026) – Gründer führt `docs/bestandsaufnahme-verwaltung.sql` im SQL-Editor aus und gibt das Ergebnis an Claude; Bereitstellung in Supabase später gesondert freigeben.
-6a. **Geräte zusammenführen** (einmalig, Gründer): „Mehr › Synchronisierung“ – Anleitung im Bericht vom 25.11.2026 bzw. Abschnitt 6.
-7. ✅ Version 2.7.1 freigegeben und veröffentlicht (25.11.2026).
+6a. ✅ Geräte zusammengeführt (26.11.2026, 09:13; laut Server-Metadaten ein gemeinsamer Speicher, alte Speicher und Schlüssel gesperrt).
+7. ✅ Version 2.7.1 freigegeben und veröffentlicht (25.11.2026); ✅ Version 2.8.1 freigegeben und veröffentlicht (26.11.2026).
 8. **Instagram:** Business-Konto bestätigen, Anmeldeweg (Empfehlung: Instagram Login).
 9. Später: ob eine kostenpflichtige KI-API für Echtzeit-Reaktionen gewünscht ist.
 
@@ -107,7 +107,7 @@ Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
 6. Instagram-Veröffentlichung über den Worker (Berechtigung „automatisch veröffentlichen“ greift dann).
 
 ## 6. Bekannte Einschränkungen
-- **Synchronisierung der echten Geräte:** Am 25.11.2026 (16:06 und 16:07) wurden zwei getrennte Datenspeicher angelegt (Server-Metadaten). Bis zum Zusammenführen gleichen iPhone und iPad nicht ab. Ab 2.7.1 führt „Mehr › Synchronisierung › Zusammenführen“ sie verlustfrei zusammen (automatisch getestet: Erfolg, Fehler mit Rücknahme, bereits verbunden).
+- **Synchronisierung der echten Geräte:** Seit 26.11.2026 (09:13) nutzen iPhone und iPad einen gemeinsamen Speicher (Server-Metadaten). Ab 2.8.2 meldet die App selbst, wenn die Synchronisierung gestört ist.
 - Live-Prüfungen der Synchronisierung nur über GitHub Actions („Live-Prüfung“): Aus Claude-Sitzungen der Umgebung „Vivalink“ lehnt der Worker Tresor-Anfragen mit 401 ab (Netzwerkschlüssel des Postfachs); Geräte und GitHub Actions sind nicht betroffen.
 - Die Bedienung von 2.3/2.4 ist nur automatisch und per Bildschirmfoto geprüft, nicht auf echten Geräten (Restrisiken siehe Abschnitt 3).
 - Eigene Fotos liegen nur auf dem Gerät, auf dem sie hinzugefügt wurden. Sie sind nicht im Backup und werden nicht synchronisiert (Speicherplatz, Datenschutz).
