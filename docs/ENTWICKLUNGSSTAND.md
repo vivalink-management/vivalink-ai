@@ -1,7 +1,7 @@
 # Zentrale Entwicklungsübersicht: Vivalink Management AI
 
 **Fortsetzungsdokument für alle weiteren Entwicklungsaufträge.** Bei jedem Auftrag zuerst lesen und am Ende aktualisieren. Arbeitsweise (Tests, Gerätetests, Grenzen): **`CLAUDE.md`**.
-Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.7.1** (`main`, veröffentlicht am 25.11.2026) · Entwicklungszweig: **Version 2.8.1** (mehr Selbstständigkeit, Meetup-Karte automatisch; noch nicht veröffentlicht)
+Stand: 26.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.8.1** (`main`, veröffentlicht am 26.11.2026) · Entwicklungszweig: **Version 2.9.0** (Verwaltungsanbindung aktiv; dazu 2.8.2/2.8.3: Synchronisierungs-Hinweis, Testkonten-Kennzeichnung; noch nicht veröffentlicht)
 
 ## 1. Umgesetzt und getestet (noch nicht veröffentlicht)
 
@@ -22,7 +22,7 @@ Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
 
 | Funktion | Stand | Was fehlt |
 |---|---|---|
-| Kennzahlen aus der Verwaltung | App, Gegenstelle, Edge Function und Migration fertig; in getrennter Testumgebung (eigenes PostgreSQL + Deno, künstliche Daten) Ende-zu-Ende geprüft | Bestandsaufnahme und Zuordnung der echten Auswertungen, dann Bereitstellung mit Freigabe (`AUFTRAG-VERWALTUNG.md`) |
+| Kennzahlen aus der Verwaltung | **2.9.0:** echte Adresse der Edge Function eingetragen (CSP erlaubt genau diesen Host); ohne Kopplung wird nichts gesendet; Kopplung/Abruf/Widerruf über die echte Adresse mit nachgebildeter Gegenstelle getestet; Live-Prüfung des Endpunkts (nur lesend) in GitHub Actions („Live-Prüfung Verwaltung“) | Veröffentlichung (Freigabe Gründer), dann Kopplung iPhone/iPad und Abgleich (`bereitstellung/ABGLEICH.md`, privat) |
 | Automatische Instagram-Veröffentlichung und Statistiken | Schutzregeln, Berechtigung, JPEG-Export | Meta-App und Business-Login, Worker-Erweiterung (`INSTAGRAM-AUTOMATIK.md`) |
 
 ## 3. Tests und Qualitätssicherung (Claude prüft selbst, siehe `CLAUDE.md`)
@@ -78,8 +78,17 @@ Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
 - **Zweite Bestandsaufnahme (datensparsam)** liegt im privaten Repository als `verwaltung/bestandsaufnahme-2.sql`. Sie gibt keinen Programmcode aus, nur Treffer aus einer vorgegebenen Begriffsliste und kurze Statuscodes.
 - **Probelauf ohne bleibende Wirkung** liegt als `verwaltung/probelauf.sql` vor (Ersatz für ein Supabase-Testprojekt im Free-Tarif). Er richtet alles ein, prüft es und nimmt alles zurück; die Meldung enthält nur ja/nein. Ausführen nur mit Freigabe.
 - **Offen:**
-  - eng begrenzte zweite Bestandsaufnahme (Admin-Prüfung, Testkonten, Statuswerte)
-  - Probelauf (Freigabe)
+  - ✅ zweite Bestandsaufnahme ausgewertet (Admin-Auswertungen nur mit Admin-Anmeldung nutzbar → eigene Zählungen mit denselben Filtern)
+  - ✅ Probelauf in der produktiven Datenbank erfolgreich (26.11.2026): GESAMT OK, alles zurückgenommen.
+  - Ereignistrigger: issue_pg_graphql_access liegt in der aktuellen Supabase-Form vor, ensure_rls (RLS automatisch aktivieren) wird nur mit Prüfsumme und Inhaltsnachweis anerkannt.
+  - **Bereitstellungspaket fertig und getestet:** privates Repository, Ordner `bereitstellung/`, mit `ANLEITUNG.md`. Lebenszyklustest: Probelauf → Einrichtung → Edge Function → Abgleich → Widerruf → Rückbau.
+  - **Nachprüfung (26.11.2026):** Kopfkommentare je Modus eindeutig (Einrichtung → COMMIT, Probelauf → ROLLBACK). Edge Function: jede Datenbankoperation zuerst in Rolle management_ai mit Kontrolle über current_user (sonst 503), keine Katalogabfrage beim Verbindungsaufbau. Kopplungscode einlösen und Gerät speichern in einer Transaktion. Ohne gültigen Gerätezugang keine Kennzahlen, auch mit gefälschten JWTs. Einrichtung prüft zusätzlich Schreibrechte und Sonderrechte; Fingerabdruck um Spalten und Constraints erweitert; Gegenproben getestet. Original-TypeScript-Datei mit SHA-256 in der Anleitung; GET …/version zeigt die Prüfsumme der laufenden Fassung.
+  - **Letzte Korrekturen (26.11.2026):** Rollenwechsel und Kontrolle von current_user als zwei getrennte Anweisungen; nach einem fehlgeschlagenen Wechsel folgt nachweislich keine weitere Anweisung. Die Versionskennung (…/version) ist ausdrücklich nur ein Hinweis; Nachweis ist die SHA-256 der vollständigen Datei vor dem Einfügen (automatisch mit ANLEITUNG.md abgeglichen).
+  - **Einrichtung 26.11.2026 abgebrochen** (Sicherheitsprüfung „Schreibrechte außerhalb des eigenen Bereichs: 3“), nichts gespeichert. Die Prüfung zählte auch Rechte, die an PUBLIC (jede Rolle) vergeben sind, ohne den Schemazugriff zu berücksichtigen. Jetzt genauer: direkt vergebene oder nutzbare Schreibrechte → Abbruch; geerbte Rechte in Schemas ohne Zugriff → je Objekt aktiv nachgewiesen, dass ein Schreibversuch abgewiesen wird. Ursache in Produktion noch zu bestätigen mit der lesenden Diagnose (privates Repository).
+  - **Diagnose (26.11.2026):** Zwei Tabellen der Netzwerk-Erweiterung sind an PUBLIC beschreibbar und ihr Schema ist für alle nutzbar; eine Tabelle der Zeitplan-Erweiterung liegt in einem Schema ohne Zugriff. PUBLIC-Rechte lassen sich in PostgreSQL nicht für eine einzelne Rolle entziehen. Lösung ohne Änderung an Supabase-Rechten: Die Rolle liest nur (READ ONLY), schreibt nur über drei festgelegte Funktionen, und ein Schreibschutz bricht beim Abschluss jede Transaktion ab, die außerhalb von management_ai schreibt. Die Einrichtung prüft alle Schutzschichten; Rechte von Erweiterungen werden nur dann toleriert, sonst Abbruch.
+  - ✅ **26.11.2026 produktiv eingerichtet** (GESAMT OK), Edge Function bereitgestellt, /version und 401 ohne Zugang vom Gründer bestätigt, JWT-Prüfung aus.
+  - **Offen:** Veröffentlichung 2.9.0 (Freigabe), Kopplung der Geräte, Abgleich mit dem Admin-Dashboard; früher offen: **Offen (Freigabe Gründer):** Einrichtung und Edge Function in Supabase, danach App-Version mit der Adresse der Edge Function.
+  - Testkonten mit Nutzerrolle: nicht bekannt → gekennzeichnet (keine erfundenen Merkmale)
   - Einrichtung (Freigabe)
 - **Kosten** (Stand 26.11.2026, offizielle Supabase-Angaben):
   - Free-Tarif: 500.000 Aufrufe von Edge Functions pro Monat je Organisation, ohne Nachberechnung; erwartet sind etwa 250.
@@ -93,8 +102,8 @@ Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
 4. ✅ Geräte gekoppelt; Postfach-Schlüssel hinterlegt; wöchentliche Aufgaben „technische Wartung“ (Mo 4:43) und „Instagram-Entwürfe und Wochenanalyse“ (Mo 5:17) angelegt.
 5. ✅ Version 2.6 freigegeben und veröffentlicht (25.11.2026).
 6. **Verwaltung (höchste Priorität):** Bestandsaufnahme freigegeben (25.11.2026) – Gründer führt `docs/bestandsaufnahme-verwaltung.sql` im SQL-Editor aus und gibt das Ergebnis an Claude; Bereitstellung in Supabase später gesondert freigeben.
-6a. **Geräte zusammenführen** (einmalig, Gründer): „Mehr › Synchronisierung“ – Anleitung im Bericht vom 25.11.2026 bzw. Abschnitt 6.
-7. ✅ Version 2.7.1 freigegeben und veröffentlicht (25.11.2026).
+6a. ✅ Geräte zusammengeführt (26.11.2026, 09:13; laut Server-Metadaten ein gemeinsamer Speicher, alte Speicher und Schlüssel gesperrt).
+7. ✅ Version 2.7.1 freigegeben und veröffentlicht (25.11.2026); ✅ Version 2.8.1 freigegeben und veröffentlicht (26.11.2026).
 8. **Instagram:** Business-Konto bestätigen, Anmeldeweg (Empfehlung: Instagram Login).
 9. Später: ob eine kostenpflichtige KI-API für Echtzeit-Reaktionen gewünscht ist.
 
@@ -107,7 +116,7 @@ Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
 6. Instagram-Veröffentlichung über den Worker (Berechtigung „automatisch veröffentlichen“ greift dann).
 
 ## 6. Bekannte Einschränkungen
-- **Synchronisierung der echten Geräte:** Am 25.11.2026 (16:06 und 16:07) wurden zwei getrennte Datenspeicher angelegt (Server-Metadaten). Bis zum Zusammenführen gleichen iPhone und iPad nicht ab. Ab 2.7.1 führt „Mehr › Synchronisierung › Zusammenführen“ sie verlustfrei zusammen (automatisch getestet: Erfolg, Fehler mit Rücknahme, bereits verbunden).
+- **Synchronisierung der echten Geräte:** Seit 26.11.2026 (09:13) nutzen iPhone und iPad einen gemeinsamen Speicher (Server-Metadaten). Ab 2.8.2 meldet die App selbst, wenn die Synchronisierung gestört ist.
 - Live-Prüfungen der Synchronisierung nur über GitHub Actions („Live-Prüfung“): Aus Claude-Sitzungen der Umgebung „Vivalink“ lehnt der Worker Tresor-Anfragen mit 401 ab (Netzwerkschlüssel des Postfachs); Geräte und GitHub Actions sind nicht betroffen.
 - Die Bedienung von 2.3/2.4 ist nur automatisch und per Bildschirmfoto geprüft, nicht auf echten Geräten (Restrisiken siehe Abschnitt 3).
 - Eigene Fotos liegen nur auf dem Gerät, auf dem sie hinzugefügt wurden. Sie sind nicht im Backup und werden nicht synchronisiert (Speicherplatz, Datenschutz).

@@ -87,3 +87,33 @@ test("Instagram-Entwürfe richten sich nach den Kennzahlen: Schwerpunkt im Auftr
   await page.evaluate(() => S.metrics.forEach((m) => (m.entries = [])));
   expect(await page.evaluate(() => studioPrompt(today().slice(0, 7)))).not.toContain("SCHWERPUNKT");
 });
+
+test("Synchronisierung gestört: gesperrt, seit Tagen fehlgeschlagen oder nur ein Gerät → Hinweis; funktionierend → kein Hinweis", async ({ browser }) => {
+  const ctx = await browser.newContext({ serviceWorkers: "block" });
+  await ctx.addInitScript(() => (window.VL_SYNC_URL = "http://127.0.0.1:4173"));
+  const page = await ctx.newPage();
+  await setup(page);
+  const day = 864e5,
+    now = NOW.getTime();
+  const find = (cfg, err) =>
+    page.evaluate(
+      async ([c, e]) => {
+        await kvPut("sync-config", c);
+        SYNC.error = e;
+        await loadSyncState();
+        return findings().find((f) => f.id === "sys-sync") || null;
+      },
+      [cfg, err],
+    );
+  const base = { vid: "a".repeat(32), token: "b".repeat(64), mk: "c", kv: 1, version: 3, recoveryAt: 1 };
+  const two = { d1: { name: "iPhone", at: now }, d2: { name: "iPad", at: now } };
+  expect(await find({ ...base, since: now - 10 * day, last: now - 3600e3, devices: two }, null)).toBeNull();
+  expect((await find({ ...base, since: now - 10 * day, last: now - 3600e3, devices: two, revoked: true }, null)).title).toContain("gesperrt");
+  const f = await find({ ...base, since: now - 10 * day, last: now - 3 * day, devices: two }, "Netzwerkfehler");
+  expect(f).toMatchObject({ sev: 2 });
+  expect(f.title).toContain("seit 3 Tagen");
+  expect(await find({ ...base, since: now - 10 * day, last: now - 3600e3, devices: two }, "Netzwerkfehler")).toBeNull(); // kurzer Aussetzer: kein Hinweis
+  expect((await find({ ...base, since: now - 5 * day, last: now - 3600e3, devices: { d1: { name: "iPhone", at: now } } }, null)).title).toContain("Nur dieses Gerät");
+  expect(await find({ ...base, since: now - 1 * day, last: now - 3600e3, devices: { d1: { name: "iPhone", at: now } } }, null)).toBeNull(); // gerade eingerichtet
+  await ctx.close();
+});

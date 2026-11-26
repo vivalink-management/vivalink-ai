@@ -1,6 +1,22 @@
 # Änderungsprotokoll
 
-## 2.8.1 (Entwicklungszweig, noch nicht veröffentlicht) – mehr Selbstständigkeit, Verwaltungsanbindung verfeinert
+## 2.8.3 (Entwicklungszweig, noch nicht veröffentlicht) – Probelauf abgesichert, Testkonten-Hinweis
+
+- **Probelauf der Verwaltungsanbindung neu aufgebaut:**
+  - ausdrücklich gestartete Transaktion mit abschließendem ROLLBACK
+  - innerer Sicherungspunkt für Einrichtung und Prüfungen
+  - Fingerabdruck aller Tabellen, Funktionen, Rollen, Rechte, Richtlinien und Trigger vorher/nachher
+  - Zählung der Schreibvorgänge (auch Warteschlangen für Benachrichtigungen und Netzwerk)
+  - alle Fehler abgefangen, damit das ROLLBACK immer ausgeführt wird
+  - Ausgabe als Prüftabelle ohne Kennzahlen
+- **Testkonten:** Ob es Testkonten mit Nutzerrolle gibt, ist nicht bekannt. Die App kennzeichnet das in der Verwaltungsansicht und im Wochenbericht (mögliche Abweichung zum Admin-Dashboard).
+
+**2.8.2 (nicht veröffentlicht) – Synchronisierung überwacht sich selbst**
+
+- **Hinweis, wenn die Synchronisierung gestört ist:** Kopplung gesperrt, Abgleich seit mindestens 2 Tagen fehlgeschlagen oder nur ein Gerät verbunden (frühestens 3 Tage nach der Einrichtung). Kurze Aussetzer lösen keinen Hinweis aus.
+- **Verwaltung:** Die zweite Bestandsaufnahme gibt auch bei Tabellenregeln nur Codes aus einer Positivliste aus; Unbekanntes erscheint nur als Anzahl, Regelnamen werden nicht ausgegeben.
+
+## 2.8.1 (veröffentlicht am 26.11.2026) – mehr Selbstständigkeit, Verwaltungsanbindung verfeinert
 
 - **Strategische Empfehlungen aus echten Kennzahlen:** Absagequote, Erstattungsquote, Aktivierung der Registrierten, Annahmequote der Einladungen. Nur mit aktuellen Werten, Schwellen als Annahme gekennzeichnet.
 - **Instagram:** Die wöchentlichen Entwürfe erhalten automatisch einen Schwerpunkt aus den Kennzahlen (z. B. Werbung für ein schwach gefülltes Meetup); Zahlen werden nicht veröffentlicht.

@@ -39,4 +39,15 @@ for (const f of files) if (!sw.includes(`"${f}"`)) fail(`sw.js speichert ${f} ni
 if (files.some((f) => /demo/.test(f)) || /demo\.js/.test(sw)) fail("Die produktive App darf keine Demofunktionen laden");
 if (!/window\.VL_CHANNEL = "prod";/.test(readFileSync("js/config.js", "utf8"))) fail("js/config.js muss den Kanal \"prod\" setzen");
 if (/VL_DB\s*=/.test(all)) fail("Die produktive App darf den Datenspeicher-Namen nicht ändern");
+// Externe Adressen der App (Synchronisierung, Verwaltung) nur über HTTPS und nur, wenn die Sicherheitsrichtlinie (CSP) sie erlaubt
+{
+  const cfg = readFileSync("js/config.js", "utf8");
+  const csp = (readFileSync("index.html", "utf8").match(/connect-src ([^;"]+)/) || [])[1] || "";
+  for (const [name, url] of [...cfg.matchAll(/window\.(VL_[A-Z_]+_URL)\s*=\s*window\.\1\s*\?\?\s*"([^"]*)"/g)].map((m) => [m[1], m[2]])) {
+    if (!url) continue;
+    if (!/^https:\/\//.test(url)) fail(`${name} muss mit https:// beginnen`);
+    const origin = new URL(url).origin;
+    if (!csp.split(/\s+/).includes(origin)) fail(`${name}: ${origin} fehlt in der Sicherheitsrichtlinie (connect-src in index.html)`);
+  }
+}
 console.log(`Syntax OK: ${files.length} Skripte, keine doppelten Namen, alle im Offline-Speicher, Version ${appVersion} einheitlich, keine Demofunktionen in der produktiven App.`);

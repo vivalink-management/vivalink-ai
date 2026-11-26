@@ -11,8 +11,13 @@ import { handleKpi, KPI_KEYS } from "./kpi-core.mjs";
 import { pgRepo } from "./kpi-pg.mjs";
 import mapping from "./mapping.json" with { type: "json" };
 
-const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!, { prepare: false, max: 2, idle_timeout: 20, connect_timeout: 5, onnotice: () => {} });
+// fetch_types: false – keine automatische Katalogabfrage beim Verbindungsaufbau (sonst liefe sie außerhalb der eingeschränkten Rolle)
+const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!, { prepare: false, fetch_types: false, max: 2, idle_timeout: 20, connect_timeout: 5, onnotice: () => {} });
 const ORIGIN = Deno.env.get("VL_ALLOWED_ORIGIN") ?? "https://vivalink-management.github.io";
+// Versionskennung (beim Erzeugen der Einzeldatei eingesetzt); GET …/version zeigt sie an. Nur ein Hinweis auf die Fassung,
+// KEIN kryptografischer Nachweis über den bereitgestellten Code: Die Kennung steht fest im Code und bliebe bei einer
+// veränderten Datei gleich. Maßgeblich ist die SHA-256-Prüfsumme der vollständigen Datei vor dem Einfügen (ANLEITUNG.md).
+const BUILD = "entwicklung";
 // Fehler einzelner Auswertungen nur als Schlüssel protokollieren (keine Datenbankmeldungen mit Inhalten)
 const repo = pgRepo(sql, mapping, KPI_KEYS, { onError: (key: string) => console.warn("Auswertung nicht lesbar:", key) });
 
@@ -21,6 +26,9 @@ Deno.serve(async (req: Request) => {
   const cors: Record<string, string> = { "access-control-allow-origin": ORIGIN, "access-control-allow-headers": "authorization, content-type", "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-max-age": "600", vary: "origin" };
   if (origin && origin !== ORIGIN) return new Response('{"error":"forbidden"}', { status: 403, headers: { "content-type": "application/json" } });
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+  // Nur zur Kontrolle nach der Bereitstellung: welche Fassung läuft (keine Daten, keine Datenbankabfrage)
+  if (req.method === "GET" && new URL(req.url).pathname.replace(/\/+$/, "").endsWith("/version"))
+    return new Response(JSON.stringify({ format: "vivalink-kpis-version", build: BUILD }), { status: 200, headers: { "content-type": "application/json", "cache-control": "no-store", ...cors } });
   const body = req.method === "POST" ? (await req.text()).slice(0, 2000) : null;
   const r = await handleKpi({ method: req.method, path: new URL(req.url).pathname, auth: req.headers.get("authorization") ?? "", body }, repo);
   return new Response(r.body, { status: r.status, headers: { ...r.headers, ...cors, "x-content-type-options": "nosniff" } });

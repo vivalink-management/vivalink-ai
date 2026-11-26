@@ -7,7 +7,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import postgres from "postgres";
 import net from "node:net";
-import { bundle, grantsSql } from "../../scripts/verwaltung.mjs";
+import { bundle, grantsSql, edgeSingleFile } from "../../scripts/verwaltung.mjs";
+import { mkdirSync, writeFileSync } from "node:fs";
 
 const HERE = new URL(".", import.meta.url).pathname;
 const ROOT = join(HERE, "../..");
@@ -24,7 +25,7 @@ const asRoot = process.getuid && process.getuid() === 0;
 // initdb/postgres laufen nicht als root → dann als Benutzer postgres
 const run = (bin, args, opts = {}) => (asRoot ? ["runuser", ["-u", "postgres", "--", bin, ...args], opts] : [bin, args, opts]);
 
-export async function startEnv({ pgPort, fnPort, mapping = TEST_MAPPING, fixtures = [join(HERE, "fixture.sql")], extraSql = [] }) {
+export async function startEnv({ pgPort, fnPort, mapping = TEST_MAPPING, fixtures = [join(HERE, "fixture.sql")], extraSql = [], singleFile = true, migrate = true }) {
   const bin = pgBin();
   if (!bin) throw new Error("PostgreSQL nicht installiert (Testumgebung der Verwaltung)");
   // Port muss frei sein – sonst würde unbemerkt eine übrig gebliebene Instanz mit altem Stand verwendet
@@ -38,10 +39,15 @@ export async function startEnv({ pgPort, fnPort, mapping = TEST_MAPPING, fixture
   const data = join(dir, "data");
   const r = spawnSync(...run(join(bin, "initdb"), ["-D", data, "-A", "trust", "-U", "postgres", "--no-sync", "-E", "UTF8"], { encoding: "utf8" }));
   if (r.status) throw new Error("initdb: " + r.stderr);
-  const pg = spawn(...run(join(bin, "postgres"), ["-D", data, "-p", String(pgPort), "-k", dir, "-c", "listen_addresses=127.0.0.1", "-c", "fsync=off", "-c", "timezone=Europe/Berlin"], { stdio: "ignore", detached: true }));
+  const pg = spawn(...run(join(bin, "postgres"), ["-D", data, "-p", String(pgPort), "-k", dir, "-c", "listen_addresses=127.0.0.1", "-c", "fsync=off", "-c", "timezone=Europe/Berlin", "-c", "max_connections=30", "-c", "shared_buffers=16MB", "-c", "dynamic_shared_memory_type=mmap"], { stdio: ["ignore", "ignore", "pipe"], detached: true }));
+  // Server-Meldungen mitschreiben (nur künstliche Testdaten), damit ein Startfehler nachvollziehbar ist
+  let pgLog = "";
+  pg.stderr.on("data", (d) => (pgLog = (pgLog + d).slice(-4000)));
   const admin = `postgres://postgres@127.0.0.1:${pgPort}/postgres`;
   let sql;
-  for (let i = 0; i < 100; i++) {
+  // bis zu 60 s warten (ausgelastete CI-Rechner); beendet sich der Server, sofort mit seiner Meldung abbrechen
+  for (let i = 0; i < 300; i++) {
+    if (pg.exitCode !== null || pg.signalCode) throw new Error(`PostgreSQL beendet (${pg.exitCode ?? pg.signalCode}): ` + pgLog);
     try {
       sql = postgres(admin, { max: 1, onnotice: () => {} });
       await sql`select 1`;
@@ -49,15 +55,26 @@ export async function startEnv({ pgPort, fnPort, mapping = TEST_MAPPING, fixture
     } catch {
       await sql?.end().catch(() => {});
       sql = null;
-      await new Promise((r) => setTimeout(r, 100));
+      await new Promise((r) => setTimeout(r, 200));
     }
   }
-  if (!sql) throw new Error("PostgreSQL startet nicht");
+  if (!sql) {
+    try {
+      process.kill(-pg.pid, "SIGINT");
+    } catch {}
+    throw new Error("PostgreSQL startet nicht: " + pgLog);
+  }
   // Reihenfolge wie später in Supabase: vorhandene Verwaltung → Migration → zusätzliche Auswertungen der Anbindung → Rechte
-  for (const f of [join(HERE, "supabase-stub.sql"), ...fixtures, join(ROOT, "server/supabase/migrations/20261126_management_kpis.sql"), ...extraSql]) await sql.unsafe(readFileSync(f, "utf8"));
-  await sql.unsafe(grantsSql(mapping));
+  for (const f of [join(HERE, "supabase-stub.sql"), ...fixtures, ...(migrate ? [join(ROOT, "server/supabase/migrations/20261126_management_kpis.sql"), ...extraSql] : [])]) await sql.unsafe(readFileSync(f, "utf8"));
+  if (migrate) await sql.unsafe(grantsSql(mapping));
   // Edge Function wie für Supabase bündeln und unter Deno starten
-  const fnDir = bundle(mapping, join(dir, "bundle"));
+  // Standard: genau die EINE Datei, die im Supabase-Dashboard eingefügt wird (singleFile=false: Ordner wie für die CLI)
+  let fnDir;
+  if (singleFile) {
+    fnDir = join(dir, "single");
+    mkdirSync(fnDir, { recursive: true });
+    writeFileSync(join(fnDir, "index.ts"), edgeSingleFile(mapping));
+  } else fnDir = bundle(mapping, join(dir, "bundle"));
   const deno = process.env.DENO || "npx";
   const args = process.env.DENO ? [] : ["-y", "deno@2.9.6"];
   const fn = spawn(deno, [...args, "run", "--allow-net", "--allow-env", "--allow-read", "--allow-sys", join(fnDir, "index.ts")], {
@@ -71,7 +88,7 @@ export async function startEnv({ pgPort, fnPort, mapping = TEST_MAPPING, fixture
   const url = `http://127.0.0.1:${fnPort}/functions/v1/management-kpis`;
   for (let i = 0; i < 600; i++) {
     if (fn.exitCode !== null) throw new Error("Edge Function beendet: " + log);
-    const ok = await fetch(url + "/kpis").then((r) => r.status === 401).catch(() => false);
+    const ok = await fetch(url + "/kpis").then((r) => r.status === 401 || (!migrate && r.status === 503)).catch(() => false);
     if (ok) break;
     if (i === 599) throw new Error("Edge Function antwortet nicht: " + log);
     await new Promise((r) => setTimeout(r, 200));

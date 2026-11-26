@@ -24,6 +24,15 @@
   - tatsächliche Teilnahme (wird nicht erfasst)
   - Einnahmen und Ausgaben (keine Buchhaltungsdaten)
 
+## Ergebnis der zweiten Bestandsaufnahme (26.11.2026)
+- Die vorhandenen Admin-Auswertungen prüfen die Admin-Rolle des **angemeldeten** Kontos und brechen sonst ab.
+- Eine Gegenstelle ohne Admin-Anmeldung kann sie daher nicht aufrufen. Ein Umgehen der Prüfung (z. B. durch Vortäuschen einer Anmeldung) ist aus Sicherheitsgründen ausgeschlossen.
+- Die Gegenstelle nutzt deshalb eigene, schlanke Zähl-Auswertungen mit **denselben Filtern** wie die Admin-Auswertungen: Beispiel-Meetups und ausgeblendete Meetups ausgeschlossen, dieselben Zahlungs- und Statusfelder.
+- Bestätigt:
+  - Rollen nur Admin und Nutzer; interne Konten sind Admins.
+  - Statuscodes für Buchungen, Meetups und Einladungen.
+- Offen für den Gründer: ob es Testkonten mit normaler Nutzerrolle gibt.
+
 ## Keine Doppelentwicklung
 Die Gegenstelle **berechnet nichts selbst**. Sie liest ausschließlich die Auswertungen, die die Verwaltung schon hat (Views oder parameterlose Funktionen), und zwar je Kennzahl nur zwei Spalten: Datum und Zahl. Welche Auswertung welche Kennzahl liefert, steht in `mapping.json`:
 
@@ -83,6 +92,20 @@ Die Gegenstelle **berechnet nichts selbst**. Sie liest ausschließlich die Auswe
   - Datenbanklast: wenige zählende Abfragen.
   - Ein zusätzliches Supabase-Testprojekt braucht einen freien Platz (höchstens 2 aktive Free-Projekte).
 - **Bitte vor Schritt 5 prüfen:** <ul><li>Supabase-Tarif und Projektgrenzen (Anzahl Edge Functions, Aufrufe).</li><li>Ob die zugeordneten Views mit `security_invoker` laufen. Dann bräuchte die Rolle Leserechte auf Basistabellen, was nicht gewollt ist; solche Auswertungen würden übersprungen.</li></ul>
+
+## Bereitstellungspaket (26.11.2026)
+Erzeugt mit `node scripts/verwaltung.mjs paket <mapping> <zusatz.sql> <ziel> --rls-md5=…`. Die schemaspezifischen Dateien liegen nur im privaten Repository.
+
+| Datei | Zweck |
+|---|---|
+| `1-probelauf.sql` | Einrichtung probeweise, Prüfung, ROLLBACK |
+| `2-einrichtung.sql` | dieselben Prüfungen; COMMIT nur bei vollständigem Erfolg, sonst wird nichts gespeichert; bereits eingerichtet → keine Änderung |
+| `3-edge-function-index.ts` | Edge Function als EINE Datei für den Dashboard-Editor (verify_jwt aus) |
+| `4-kopplungscode.sql` | Kopplungscode (8 Ziffern, 10 Minuten) |
+| `5-abgleich.sql` | aktuelle Werte zum Vergleich mit dem Admin-Dashboard (nur lesend) |
+| `geraete.sql` / `widerruf.sql` / `rueckbau.sql` | Geräte anzeigen, alle Zugänge sperren, Anbindung vollständig entfernen |
+
+Die App-Konfiguration prüft automatisch (`check:syntax`), dass jede eingetragene Adresse HTTPS nutzt und in der Sicherheitsrichtlinie (CSP) erlaubt ist.
 
 ## Rückbau
 `drop schema management_ai cascade; drop owned by management_ai; drop role management_ai;` und Edge Function löschen (in der Testumgebung automatisch geprüft: die Daten und Auswertungen der Verwaltung bleiben unverändert). Die Vivalink-Plattform und die App sind davon nicht betroffen; bereits übernommene Kennzahlen bleiben in der Management AI erhalten.
