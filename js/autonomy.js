@@ -77,7 +77,7 @@ async function cycleOnce(reason, T) {
   const tk = await taskAuto();
   await loadAutoState();
   const kp = typeof kpiAuto === "function" ? await kpiAuto() : null;
-  step("erfassen", rp.n || null, [syncUrl() ? "Synchronisierung angebunden" : "Synchronisierung nicht angebunden", window.VL_KPI_URL ? "Verwaltung angebunden" : "Kennzahlen manuell", rp.n ? rp.n + " Datenfehler behoben" : null, tk, kp].filter(Boolean).join(" · "));
+  step("erfassen", rp.n || null, [syncUrl() ? "Synchronisierung angebunden" : "Synchronisierung nicht angebunden", KPI_ON() ? "Verwaltung angebunden" : "Kennzahlen manuell", rp.n ? rp.n + " Datenfehler behoben" : null, tk, kp].filter(Boolean).join(" · "));
   // 2. Analyse (Regelmotor)
   const F = findings();
   step("analysieren", F.length, F.filter((f) => f.sev >= 2).length + " davon dringend");

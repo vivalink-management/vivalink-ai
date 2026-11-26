@@ -1,7 +1,7 @@
 # Zentrale Entwicklungsübersicht: Vivalink Management AI
 
 **Fortsetzungsdokument für alle weiteren Entwicklungsaufträge.** Bei jedem Auftrag zuerst lesen und am Ende aktualisieren. Arbeitsweise (Tests, Gerätetests, Grenzen): **`CLAUDE.md`**.
-Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.8.1** (`main`, veröffentlicht am 26.11.2026) · Entwicklungszweig: **Version 2.8.3** (Synchronisierungs-Hinweis, Testkonten-Kennzeichnung; noch nicht veröffentlicht)
+Stand: 26.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.8.1** (`main`, veröffentlicht am 26.11.2026) · Entwicklungszweig: **Version 2.9.0** (Verwaltungsanbindung aktiv; dazu 2.8.2/2.8.3: Synchronisierungs-Hinweis, Testkonten-Kennzeichnung; noch nicht veröffentlicht)
 
 ## 1. Umgesetzt und getestet (noch nicht veröffentlicht)
 
@@ -22,7 +22,7 @@ Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
 
 | Funktion | Stand | Was fehlt |
 |---|---|---|
-| Kennzahlen aus der Verwaltung | App, Gegenstelle, Edge Function und Migration fertig; in getrennter Testumgebung (eigenes PostgreSQL + Deno, künstliche Daten) Ende-zu-Ende geprüft | Bestandsaufnahme und Zuordnung der echten Auswertungen, dann Bereitstellung mit Freigabe (`AUFTRAG-VERWALTUNG.md`) |
+| Kennzahlen aus der Verwaltung | **2.9.0:** echte Adresse der Edge Function eingetragen (CSP erlaubt genau diesen Host); ohne Kopplung wird nichts gesendet; Kopplung/Abruf/Widerruf über die echte Adresse mit nachgebildeter Gegenstelle getestet; Live-Prüfung des Endpunkts (nur lesend) in GitHub Actions („Live-Prüfung Verwaltung“) | Veröffentlichung (Freigabe Gründer), dann Kopplung iPhone/iPad und Abgleich (`bereitstellung/ABGLEICH.md`, privat) |
 | Automatische Instagram-Veröffentlichung und Statistiken | Schutzregeln, Berechtigung, JPEG-Export | Meta-App und Business-Login, Worker-Erweiterung (`INSTAGRAM-AUTOMATIK.md`) |
 
 ## 3. Tests und Qualitätssicherung (Claude prüft selbst, siehe `CLAUDE.md`)
@@ -86,7 +86,8 @@ Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
   - **Letzte Korrekturen (26.11.2026):** Rollenwechsel und Kontrolle von current_user als zwei getrennte Anweisungen; nach einem fehlgeschlagenen Wechsel folgt nachweislich keine weitere Anweisung. Die Versionskennung (…/version) ist ausdrücklich nur ein Hinweis; Nachweis ist die SHA-256 der vollständigen Datei vor dem Einfügen (automatisch mit ANLEITUNG.md abgeglichen).
   - **Einrichtung 26.11.2026 abgebrochen** (Sicherheitsprüfung „Schreibrechte außerhalb des eigenen Bereichs: 3“), nichts gespeichert. Die Prüfung zählte auch Rechte, die an PUBLIC (jede Rolle) vergeben sind, ohne den Schemazugriff zu berücksichtigen. Jetzt genauer: direkt vergebene oder nutzbare Schreibrechte → Abbruch; geerbte Rechte in Schemas ohne Zugriff → je Objekt aktiv nachgewiesen, dass ein Schreibversuch abgewiesen wird. Ursache in Produktion noch zu bestätigen mit der lesenden Diagnose (privates Repository).
   - **Diagnose (26.11.2026):** Zwei Tabellen der Netzwerk-Erweiterung sind an PUBLIC beschreibbar und ihr Schema ist für alle nutzbar; eine Tabelle der Zeitplan-Erweiterung liegt in einem Schema ohne Zugriff. PUBLIC-Rechte lassen sich in PostgreSQL nicht für eine einzelne Rolle entziehen. Lösung ohne Änderung an Supabase-Rechten: Die Rolle liest nur (READ ONLY), schreibt nur über drei festgelegte Funktionen, und ein Schreibschutz bricht beim Abschluss jede Transaktion ab, die außerhalb von management_ai schreibt. Die Einrichtung prüft alle Schutzschichten; Rechte von Erweiterungen werden nur dann toleriert, sonst Abbruch.
-  - **Offen (Freigabe Gründer):** Einrichtung und Edge Function in Supabase, danach App-Version mit der Adresse der Edge Function.
+  - ✅ **26.11.2026 produktiv eingerichtet** (GESAMT OK), Edge Function bereitgestellt, /version und 401 ohne Zugang vom Gründer bestätigt, JWT-Prüfung aus.
+  - **Offen:** Veröffentlichung 2.9.0 (Freigabe), Kopplung der Geräte, Abgleich mit dem Admin-Dashboard; früher offen: **Offen (Freigabe Gründer):** Einrichtung und Edge Function in Supabase, danach App-Version mit der Adresse der Edge Function.
   - Testkonten mit Nutzerrolle: nicht bekannt → gekennzeichnet (keine erfundenen Merkmale)
   - Einrichtung (Freigabe)
 - **Kosten** (Stand 26.11.2026, offizielle Supabase-Angaben):
