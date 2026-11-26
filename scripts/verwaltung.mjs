@@ -141,7 +141,8 @@ const FP = (ohne) => `(select md5(coalesce(string_agg(x, '|' order by x), '')) f
       union all
       select 'p:' || schemaname || '.' || tablename || '.' || policyname || ':' || coalesce(qual, '') || ':' || coalesce(with_check, '') from pg_policies
       union all
-      select 't:' || tgrelid::text || '.' || tgname || ':' || tgenabled::text from pg_trigger where not tgisinternal
+      select 't:' || n.nspname || '.' || c.relname || '.' || g.tgname || ':' || g.tgenabled::text || ':' || g.tgfoid::regprocedure::text
+        from pg_trigger g join pg_class c on c.oid = g.tgrelid join pg_namespace n on n.oid = c.relnamespace where not g.tgisinternal
       union all
       select 'a:' || n.nspname || '.' || c.relname || '.' || a.attname || ':' || format_type(a.atttypid, a.atttypmod) || ':' || a.attnotnull::text || ':' || coalesce(a.attacl::text, '')
         from pg_attribute a join pg_class c on c.oid = a.attrelid join pg_namespace n on n.oid = c.relnamespace
@@ -232,6 +233,9 @@ declare
   sr_wirksam text[] := '{}';
   sr_gesperrt int := 0;
   sr_schemas text[] := '{}';
+  sr_erw text[] := '{}';
+  schutz_ok boolean := false;
+  sv boolean;
 begin
  begin
 
@@ -356,24 +360,57 @@ ${keyChecks}
     zeilen := zeilen || ('Rechte: weitere lesbare Tabellen der Verwaltung|' || case when basis = 0 then 'keine' else basis || ' (PROBLEM)' end);
     -- keine Schreib-/Löschrechte auf irgendeine Tabelle außerhalb des eigenen Schemas; keine Anmeldung, kein Superuser,
     -- keine Rollen-/Datenbankerstellung, keine Umgehung von RLS; nicht Mitglied privilegierter Rollen
+    -- Schutzschichten der Anbindung (Voraussetzung dafür, dass geerbte Rechte von Erweiterungen unschädlich sind):
+    --  1) eigener Bereich für die Rolle nur lesbar (keine insert/update/delete/truncate-Rechte in management_ai)
+    --  2) geschrieben wird nur über genau drei festgelegte Funktionen (security definer, leerer Suchpfad)
+    --  3) Schreibschutz beim Abschluss der Transaktion auf allen eigenen Tabellen und der Marke aktiv (verzögerte Prüfung)
+    select count(*) into n from pg_class c where c.relnamespace = 'management_ai'::regnamespace and c.relkind in ('r', 'p', 'v', 'm', 'f')
+       and (has_table_privilege('management_ai', c.oid, 'insert') or has_table_privilege('management_ai', c.oid, 'update')
+            or has_table_privilege('management_ai', c.oid, 'delete') or has_table_privilege('management_ai', c.oid, 'truncate'));
+    zeilen := zeilen || ('Schutz: eigener Bereich für die Rolle nur lesbar|' || case when n = 0 then 'ja' else 'nein (PROBLEM)' end);
+    schutz_ok := n = 0;
+    -- weitere Funktionen mit Eigentümerrechten nur, wenn sie nicht schreiben können (STABLE/IMMUTABLE: PostgreSQL weist
+    -- Schreibbefehle in ihrem Rumpf ab) und einen festen Suchpfad haben – z. B. Hilfsfunktionen der Kennzahl-Auswertungen
+    select count(*) into n from pg_proc p where p.pronamespace = 'management_ai'::regnamespace and p.prosecdef
+       and p.proname not in ('einloesen', 'beruehren', 'protokollieren')
+       and (p.provolatile = 'v' or not exists (select 1 from unnest(coalesce(p.proconfig, '{}')) c where c like 'search_path=%'));
+    select n = 0 and count(*) = 3 into sv from pg_proc p where p.pronamespace = 'management_ai'::regnamespace and p.prosecdef
+       and p.proname in ('einloesen', 'beruehren', 'protokollieren') and 'search_path=""' = any (coalesce(p.proconfig, '{}'))
+       and has_function_privilege('management_ai', p.oid, 'execute')
+       and not exists (select 1 from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a where a.grantee = 0);
+    zeilen := zeilen || ('Schutz: Schreiben nur über drei festgelegte Funktionen (fester Suchpfad)|' || case when sv then 'ja' else 'nein (PROBLEM)' end);
+    schutz_ok := schutz_ok and sv;
+    select count(*) = 4 into sv from pg_trigger g join pg_class c on c.oid = g.tgrelid
+     where c.relnamespace = 'management_ai'::regnamespace and c.relname in ('devices', 'pair_codes', 'calls', 'schreibschutz_marke') and g.tgname = 'vl_schreibschutz'
+       and g.tgdeferrable and g.tginitdeferred and g.tgenabled = 'O' and g.tgfoid = 'management_ai.schreibschutz_ausloeser()'::regprocedure
+       and g.tgtype & (4 | 8 | 16) = (4 | 8 | 16);
+    zeilen := zeilen || ('Schutz: Schreibschutz beim Abschluss jeder Transaktion aktiv|' || case when sv then 'ja' else 'nein (PROBLEM)' end);
+    schutz_ok := schutz_ok and sv;
+    if not schutz_ok then fehler := fehler + 1; end if;
     -- Jedes Schreibrecht (insert/update/delete/truncate) der Rolle auf Tabellen/Views außerhalb des eigenen Schemas wird bewertet:
     --  * direkt an management_ai vergeben (die Einrichtung tut das nie) → PROBLEM
-    --  * geerbt (z. B. über PUBLIC) und die Rolle darf das Schema benutzen (USAGE) → wirksam → PROBLEM
-    --  * geerbt, aber ohne USAGE auf dem Schema → in PostgreSQL nicht nutzbar (ohne USAGE ist kein Objekt des Schemas
-    --    ansprechbar). Zusätzlich aktiver Nachweis je Objekt: EXPLAIN eines DELETE als management_ai muss mit
-    --    „keine Berechtigung“ (42501) scheitern. EXPLAIN ohne ANALYZE führt nichts aus und verändert nichts.
-    --    Gelingt es unerwartet → PROBLEM.
+    --  * geerbt (über PUBLIC = jede Rolle), Schema nutzbar, Objekt gehört NICHT zu einer Erweiterung (z. B. Tabelle der
+    --    Verwaltung) → wirksam → PROBLEM
+    --  * geerbt, Schema nutzbar, Objekt gehört zu einer Erweiterung (z. B. Warteschlange einer Netzwerk-Erweiterung): in
+    --    PostgreSQL für eine einzelne Rolle NICHT entziehbar (es gibt kein „Verbieten“ für eine Rolle, REVOKE von der Rolle
+    --    ändert nichts an PUBLIC). Nur zulässig, wenn alle drei Schutzschichten oben bestehen – sonst PROBLEM.
+    --  * geerbt, aber ohne USAGE auf dem Schema → nicht nutzbar; aktiver Nachweis je Objekt: EXPLAIN eines DELETE als
+    --    management_ai muss mit „keine Berechtigung“ (42501) scheitern (EXPLAIN führt nichts aus). Sonst PROBLEM.
     for sr in select s.nspname as sn, c.relname as rn, has_schema_privilege('management_ai', s.oid, 'usage') as nutzbar,
                      exists (select 1 from aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) a
-                              where a.grantee = (select oid from pg_roles where rolname = 'management_ai')) as direkt
+                              where a.grantee = (select oid from pg_roles where rolname = 'management_ai')) as direkt,
+                     (select e.extname from pg_depend d join pg_extension e on e.oid = d.refobjid
+                       where d.classid = 'pg_class'::regclass and d.objid = c.oid and d.deptype = 'e' limit 1) as erw
                 from pg_class c join pg_namespace s on s.oid = c.relnamespace
                where s.nspname <> 'management_ai' and s.nspname not like 'pg\\_%' and s.nspname <> 'information_schema' and c.relkind in ('r', 'p', 'v', 'm', 'f')
                  and (has_table_privilege('management_ai', c.oid, 'insert') or has_table_privilege('management_ai', c.oid, 'update')
                       or has_table_privilege('management_ai', c.oid, 'delete') or has_table_privilege('management_ai', c.oid, 'truncate'))
                order by 1, 2
     loop
-      if sr.nutzbar or sr.direkt then
+      if sr.direkt or (sr.nutzbar and (sr.erw is null or not schutz_ok)) then
         sr_wirksam := sr_wirksam || (sr.sn || '.' || sr.rn);
+      elsif sr.nutzbar then
+        sr_erw := sr_erw || (sr.sn || '.' || sr.rn || ' (' || sr.erw || ')');
       else
         begin
           set local role management_ai;
@@ -389,8 +426,15 @@ ${keyChecks}
     end loop;
     zeilen := zeilen || ('Rechte: Schreibrechte außerhalb des eigenen Bereichs|' || case
       when cardinality(sr_wirksam) > 0 then cardinality(sr_wirksam) || ' wirksam (PROBLEM): ' || array_to_string(sr_wirksam, ', ')
-      when sr_gesperrt = 0 then 'keine'
-      else 'keine wirksamen – ' || sr_gesperrt || ' geerbte Einträge in Schemas ohne Zugriff (' || array_to_string(sr_schemas, ', ') || '); Schreibversuch nachweislich abgewiesen' end);
+      when sr_gesperrt = 0 and cardinality(sr_erw) = 0 then 'keine'
+      else 'keine wirksamen' end);
+    if cardinality(sr_erw) > 0 then
+      zeilen := zeilen || ('Rechte: von Erweiterungen an alle Rollen vergeben (für eine Rolle nicht entziehbar)|' || cardinality(sr_erw) || ': '
+        || array_to_string(sr_erw, ', ') || ' – unschädlich: Lesen nur READ ONLY, Schreiben nur über die drei Funktionen, Schreibschutz beim Abschluss der Transaktion');
+    end if;
+    if sr_gesperrt > 0 then
+      zeilen := zeilen || ('Rechte: geerbt in Schemas ohne Zugriff|' || sr_gesperrt || ' (' || array_to_string(sr_schemas, ', ') || ') – Schreibversuch nachweislich abgewiesen');
+    end if;
     if cardinality(sr_wirksam) > 0 then fehler := fehler + 1; end if;
     select count(*) into n from pg_roles where rolname = 'management_ai' and (rolcanlogin or rolsuper or rolcreaterole or rolcreatedb or rolbypassrls or rolreplication);
     select n + count(*) into n from pg_auth_members m where m.member = (select oid from pg_roles where rolname = 'management_ai');

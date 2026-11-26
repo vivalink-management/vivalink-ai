@@ -6,6 +6,7 @@
 import { test, expect } from "@playwright/test";
 import postgres from "postgres";
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { startEnv, pgBin, TEST_MAPPING } from "./verwaltung/env.mjs";
 import { pgRepo, parseMapping } from "../server/kpi-pg.mjs";
 import { KPI_KEYS, buildKpis, MAX_PAIR_FAILS } from "../server/kpi-core.mjs";
@@ -377,7 +378,7 @@ test("Probelauf: ausdrückliche Transaktion mit ROLLBACK; leere Kennzahlen sind 
     let before = await snap(db);
     let r = await run(db, sql);
     clean(r.rows);
-    expect(r.by["GESAMT"]).toMatch(/^OK/);
+    expect(r.by["GESAMT"], JSON.stringify(r.by)).toMatch(/^OK/);
     expect(r.by["Einrichtung (probeweise)"]).toBe("ok");
     expect(r.by["Kennzahl reg_total"]).toBe("funktioniert (Werte vorhanden)");
     expect(r.by["Teilnachweis: Schreibvorgänge in Tabellen (auch Warteschlangen für Benachrichtigungen/Netzwerk)"]).toBe("0");
@@ -570,21 +571,30 @@ test("Datenbankzugang der Edge Function: jede Operation nur als management_ai; o
   await repo.calls("x".repeat(64), now - 1000);
   await repo.device("y".repeat(64));
   await repo.aggregates(now);
+  await repo.pairCode("z".repeat(64));
+  expect(await repo.redeem("z".repeat(64), { name: "x", tokenHash: "w".repeat(64), now })).toBe(false);
+  await repo.touch("y".repeat(64), now);
+  await repo.logCall("y".repeat(64), now);
   // In jeder Transaktion: 1. Anweisung = Rollenwechsel (ohne current_user), 2. Anweisung = getrennte Kontrolle von current_user
   const isTx = (q) => /^(begin|commit|rollback|start transaction|set transaction)/i.test(q);
   const isSwitch = (q) => /set_config\('role'/.test(q) && !/current_user/.test(q);
-  const isCheck = (q) => /^select current_user as u$/i.test(q);
-  let pos = -1, txs = 0;
+  const isCheck = (q) => /^select current_user as u, current_setting\('transaction_read_only'\) as ro$/i.test(q);
+  // Schreibende Transaktionen (ohne READ ONLY) enthalten nach Wechsel und Kontrolle GENAU EINEN Aufruf einer festgelegten Funktion
+  const isFn = (q) => /^select management_ai\.(einloesen|beruehren|protokollieren)\(\$1, \$2(, \$3, \$4)?\)( as ok)?$/.test(q);
+  let pos = -1, txs = 0, rw = false, rwTx = 0;
   for (const q of seen) {
-    if (/^(begin|start transaction)/i.test(q)) (pos = 0), txs++;
+    if (/^(begin|start transaction)/i.test(q)) (pos = 0), txs++, (rw = !/read only/i.test(q)), rw && rwTx++;
     else if (isTx(q)) continue;
     else {
       if (pos === 0) expect(isSwitch(q), "erste Anweisung der Transaktion: " + q).toBe(true);
       if (pos === 1) expect(isCheck(q), "zweite Anweisung der Transaktion: " + q).toBe(true);
+      if (pos === 2 && rw) expect(isFn(q), "schreibende Transaktion: nur festgelegte Funktion: " + q).toBe(true);
+      if (pos >= 3) expect(rw, "schreibende Transaktion mit weiterer Anweisung: " + q).toBe(false);
       pos++;
     }
   }
-  expect(txs).toBeGreaterThanOrEqual(3);
+  expect(txs).toBeGreaterThanOrEqual(7);
+  expect(rwTx).toBe(3);
   await sql.end();
 
   // Fehlgeschlagener Rollenwechsel (echte Datenbank, Rolle fehlt): nach dem Wechselversuch folgt keine weitere Anweisung
@@ -633,6 +643,68 @@ test("Datenbankzugang der Edge Function: jede Operation nur als management_ai; o
     await env.sql.unsafe("alter role management_ai_weg rename to management_ai");
   }
   expect((await kpis(tok)).status).toBe(200);
+});
+
+test("Schreibschutz: an PUBLIC vergebene Schreibrechte (z. B. Netzwerk-Warteschlange) sind für eine Rolle nicht entziehbar – management_ai schreibt trotzdem nichts außerhalb", async ({}, info) => {
+  serverOnly(info);
+  // Nachbildung einer Netzwerk-Erweiterung: Schema für alle nutzbar, Warteschlange für alle beschreibbar, Aufruf-Funktion für alle ausführbar
+  await env.sql.unsafe(`create schema vl_netz; grant usage on schema vl_netz to public;
+    create table vl_netz.http_request_queue (id bigserial primary key, url text); grant all on vl_netz.http_request_queue to public;
+    grant usage on sequence vl_netz.http_request_queue_id_seq to public;
+    create table vl_netz._http_response (id bigint, body text); grant all on vl_netz._http_response to public;
+    create function vl_netz.http_post(u text) returns bigint language sql as 'insert into vl_netz.http_request_queue (url) values (u) returning id';`);
+  const queue = async () => (await env.sql`select count(*)::int n from vl_netz.http_request_queue`)[0].n;
+  const asMa = (ro, ...qs) => {
+    const f = async (t) => {
+      await t.unsafe("set local role management_ai");
+      for (const q of qs) await t.unsafe(q);
+    };
+    return (ro ? env.sql.begin("read only", f) : env.sql.begin(f)).then(() => null, (e) => e.code);
+  };
+  try {
+    // 1) Grenze von PostgreSQL: REVOKE von der Rolle ändert nichts, das Recht kommt über PUBLIC (kein „Verbieten“ für eine Rolle)
+    await env.sql.unsafe("revoke all on vl_netz.http_request_queue, vl_netz._http_response from management_ai;");
+    for (const p of ["insert", "update", "delete", "truncate"]) expect((await env.sql`select has_table_privilege('management_ai', 'vl_netz.http_request_queue', ${p}) as x`)[0].x, p).toBe(true);
+    // ohne Schutz wäre das Schreiben tatsächlich möglich (Gegenprobe, danach zurückgerollt)
+    const ohne = await env.sql.begin(async (t) => {
+      await t.unsafe("set local role management_ai");
+      await t.unsafe("insert into vl_netz.http_request_queue (url) values ('https://example.invalid')");
+      throw Object.assign(new Error("zurück"), { code: "VLTEST" });
+    }).catch((e) => e.code);
+    expect(ohne, "ohne Schutz: Schreiben gelänge").toBe("VLTEST");
+    // 2) Lesen der Edge Function: READ ONLY → jeder Schreibversuch und jeder Netzwerkaufruf über die Warteschlange abgewiesen
+    for (const q of ["insert into vl_netz.http_request_queue (url) values ('x')", "update vl_netz._http_response set body = 'x'", "delete from vl_netz._http_response", "truncate vl_netz._http_response", "select vl_netz.http_post('https://example.invalid')"])
+      expect(await asMa(true, q), "READ ONLY: " + q).toBe("25006");
+    // 3) Schreiben der Edge Function: nur festgelegte Funktionen; Schreibschutz bricht ab, sobald außerhalb geschrieben wird
+    const code = await env.code();
+    const h = createHash("sha256").update("vivalink-pair:" + code).digest("hex");
+    const unbenutzt = async () => (await env.sql`select used_at from management_ai.pair_codes where code_hash = ${h}`)[0].used_at === null;
+    expect(await asMa(false, "select vl_netz.http_post('https://example.invalid')", `select management_ai.einloesen('${h}', 'x', '${"a".repeat(64)}', now())`)).toBe("42501");
+    expect(await unbenutzt(), "Code bleibt nach Abbruch gültig").toBe(true);
+    expect(await asMa(false, `select management_ai.einloesen('${"0".repeat(64)}', 'x', '${"a".repeat(64)}', now())`, "insert into vl_netz.http_request_queue (url) values ('x')", "select management_ai.schreibschutz_pruefen()")).toBe("42501");
+    expect(await asMa(false, "select management_ai.protokollieren('y', now())", "insert into vl_netz.http_request_queue (url) values ('x')")).toBe("42501"); // beim COMMIT
+    expect(await asMa(false, "select management_ai.beruehren('y', now())", "truncate vl_netz._http_response")).toBe("42501");
+    // auch wenn die Funktion selbst nichts ändert (kein passendes Gerät) und danach außerhalb geschrieben wird
+    expect(await asMa(false, "select management_ai.beruehren('gibt-es-nicht', now())", "insert into vl_netz.http_request_queue (url) values ('x')")).toBe("42501");
+    expect(await asMa(false, `select management_ai.einloesen('${"0".repeat(64)}', 'x', '${"a".repeat(64)}', now())`, "select vl_netz.http_post('https://example.invalid')")).toBe("42501");
+    expect((await env.sql`select count(*)::int n from management_ai.schreibschutz_marke`)[0].n, "Marke bleibt leer").toBe(0);
+    // Schutz nicht abschaltbar: Trigger-Ausschalten oder Replikationsmodus sind der Rolle verwehrt
+    expect(await asMa(false, "set local session_replication_role = replica")).toBe("42501");
+    expect(await asMa(false, "alter table management_ai.calls disable trigger vl_schreibschutz")).toBe("42501");
+    expect(await asMa(false, "drop trigger vl_schreibschutz on management_ai.schreibschutz_marke")).toBe("42501");
+    expect(await queue(), "keine Netzwerkanfrage eingereiht").toBe(0);
+    expect((await env.sql`select count(*)::int n from management_ai.calls where token_hash = 'y'`)[0].n).toBe(0);
+    // 4) Eigene Tabellen: die Rolle selbst darf nicht direkt schreiben
+    for (const q of ["insert into management_ai.calls (token_hash) values ('z')", "update management_ai.devices set revoked_at = null", "delete from management_ai.pair_codes", "truncate management_ai.calls"])
+      expect(await asMa(false, q), q).toBe("42501");
+    // 5) Normalbetrieb über die Edge Function funktioniert weiter (Kopplung, Abruf, Protokoll)
+    const tok = await newToken();
+    expect((await kpis(tok)).status).toBe(200);
+    expect(await unbenutzt()).toBe(true);
+    expect(await queue()).toBe(0);
+  } finally {
+    await env.sql.unsafe("drop schema vl_netz cascade;");
+  }
 });
 
 test("Kopplung atomar: scheitert das Speichern des Geräts, bleibt der Code gültig; gleichzeitige Einlösung nur einmal", async ({}, info) => {
@@ -766,7 +838,8 @@ test("Einrichtung: COMMIT nur bei vollständigem Erfolg; bei jedem Fehler bleibt
       try {
         r = await run(dryRunSql(TEST_MAPPING, [], { einrichtung: true }));
         expect(r["GESAMT"], JSON.stringify(r)).toMatch(/^OK – Anbindung eingerichtet/);
-        expect(r[SR]).toBe("keine wirksamen – 2 geerbte Einträge in Schemas ohne Zugriff (vl_intern); Schreibversuch nachweislich abgewiesen");
+        expect(r[SR]).toBe("keine wirksamen");
+        expect(r["Rechte: geerbt in Schemas ohne Zugriff"]).toBe("2 (vl_intern) – Schreibversuch nachweislich abgewiesen");
         for (const q of ["insert into vl_intern.warteschlange values (2)", "update vl_intern.warteschlange set id = 3", "delete from vl_intern.warteschlange", "truncate vl_intern.warteschlange", "delete from vl_intern.sicht", "insert into public.meetups default values", "update public.meetups set capacity = capacity", "delete from public.meetups", "truncate public.meetups"]) {
           const e = await db.begin(async (t) => {
             await t.unsafe("set local role management_ai");
@@ -789,6 +862,47 @@ test("Einrichtung: COMMIT nur bei vollständigem Erfolg; bei jedem Fehler bleibt
           } finally {
             await db.unsafe(nachher);
           }
+        }
+        // f) Wie die Netzwerk-Erweiterung: Warteschlange im für alle nutzbaren Schema, an PUBLIC beschreibbar, Mitglied einer
+        //    Erweiterung. Nicht für eine Rolle entziehbar → nur zulässig, wenn alle Schutzschichten bestehen.
+        await db.unsafe("create schema vl_netz; grant usage on schema vl_netz to public; create table vl_netz.warteschlange (id int); grant all on vl_netz.warteschlange to public; alter extension plpgsql add table vl_netz.warteschlange;");
+        try {
+          const ER = "Rechte: von Erweiterungen an alle Rollen vergeben (für eine Rolle nicht entziehbar)";
+          for (const [name, extra, zeile] of [
+            ["Rolle darf im eigenen Bereich schreiben", "grant insert on management_ai.calls to management_ai;", "Schutz: eigener Bereich für die Rolle nur lesbar"],
+            ["Schreibschutz ausgeschaltet", "alter table management_ai.calls disable trigger vl_schreibschutz;", "Schutz: Schreibschutz beim Abschluss jeder Transaktion aktiv"],
+            ["Schreibschutz nicht verzögert", "alter trigger vl_schreibschutz on management_ai.devices rename to vl_anders;", "Schutz: Schreibschutz beim Abschluss jeder Transaktion aktiv"],
+            ["zusätzliche Funktion mit Eigentümerrechten", "create function management_ai.mehr() returns void language sql security definer set search_path = '' as 'select 1';", "Schutz: Schreiben nur über drei festgelegte Funktionen (fester Suchpfad)"],
+            ["schreibfähige Funktion mit Eigentümerrechten", "create function management_ai.mehr2() returns void language sql volatile security definer set search_path = '' as 'select 1';", "Schutz: Schreiben nur über drei festgelegte Funktionen (fester Suchpfad)"],
+            ["lesende Funktion mit Eigentümerrechten ohne festen Suchpfad", "create function management_ai.mehr3() returns int language sql stable security definer as 'select 1';", "Schutz: Schreiben nur über drei festgelegte Funktionen (fester Suchpfad)"],
+            ["Schreibfunktion für alle ausführbar", "grant execute on function management_ai.protokollieren(text, timestamptz) to public;", "Schutz: Schreiben nur über drei festgelegte Funktionen (fester Suchpfad)"],
+          ]) {
+            const rr = await run(dryRunSql(TEST_MAPPING, [extra], { einrichtung: true }));
+            expect(rr[zeile], name).toBe("nein (PROBLEM)");
+            expect(rr[SR], name).toBe("1 wirksam (PROBLEM): vl_netz.warteschlange");
+            expect(rr["GESAMT"], name).toMatch(/^PROBLEM .* nichts eingerichtet, alle Änderungen zurückgenommen$/);
+            expect(await has(), name).toBe(0);
+          }
+          r = await run(dryRunSql(TEST_MAPPING, [], { einrichtung: true }));
+          expect(r["GESAMT"], JSON.stringify(r)).toMatch(/^OK – Anbindung eingerichtet/);
+          expect(r[SR]).toBe("keine wirksamen");
+          expect(r[ER]).toBe("1: vl_netz.warteschlange (plpgsql) – unschädlich: Lesen nur READ ONLY, Schreiben nur über die drei Funktionen, Schreibschutz beim Abschluss der Transaktion");
+          for (const z of ["Schutz: eigener Bereich für die Rolle nur lesbar", "Schutz: Schreiben nur über drei festgelegte Funktionen (fester Suchpfad)", "Schutz: Schreibschutz beim Abschluss jeder Transaktion aktiv"]) expect(r[z], z).toBe("ja");
+          // tatsächliche Wirkung in der eingerichteten Datenbank: Grenze sichtbar, Schutz greift
+          await db.unsafe("revoke all on vl_netz.warteschlange from management_ai;");
+          expect((await db`select has_table_privilege('management_ai', 'vl_netz.warteschlange', 'insert') as x`)[0].x, "PUBLIC-Recht lässt sich für eine Rolle nicht entziehen").toBe(true);
+          const asMa = (ro, ...qs) => {
+            const f = async (t) => { await t.unsafe("set local role management_ai"); for (const q of qs) await t.unsafe(q); };
+            return (ro ? db.begin("read only", f) : db.begin(f)).then(() => null, (e) => e.code);
+          };
+          expect(await asMa(true, "insert into vl_netz.warteschlange values (1)")).toBe("25006");
+          expect(await asMa(false, "select management_ai.protokollieren('x', now())", "insert into vl_netz.warteschlange values (1)")).toBe("42501");
+          expect(await asMa(false, "insert into vl_netz.warteschlange values (1)", "select management_ai.beruehren('x', now())")).toBe("42501");
+          expect((await db`select count(*)::int n from vl_netz.warteschlange`)[0].n).toBe(0);
+          expect((await db`select count(*)::int n from management_ai.calls where token_hash = 'x'`)[0].n).toBe(0);
+          await db.unsafe(RUECKBAU_SQL);
+        } finally {
+          await db.unsafe("alter extension plpgsql drop table vl_netz.warteschlange; drop schema vl_netz cascade;");
         }
       } finally {
         await db.unsafe("drop schema vl_intern cascade;");
