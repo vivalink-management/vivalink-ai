@@ -39,10 +39,15 @@ export async function startEnv({ pgPort, fnPort, mapping = TEST_MAPPING, fixture
   const data = join(dir, "data");
   const r = spawnSync(...run(join(bin, "initdb"), ["-D", data, "-A", "trust", "-U", "postgres", "--no-sync", "-E", "UTF8"], { encoding: "utf8" }));
   if (r.status) throw new Error("initdb: " + r.stderr);
-  const pg = spawn(...run(join(bin, "postgres"), ["-D", data, "-p", String(pgPort), "-k", dir, "-c", "listen_addresses=127.0.0.1", "-c", "fsync=off", "-c", "timezone=Europe/Berlin"], { stdio: "ignore", detached: true }));
+  const pg = spawn(...run(join(bin, "postgres"), ["-D", data, "-p", String(pgPort), "-k", dir, "-c", "listen_addresses=127.0.0.1", "-c", "fsync=off", "-c", "timezone=Europe/Berlin", "-c", "max_connections=30", "-c", "shared_buffers=16MB", "-c", "dynamic_shared_memory_type=mmap"], { stdio: ["ignore", "ignore", "pipe"], detached: true }));
+  // Server-Meldungen mitschreiben (nur künstliche Testdaten), damit ein Startfehler nachvollziehbar ist
+  let pgLog = "";
+  pg.stderr.on("data", (d) => (pgLog = (pgLog + d).slice(-4000)));
   const admin = `postgres://postgres@127.0.0.1:${pgPort}/postgres`;
   let sql;
-  for (let i = 0; i < 100; i++) {
+  // bis zu 60 s warten (ausgelastete CI-Rechner); beendet sich der Server, sofort mit seiner Meldung abbrechen
+  for (let i = 0; i < 300; i++) {
+    if (pg.exitCode !== null || pg.signalCode) throw new Error(`PostgreSQL beendet (${pg.exitCode ?? pg.signalCode}): ` + pgLog);
     try {
       sql = postgres(admin, { max: 1, onnotice: () => {} });
       await sql`select 1`;
@@ -50,10 +55,15 @@ export async function startEnv({ pgPort, fnPort, mapping = TEST_MAPPING, fixture
     } catch {
       await sql?.end().catch(() => {});
       sql = null;
-      await new Promise((r) => setTimeout(r, 100));
+      await new Promise((r) => setTimeout(r, 200));
     }
   }
-  if (!sql) throw new Error("PostgreSQL startet nicht");
+  if (!sql) {
+    try {
+      process.kill(-pg.pid, "SIGINT");
+    } catch {}
+    throw new Error("PostgreSQL startet nicht: " + pgLog);
+  }
   // Reihenfolge wie später in Supabase: vorhandene Verwaltung → Migration → zusätzliche Auswertungen der Anbindung → Rechte
   for (const f of [join(HERE, "supabase-stub.sql"), ...fixtures, ...(migrate ? [join(ROOT, "server/supabase/migrations/20261126_management_kpis.sql"), ...extraSql] : [])]) await sql.unsafe(readFileSync(f, "utf8"));
   if (migrate) await sql.unsafe(grantsSql(mapping));
