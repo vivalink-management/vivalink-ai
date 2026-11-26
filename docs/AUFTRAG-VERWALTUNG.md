@@ -14,7 +14,7 @@
 ## Ergebnis der Bestandsaufnahme (26.11.2026)
 - Die Bestandsaufnahme wurde ausgeführt: 71 Einträge, nur Struktur.
 - **Keine Views.** Die vorhandenen Auswertungen sind Admin-Funktionen (Security Definer). Sie liefern teils JSON, teils Werte je Meetup und prüfen vermutlich die Admin-Rolle des angemeldeten Kontos.
-- Ob die Gegenstelle sie direkt wiederverwenden kann, klärt eine **eng begrenzte zweite Bestandsaufnahme** (`node scripts/verwaltung.mjs definitions …`): Programmcode nur der benötigten Funktionen und Prüfregeln nur der benötigten Tabellen, ohne Inhalte. Zeichenketten mit „@“, über 60 Zeichen oder mit Hinweis auf Zugangsdaten werden geleert. Automatisch geprüft. Die konkrete Abfrage liegt im privaten Repository.
+- Ob die Gegenstelle sie direkt wiederverwenden kann, klärt eine **datensparsame zweite Bestandsaufnahme** (`node scripts/verwaltung.mjs facts …`): Sie gibt **keinen Programmcode** aus, sondern je Funktion nur Treffer aus einer vorgegebenen Begriffsliste und je Tabelle nur kurze Statuscodes aus den Prüfregeln. Automatisch geprüft, auch mit Schlüsseln, Passwörtern und Adressen im Code. Die konkrete Abfrage liegt im privaten Repository.
 - **Zuordnung im Entwurf:**
   - Abgedeckt sind 9 von 12 Kennzahlen (Registrierungen, aktive Nutzer, Anmeldungen, Absagen, Einladungen, Annahmequote, Zahlungen, Erstattungen).
   - Schlanke, nur zählende Auswertungen im Schema `management_ai`.

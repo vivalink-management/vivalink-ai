@@ -3,7 +3,7 @@
 //   node scripts/verwaltung.mjs grants [mapping.json]        → Leserechte der Rolle management_ai auf die zugeordneten Auswertungen
 //   node scripts/verwaltung.mjs bundle [mapping.json] <ziel> → Bereitstellungsordner (Edge Function + Migration + Rechte)
 //   node scripts/verwaltung.mjs check [mapping.json]         → Zuordnung prüfen
-//   node scripts/verwaltung.mjs definitions <funktionen> <tabellen> → eng begrenzte zweite Bestandsaufnahme (Namen kommagetrennt)
+//   node scripts/verwaltung.mjs facts <fragen.json>          → datensparsame zweite Bestandsaufnahme ({functions, tables, terms})
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -62,27 +62,40 @@ where p.pronargs = 0 and p.prokind = 'f'
 order by 1 desc, 2;
 `;
 
-/* Zweite Bestandsaufnahme, eng begrenzt: Programmcode NUR der ausdrücklich genannten Funktionen und Prüfregeln (CHECK)
-   NUR der genannten Tabellen. Nur Systemkatalog, keine Tabelleninhalte. Zeichenketten werden geleert, wenn sie „@“
-   enthalten, länger als 60 Zeichen sind oder nach Zugangsdaten aussehen (sk_, pk_, whsec_, key, secret, token, passw,
-   bearer). Jede Zeichenkette wird als Ganzes erkannt (Anführungszeichen verrutschen nicht).
+/* Zweite Bestandsaufnahme, datensparsam: gibt KEINEN Programmcode aus. Für die genannten Funktionen wird nur gemeldet,
+   welche Begriffe aus einer VORGEGEBENEN Liste darin vorkommen (z. B. ob eine Admin-Prüfung erfolgt oder Beispiel-
+   Meetups ausgeschlossen werden) – die Ausgabe ist also immer eine Teilmenge unserer eigenen Liste, nie Text aus der
+   Datenbank. Für die genannten Tabellen werden aus den Prüfregeln (CHECK) nur kurze Codes aus Kleinbuchstaben und
+   Unterstrich ausgegeben (z. B. Statuswerte). Nur Systemkatalog, keine Tabelleninhalte, keine Änderungen.
    Die echten Namen stehen nur im privaten Repository – hier ist nur der Baukasten. */
 const IDENT_RE = /^[a-z_][a-z0-9_]{0,62}$/;
-const MASK = `regexp_replace(%s, $re$'(?![^']*(sk_|pk_|whsec_|key|secret|token|passw|bearer))([^'@]{0,60})'|'[^']*'$re$, $r$'\\1'$r$, 'gi')`;
-export function definitionsSql({ functions = [], tables = [] }) {
+const TERM_RE = /^('[a-z_]{1,30}'|[a-z_][a-z0-9_.]{0,40}(\(\))?)$/;
+export function factsSql({ functions = [], tables = [], terms = [] }) {
   for (const n of [...functions, ...tables]) if (!IDENT_RE.test(n)) throw new Error("Ungültiger Name: " + n);
+  for (const t of terms) if (!TERM_RE.test(t)) throw new Error("Ungültiger Begriff: " + t);
   if (!functions.length && !tables.length) throw new Error("Keine Namen angegeben");
   const list = (a) => a.map((x) => `'${x}'`).join(", ") || "''";
-  return `-- Vivalink Management AI: zweite lesende Bestandsaufnahme (eng begrenzt; nur Programmcode und Prüfregeln, keine Inhalte, keine Änderungen).
--- Zeichenketten mit @, über 60 Zeichen oder mit Hinweis auf Zugangsdaten werden geleert ('').
-select 'funktion' as art, p.proname as name,
-       ${MASK.replace("%s", "pg_get_functiondef(p.oid)")} as inhalt
-from pg_proc p
-join pg_namespace n on n.oid = p.pronamespace
-where n.nspname = 'public' and p.prokind = 'f' and p.proname in (${list(functions)})
+  const pattern = (t) => {
+    if (t.startsWith("'")) return "'" + t.slice(1, -1) + "'"; // Code in Anführungszeichen
+    const body = t.replace(/\./g, "\\.").replace(/\(\)$/, "\\s*\\(");
+    return "\\m" + body + (t.endsWith("()") ? "" : "\\M");
+  };
+  const label = (t) => (t.startsWith("'") ? "code:" + t.slice(1, -1) : t);
+  const checks = terms.map((t) => `case when d ~* $t$${pattern(t)}$t$ then '${label(t)}' end`);
+  return `-- Vivalink Management AI: zweite lesende Bestandsaufnahme (datensparsam).
+-- Gibt keinen Programmcode aus: je Funktion nur, welche Begriffe aus einer vorgegebenen Liste vorkommen;
+-- je Tabelle nur kurze Codes aus den Prüfregeln. Geprüft wird nur der Funktionsrumpf (ohne Kopfzeile). Keine Inhalte, keine Änderungen.
+with f as (
+  select p.proname as name, p.prosecdef as definer, p.prosrc as d
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and p.prokind = 'f' and p.proname in (${list(functions)})
+)
+select 'funktion' as art, name,
+       concat_ws(', ', case when definer then 'security_definer' end${checks.length ? ",\n         " + checks.join(",\n         ") : ""}) as befund
+from f
 union all
 select 'regel', c.relname || '.' || k.conname,
-       ${MASK.replace("%s", "pg_get_constraintdef(k.oid)")}
+       (select string_agg(distinct m[1], ', ') from regexp_matches(pg_get_constraintdef(k.oid), $re$'([a-z_]{1,30})'$re$, 'g') as m)
 from pg_constraint k
 join pg_class c on c.oid = k.conrelid
 join pg_namespace n on n.oid = c.relnamespace
@@ -108,7 +121,7 @@ export function bundle(mapping, dir) {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const [cmd, a, b] = process.argv.slice(2);
   if (cmd === "inventory") process.stdout.write(INVENTORY_SQL);
-  else if (cmd === "definitions") process.stdout.write(definitionsSql({ functions: (a || "").split(",").filter(Boolean), tables: (b || "").split(",").filter(Boolean) }));
+  else if (cmd === "facts") process.stdout.write(factsSql(JSON.parse(readFileSync(a, "utf8"))));
   else if (cmd === "grants") process.stdout.write(grantsSql(load(a)));
   else if (cmd === "check") {
     const M = parseMapping(load(a), KPI_KEYS);

@@ -7,3 +7,6 @@ end $$;
 grant usage on schema public to anon, authenticated;
 alter default privileges in schema public grant all on tables to anon, authenticated;
 alter default privileges in schema public grant all on functions to anon, authenticated;
+-- Supabase-Anmeldefunktion (nachgebildet; ohne angemeldetes Konto immer leer)
+create schema if not exists auth;
+create or replace function auth.uid() returns uuid language sql stable as 'select null::uuid';
