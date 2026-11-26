@@ -164,19 +164,24 @@ export function dryRunSql(mapping, extraSql = []) {
   const keyChecks = M.entries
     .map((e) => {
       const src = (e.source.includes(".") ? e.source : "public." + e.source).split(".").map((x) => `"${x}"`).join(".") + (e.fn ? "()" : "");
+      // Abfrage wie die Gegenstelle (alle Zeilen, nur die Wertspalte); leeres Ergebnis bzw. NULL ist KEIN Fehler
       return `    begin
       execute 'select count("${e.value}") from ${q(src)} as q' into n;
-      zeilen := zeilen || ('Kennzahl ${e.key}|' || case when n > 0 then 'lieferbar' else 'leer' end);
-      if n = 0 then fehler := fehler + 1; end if;
+      zeilen := zeilen || ('Kennzahl ${e.key}|' || case when n > 0 then 'funktioniert (Werte vorhanden)' else 'funktioniert (derzeit keine Werte)' end);
     exception when others then
-      zeilen := zeilen || ('Kennzahl ${e.key}|FEHLER: ' || sqlerrm); fehler := fehler + 1;
+      zeilen := zeilen || ('Kennzahl ${e.key}|FEHLER E-KZ (SQLSTATE ' || sqlstate || ')'); fehler := fehler + 1;
     end;`;
     })
     .join("\n");
   return `-- Vivalink Management AI: PROBELAUF der Verwaltungsanbindung – ohne bleibende Wirkung.
 -- Läuft vollständig in einer ausdrücklich gestarteten Transaktion, die am Ende mit ROLLBACK zurückgenommen wird.
--- Ändert keine Daten, löst keine Zahlungen, Buchungen, Benachrichtigungen oder Netzwerkaufrufe aus.
--- Ausgabe: eine Tabelle mit Prüfungen (ja/nein bzw. Fehlertext) – keine Kennzahlen, keine Personendaten.
+-- Schreibt in keine bestehende Tabelle und ruft keine Zahlungs-, Buchungs-, Benachrichtigungs- oder Netzwerkfunktionen auf.
+-- Ereignistrigger werden vorab geprüft (unbekannte → Abbruch ohne Änderung). Die Teilnachweise (Fingerabdruck,
+-- Schreibzähler) decken nur die geprüften Bereiche ab; maßgeblich für „nichts bleibt zurück“ ist das ROLLBACK.
+-- Ausgabe: eine Tabelle mit Prüfungen (ja/nein bzw. feste Fehlercodes) – keine Kennzahlen, keine Personendaten,
+-- keine Fehlertexte der Datenbank. Fehlercodes: E-ET unbekannte Ereignistrigger (Abbruch VOR jeder Änderung),
+-- E-EINR Einrichtung fehlgeschlagen, E-KZ Kennzahl technisch fehlerhaft, E-PRF Prüfung abgebrochen, E-UNERW unerwartet;
+-- jeweils mit dem standardisierten SQLSTATE-Code (5 Zeichen, ohne Inhalte).
 begin;
 set local statement_timeout = '60s';
 set local lock_timeout = '3s';
@@ -192,18 +197,34 @@ declare
   api boolean;
   schreib bigint;
   schreib0 bigint;
+  et_bekannt int;
+  et_unbekannt int;
 begin
  begin
+
   -- Schreibzähler zu Beginn (enthält ggf. noch nicht verbuchte Vorgänge früherer Abfragen – deshalb zählt die Differenz)
   select coalesce(sum(n_tup_ins + n_tup_upd + n_tup_del), 0) into schreib0 from pg_stat_xact_user_tables;
   vorher := ${FINGERPRINT};
+  -- Ereignistrigger (feuern bei Strukturänderungen) VOR jeder Änderung prüfen. Bekannt und unbedenklich sind die
+  -- Supabase-Standardtrigger: pgrst_* senden nur eine Benachrichtigung zum Neuladen des API-Schemas (wird erst beim
+  -- Bestätigen zugestellt, hier also nie); issue_* reagieren nur auf CREATE EXTENSION (kommt hier nicht vor).
+  -- Jeder andere aktive Ereignistrigger → Abbruch ohne jede Änderung (E-ET).
+  select count(*) filter (where evtname in ('pgrst_ddl_watch', 'pgrst_drop_watch', 'issue_pg_net_access', 'issue_pg_cron_access', 'issue_pg_graphql_access', 'issue_graphql_placeholder')),
+         count(*) filter (where evtname not in ('pgrst_ddl_watch', 'pgrst_drop_watch', 'issue_pg_net_access', 'issue_pg_cron_access', 'issue_pg_graphql_access', 'issue_graphql_placeholder'))
+    into et_bekannt, et_unbekannt from pg_event_trigger where evtenabled <> 'D';
+  zeilen := zeilen || ('Ereignistrigger: bekannte Supabase-Standardtrigger|' || et_bekannt);
+  zeilen := zeilen || ('Ereignistrigger: andere (würden bei Strukturänderungen laufen)|' || et_unbekannt || case when et_unbekannt > 0 then ' – ABBRUCH E-ET, nichts eingerichtet' else '' end);
+  if et_unbekannt > 0 then
+    fehler := fehler + 1;
+    raise exception 'vl_probelauf_et';
+  end if;
   -- Sicherungspunkt: alles in diesem Block wird am Ende durch eine absichtliche Ausnahme zurückgenommen
   begin
     begin
       execute ${inner}${body}${inner};
       zeilen := zeilen || 'Einrichtung (probeweise)|ok'::text;
     exception when others then
-      zeilen := zeilen || ('Einrichtung (probeweise)|FEHLER: ' || sqlerrm); fehler := fehler + 1;
+      zeilen := zeilen || ('Einrichtung (probeweise)|FEHLER E-EINR (SQLSTATE ' || sqlstate || ')'); fehler := fehler + 1;
       raise exception 'vl_probelauf_zuruecknehmen';
     end;
     -- Kennzahlen als eingeschränkte Rolle lesen
@@ -222,18 +243,21 @@ ${keyChecks}
     raise exception 'vl_probelauf_zuruecknehmen';
   exception when others then
     if sqlerrm <> 'vl_probelauf_zuruecknehmen' then
-      zeilen := zeilen || ('Prüfung abgebrochen|FEHLER: ' || sqlerrm); fehler := fehler + 1;
+      zeilen := zeilen || ('Prüfung abgebrochen|FEHLER E-PRF (SQLSTATE ' || sqlstate || ')'); fehler := fehler + 1;
     end if;
   end;
   -- Nachweise nach der Rücknahme des Sicherungspunkts
   nachher := ${FINGERPRINT};
   select coalesce(sum(n_tup_ins + n_tup_upd + n_tup_del), 0) - schreib0 into schreib from pg_stat_xact_user_tables;
-  zeilen := zeilen || ('Bestehende Tabellen, Funktionen, Rollen und Rechte unverändert|' || case when vorher = nachher then 'ja' else 'NEIN (PROBLEM)' end);
-  zeilen := zeilen || ('Schreibvorgänge in Daten (auch Warteschlangen für Benachrichtigungen/Netzwerk)|' || schreib);
+  zeilen := zeilen || ('Teilnachweis: Tabellen, Funktionen, Rollen, Rechte, Richtlinien, Trigger nach der Rücknahme unverändert|' || case when vorher = nachher then 'ja' else 'NEIN (PROBLEM)' end);
+  zeilen := zeilen || ('Teilnachweis: Schreibvorgänge in Tabellen (auch Warteschlangen für Benachrichtigungen/Netzwerk)|' || schreib);
+  zeilen := zeilen || ('Hinweis|Die Teilnachweise decken nur die geprüften Bereiche ab und sind kein vollständiger Nachweis für das Ausbleiben jeder Nebenwirkung; maßgeblich ist das abschließende ROLLBACK.'::text);
   if vorher <> nachher or schreib <> 0 then fehler := fehler + 1; end if;
   exception when others then
-    -- Sicherheitsnetz: jeder unerwartete Fehler wird gemeldet, damit das abschließende ROLLBACK sicher ausgeführt wird
-    zeilen := zeilen || ('Unerwarteter Fehler|' || sqlerrm); fehler := fehler + 1;
+    -- Sicherheitsnetz: jeder unerwartete Fehler wird gemeldet (nur Code), damit das abschließende ROLLBACK sicher ausgeführt wird
+    if sqlerrm <> 'vl_probelauf_et' then
+      zeilen := zeilen || ('Unerwarteter Fehler|FEHLER E-UNERW (SQLSTATE ' || sqlstate || ')'); fehler := fehler + 1;
+    end if;
  end;
   zeilen := zeilen || ('GESAMT|' || case when fehler = 0 then 'OK – alles wird mit ROLLBACK zurückgenommen' else 'PROBLEM (' || fehler || ') – alles wird mit ROLLBACK zurückgenommen' end);
   insert into vl_probelauf select i, split_part(zeilen[i], '|', 1), substr(zeilen[i], length(split_part(zeilen[i], '|', 1)) + 2) from generate_subscripts(zeilen, 1) i;

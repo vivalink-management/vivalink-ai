@@ -326,66 +326,121 @@ test("Zweite Bestandsaufnahme (nur Positivlisten): kein Programmcode, keine unbe
   await env.sql.unsafe("drop function public.admin_geheim(); drop table public.regeltest;");
 });
 
-test("Probelauf: ausdrückliche Transaktion mit ROLLBACK, nichts bleibt zurück, keine Schreibvorgänge, nur Prüfzeilen – auch im Fehlerfall", async ({}, info) => {
+test("Probelauf: ausdrückliche Transaktion mit ROLLBACK; leere Kennzahlen sind kein Fehler; Ereignistrigger geprüft; nur feste Fehlercodes", async ({}, info) => {
   serverOnly(info);
-  await env.sql.unsafe("drop database if exists probe");
-  await env.sql.unsafe("create database probe");
-  const db = postgres(`postgres://postgres@127.0.0.1:${54400 + info.parallelIndex}/probe`, { max: 1, onnotice: () => {} });
-  try {
+  test.setTimeout(120_000);
+  const port = 54400 + info.parallelIndex;
+  const fresh = async () => {
+    await env.sql.unsafe("drop database if exists probe");
+    await env.sql.unsafe("create database probe");
+    const db = postgres(`postgres://postgres@127.0.0.1:${port}/probe`, { max: 1, onnotice: () => {} });
     for (const f of ["supabase-stub.sql", "fixture.sql"]) await db.unsafe(readFileSync(new URL("./verwaltung/" + f, import.meta.url), "utf8"));
-    // Fingerabdruck des gesamten Katalogs + Daten-Prüfsumme (vorher/nachher von außen gemessen)
-    const snap = async () =>
-      JSON.stringify(
-        await db`select
-          (select md5(string_agg(n.nspname || c.relname || c.relkind::text || coalesce(c.relacl::text, ''), '|' order by n.nspname, c.relname)) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname not like 'pg\_%' and n.nspname <> 'information_schema') k,
-          (select md5(string_agg(p.proname || md5(p.prosrc) || coalesce(p.proacl::text, ''), '|' order by p.oid)) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname not like 'pg\_%' and n.nspname <> 'information_schema') f,
-          (select string_agg(rolname, ',' order by rolname) from pg_roles where rolname not like 'pg\_%') r,
-          (select md5(string_agg(t::text, '|' order by t::text)) from public.profiles t) d1,
-          (select md5(string_agg(t::text, '|' order by t::text)) from public.payments t) d2`,
-      );
-    // Ist nach dem Lauf keine Transaktion mehr offen? (eine „on commit drop“-Tabelle verschwindet nur, wenn sofort bestätigt wird)
-    const frei = async () => {
-      await db.unsafe("create temp table vl_frei (a int) on commit drop");
-      return (await db`select to_regclass('pg_temp.vl_frei') is null as frei`)[0].frei;
-    };
-    const roleBefore = await env.sql`select count(*)::int n from pg_roles where rolname = 'management_ai'`;
-    const before = await snap();
-    const sql = dryRunSql(TEST_MAPPING);
-    // Aufbau: ausdrücklich BEGIN … ROLLBACK, keine weiteren Transaktionsbefehle, keine Netzwerk-/Benachrichtigungsfunktionen
-    const stmts = sql.replace(/--.*$/gm, "");
-    expect(stmts.trim().startsWith("begin;")).toBe(true);
-    expect(stmts.trim().endsWith("rollback;")).toBe(true);
-    expect(stmts.replace(/on commit drop/gi, "").match(/\bcommit\b/gi)).toBeNull(); // nur „on commit drop“ der temporären Ergebnistabelle
-    expect(stmts).not.toMatch(/\b(pg_notify|notify|http_|net\.|dblink|copy|pg_sleep|lo_export)\b/i);
-    // Ausführung wie im Supabase-SQL-Editor: EIN Aufruf mit mehreren Anweisungen
-    const run = async (q) => {
-      const r = await db.unsafe(q).simple();
-      const sets = Array.isArray(r[0]) ? r : [r];
-      return sets.filter((x) => x.length && "Prüfung" in x[0]).pop() || [];
-    };
-    const rows = await run(sql);
-    const by = Object.fromEntries(rows.map((r) => [r["Prüfung"], r["Ergebnis"]]));
-    expect(by["GESAMT"]).toMatch(/^OK/);
-    expect(by["Einrichtung (probeweise)"]).toBe("ok");
-    expect(by["Kennzahl reg_total"]).toBe("lieferbar");
-    expect(by["Bestehende Tabellen, Funktionen, Rollen und Rechte unverändert"]).toBe("ja");
-    expect(by["Schreibvorgänge in Daten (auch Warteschlangen für Benachrichtigungen/Netzwerk)"]).toBe("0");
-    expect(by["Rechte: Zugriff über die Supabase-API"]).toBe("nein");
-    // keine Kennzahlen, keine Personendaten in der Ausgabe
-    const out = JSON.stringify(rows);
-    expect(out).not.toMatch(/@|Testperson|\b1\d\d\b/);
-    // nichts geblieben; Verbindung nicht in einer offenen Transaktion
-    expect(await snap()).toBe(before);
+    return db;
+  };
+  // Ausführung wie im Supabase-SQL-Editor: EIN Aufruf mit mehreren Anweisungen
+  const run = async (db, q) => {
+    const r = await db.unsafe(q).simple();
+    const sets = Array.isArray(r[0]) ? r : [r];
+    const rows = sets.filter((x) => x.length && "Prüfung" in x[0]).pop() || [];
+    return { rows, by: Object.fromEntries(rows.map((x) => [x["Prüfung"], x["Ergebnis"]])) };
+  };
+  const snap = (db) =>
+    db`select
+      (select md5(string_agg(n.nspname || c.relname || c.relkind::text || coalesce(c.relacl::text, ''), '|' order by n.nspname, c.relname)) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname not like 'pg\_%' and n.nspname <> 'information_schema') k,
+      (select md5(string_agg(p.proname || md5(p.prosrc) || coalesce(p.proacl::text, ''), '|' order by p.oid)) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname not like 'pg\_%' and n.nspname <> 'information_schema') f,
+      (select md5(string_agg(t::text, '|' order by t::text)) from public.profiles t) d1,
+      (select md5(string_agg(t::text, '|' order by t::text)) from public.payments t) d2`.then((x) => JSON.stringify(x));
+  const frei = async (db) => {
+    await db.unsafe("create temp table vl_frei (a int) on commit drop");
+    return (await db`select to_regclass('pg_temp.vl_frei') is null as frei`)[0].frei;
+  };
+  // Erlaubte Ausgabe: nur unsere festen Texte, Zahlen und Fehlercodes – nie Fehlertext der Datenbank
+  const clean = (rows) => {
+    for (const r of rows) expect(r["Ergebnis"], r["Prüfung"]).toMatch(/^(ok|ja|nein|keine|\d+|funktioniert \((Werte vorhanden|derzeit keine Werte)\)|FEHLER E-(EINR|KZ|PRF|UNERW) \(SQLSTATE [0-9A-Z]{5}\)|\d+ – ABBRUCH E-ET, nichts eingerichtet|NEIN \(PROBLEM\)|\d+ \(PROBLEM\)|ja \(PROBLEM\)|Die Teilnachweise .*ROLLBACK\.|OK – alles wird mit ROLLBACK zurückgenommen|PROBLEM \(\d+\) – alles wird mit ROLLBACK zurückgenommen)$/);
+    expect(JSON.stringify(rows)).not.toMatch(/gibt_es_nicht|relation|column|does not exist|permission|@|Testperson/i);
+  };
+  const sql = dryRunSql(TEST_MAPPING);
+  // Aufbau: BEGIN … ROLLBACK, kein COMMIT, kein Netzwerk/Benachrichtigung, keine Ausgabe von Fehlertexten
+  const stmts = sql.replace(/--.*$/gm, "");
+  expect(stmts.trim().startsWith("begin;")).toBe(true);
+  expect(stmts.trim().endsWith("rollback;")).toBe(true);
+  expect(stmts.replace(/on commit drop/gi, "").match(/\bcommit\b/gi)).toBeNull();
+  expect(stmts).not.toMatch(/\b(pg_notify|notify|http_|net\.|dblink|copy|pg_sleep|lo_export|nextval|setval)\b/i);
+  expect(stmts.match(/\|\|\s*sqlerrm/gi)).toBeNull(); // sqlerrm nur für interne Vergleiche, nie in der Ausgabe
+
+  let db = await fresh();
+  try {
+    // 1) Normaler Ablauf
+    const roleBefore = (await env.sql`select count(*)::int n from pg_roles where rolname = 'management_ai'`)[0].n;
+    let before = await snap(db);
+    let r = await run(db, sql);
+    clean(r.rows);
+    expect(r.by["GESAMT"]).toMatch(/^OK/);
+    expect(r.by["Einrichtung (probeweise)"]).toBe("ok");
+    expect(r.by["Kennzahl reg_total"]).toBe("funktioniert (Werte vorhanden)");
+    expect(r.by["Teilnachweis: Schreibvorgänge in Tabellen (auch Warteschlangen für Benachrichtigungen/Netzwerk)"]).toBe("0");
+    expect(r.by["Hinweis"]).toContain("kein vollständiger Nachweis");
+    expect(await snap(db)).toBe(before);
+    expect(await frei(db)).toBe(true);
     expect((await db`select count(*)::int n from pg_namespace where nspname = 'management_ai'`)[0].n).toBe(0);
-    expect((await env.sql`select count(*)::int n from pg_roles where rolname = 'management_ai'`)[0].n).toBe(roleBefore[0].n);
-    expect(await frei()).toBe(true); // keine offene Transaktion zurückgeblieben
-    // Fehlerfall: kaputte Zuordnung → PROBLEM, ROLLBACK wird trotzdem ausgeführt, nichts bleibt zurück
-    const bad = await run(dryRunSql({ ...TEST_MAPPING, reg_week: { source: "public.gibt_es_nicht", date: "d", value: "v" } }));
-    const bb = Object.fromEntries(bad.map((r) => [r["Prüfung"], r["Ergebnis"]]));
-    expect(bb["GESAMT"]).toMatch(/^PROBLEM/);
-    expect(bb["Einrichtung (probeweise)"]).toMatch(/^FEHLER/);
-    expect(await snap()).toBe(before);
-    expect(await frei()).toBe(true);
+    expect((await env.sql`select count(*)::int n from pg_roles where rolname = 'management_ai'`)[0].n).toBe(roleBefore);
+
+    // 2) Kennzahlen ohne Daten (kein künftiges Meetup, keine Einladungen): funktioniert, kein Fehler
+    await db.unsafe("delete from meetup_participants; delete from meetups where starts_at > now(); delete from invitations;");
+    before = await snap(db);
+    r = await run(db, sql);
+    clean(r.rows);
+    expect(r.by["GESAMT"]).toMatch(/^OK/);
+    expect(r.by["Kennzahl meetup_days"]).toBe("funktioniert (derzeit keine Werte)");
+    expect(r.by["Kennzahl invite_rate"]).toBe("funktioniert (derzeit keine Werte)");
+    expect(await snap(db)).toBe(before);
+
+    // 3) Technischer Fehler bei einer Kennzahl (Spalte fehlt): E-KZ mit SQLSTATE, ohne Datenbanktext
+    r = await run(db, dryRunSql({ ...TEST_MAPPING, reg_week: { source: "public.admin_stats_daily", date: "day", value: "gibt_es_nicht" } }));
+    clean(r.rows);
+    expect(r.by["Kennzahl reg_week"]).toBe("FEHLER E-KZ (SQLSTATE 42703)");
+    expect(r.by["GESAMT"]).toMatch(/^PROBLEM/);
+    expect(await snap(db)).toBe(before);
+    expect(await frei(db)).toBe(true);
+
+    // 4) Einrichtung schlägt fehl (Quelle fehlt): E-EINR, nichts bleibt zurück
+    r = await run(db, dryRunSql({ ...TEST_MAPPING, reg_week: { source: "public.gibt_es_nicht", date: "d", value: "v" } }));
+    clean(r.rows);
+    expect(r.by["Einrichtung (probeweise)"]).toMatch(/^FEHLER E-EINR \(SQLSTATE 42P01\)$/);
+    expect(await snap(db)).toBe(before);
+    expect(await frei(db)).toBe(true);
+
+    // 5) Bekannter Supabase-Ereignistrigger (sendet nur eine Benachrichtigung): läuft, Benachrichtigung wird nie zugestellt
+    await db.unsafe(`create function public.vl_et_notify() returns event_trigger language plpgsql as $$ begin perform pg_notify('pgrst', 'reload schema'); end $$;
+      create event trigger pgrst_ddl_watch on ddl_command_end execute function public.vl_et_notify();`);
+    const got = [];
+    const listener = postgres(`postgres://postgres@127.0.0.1:${port}/probe`, { max: 1, onnotice: () => {} });
+    await listener.listen("pgrst", (x) => got.push(x));
+    before = await snap(db);
+    r = await run(db, sql);
+    clean(r.rows);
+    expect(r.by["Ereignistrigger: bekannte Supabase-Standardtrigger"]).toBe("1");
+    expect(r.by["GESAMT"]).toMatch(/^OK/);
+    await new Promise((x) => setTimeout(x, 500));
+    expect(got).toEqual([]); // keine Benachrichtigung – sie würde erst beim Bestätigen zugestellt
+    await listener.end();
+    expect(await snap(db)).toBe(before);
+
+    // 6) Unbekannter Ereignistrigger (schreibt bei Strukturänderungen in ein Protokoll): Abbruch VOR jeder Änderung
+    await db.unsafe(`create table public.vl_et_log (at timestamptz default now());
+      create function public.vl_et_log() returns event_trigger language plpgsql as $$ begin insert into public.vl_et_log default values; end $$;
+      create event trigger fremder_trigger on ddl_command_end execute function public.vl_et_log();`);
+    await db.unsafe("delete from public.vl_et_log");
+    before = await snap(db);
+    r = await run(db, sql);
+    clean(r.rows);
+    expect(r.by["Ereignistrigger: andere (würden bei Strukturänderungen laufen)"]).toBe("1 – ABBRUCH E-ET, nichts eingerichtet");
+    expect(r.by["Einrichtung (probeweise)"]).toBeUndefined(); // gar nicht erst versucht
+    expect(r.by["GESAMT"]).toMatch(/^PROBLEM/);
+    expect((await db`select count(*)::int n from public.vl_et_log`)[0].n).toBe(0); // Trigger nie ausgelöst
+    expect(await snap(db)).toBe(before);
+    expect(await frei(db)).toBe(true);
+
     // Transaktionsbefehle im Einrichtungs-SQL werden abgelehnt
     expect(() => dryRunSql(TEST_MAPPING, ["commit;"])).toThrow();
   } finally {
