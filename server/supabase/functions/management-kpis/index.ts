@@ -14,7 +14,9 @@ import mapping from "./mapping.json" with { type: "json" };
 // fetch_types: false – keine automatische Katalogabfrage beim Verbindungsaufbau (sonst liefe sie außerhalb der eingeschränkten Rolle)
 const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!, { prepare: false, fetch_types: false, max: 2, idle_timeout: 20, connect_timeout: 5, onnotice: () => {} });
 const ORIGIN = Deno.env.get("VL_ALLOWED_ORIGIN") ?? "https://vivalink-management.github.io";
-// Prüfsumme der bereitgestellten Fassung (wird beim Erzeugen der Einzeldatei eingesetzt); GET …/version zeigt sie an
+// Versionskennung (beim Erzeugen der Einzeldatei eingesetzt); GET …/version zeigt sie an. Nur ein Hinweis auf die Fassung,
+// KEIN kryptografischer Nachweis über den bereitgestellten Code: Die Kennung steht fest im Code und bliebe bei einer
+// veränderten Datei gleich. Maßgeblich ist die SHA-256-Prüfsumme der vollständigen Datei vor dem Einfügen (ANLEITUNG.md).
 const BUILD = "entwicklung";
 // Fehler einzelner Auswertungen nur als Schlüssel protokollieren (keine Datenbankmeldungen mit Inhalten)
 const repo = pgRepo(sql, mapping, KPI_KEYS, { onError: (key: string) => console.warn("Auswertung nicht lesbar:", key) });

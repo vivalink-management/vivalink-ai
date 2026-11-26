@@ -45,9 +45,13 @@ export function pgRepo(sql, mapping, keys, { onError = () => {} } = {}) {
   // Jede Datenbankoperation läuft in einer eigenen Transaktion, die ZUERST in die eingeschränkte Rolle wechselt und das
   // prüft (current_user). Schlägt der Wechsel fehl oder stimmt die Rolle nicht, wird nichts ausgeführt (Fehler → 503).
   // Es gibt keine Abfrage außerhalb dieser Transaktionen.
+  // Zwei getrennte Anweisungen: 1) Rollenwechsel (nur für diese Transaktion), 2) Kontrolle von current_user.
+  // Scheitert 1), bricht die Transaktion ab; stimmt 2) nicht, wird eine Ausnahme ausgelöst – in beiden Fällen folgt
+  // keine weitere Anweisung, die Transaktion wird zurückgerollt.
   const asRole = async (t) => {
-    const [r] = await t`select set_config('role', ${ROLE}, true) as r, set_config('statement_timeout', '5000', true) as s, current_user as u`;
-    if (r.u !== ROLE) throw new Error("Rollenwechsel fehlgeschlagen");
+    await t`select set_config('role', ${ROLE}, true), set_config('statement_timeout', '5000', true)`;
+    const [r] = await t`select current_user as u`;
+    if (!r || r.u !== ROLE) throw new Error("Rollenwechsel fehlgeschlagen");
   };
   const tx = (fn) =>
     sql.begin(async (t) => {

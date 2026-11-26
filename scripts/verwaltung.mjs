@@ -466,7 +466,8 @@ ${pg}
 ${main.replace(/^\/\/.*\n/gm, "").split("\n").filter((l) => !/^import\s/.test(l)).join("\n")}
 `;
 
-  // Prüfsumme über die Datei ohne die Prüfsummen-Zeile; die bereitgestellte Funktion zeigt sie unter …/version an
+  // Versionskennung = SHA-256 der Datei VOR dem Einsetzen der Kennung; …/version zeigt sie an. Das ist nur eine Kennung,
+  // kein Nachweis über den bereitgestellten Code (sie steht fest im Code). Nachweis: SHA-256 der vollständigen fertigen Datei.
   const hash = createHash("sha256").update(out).digest("hex");
   return out.replace('const BUILD = "entwicklung";', `const BUILD = "${hash}";`);
 }

@@ -570,21 +570,56 @@ test("Datenbankzugang der Edge Function: jede Operation nur als management_ai; o
   await repo.calls("x".repeat(64), now - 1000);
   await repo.device("y".repeat(64));
   await repo.aggregates(now);
-  // In jeder Transaktion ist die erste Anweisung der Rollenwechsel mit Prüfung von current_user
-  const stmts = seen.filter((q) => !/^(begin|commit|rollback|start transaction|set transaction)/i.test(q));
-  const isRole = (q) => /set_config\('role'/.test(q) && /current_user/.test(q);
-  let expectRole = true;
+  // In jeder Transaktion: 1. Anweisung = Rollenwechsel (ohne current_user), 2. Anweisung = getrennte Kontrolle von current_user
+  const isTx = (q) => /^(begin|commit|rollback|start transaction|set transaction)/i.test(q);
+  const isSwitch = (q) => /set_config\('role'/.test(q) && !/current_user/.test(q);
+  const isCheck = (q) => /^select current_user as u$/i.test(q);
+  let pos = -1, txs = 0;
   for (const q of seen) {
-    if (/^(begin|start transaction)/i.test(q)) expectRole = true;
-    else if (/^(commit|rollback)/i.test(q)) continue;
-    else if (expectRole) {
-      expect(isRole(q), "erste Anweisung der Transaktion: " + q).toBe(true);
-      expectRole = false;
+    if (/^(begin|start transaction)/i.test(q)) (pos = 0), txs++;
+    else if (isTx(q)) continue;
+    else {
+      if (pos === 0) expect(isSwitch(q), "erste Anweisung der Transaktion: " + q).toBe(true);
+      if (pos === 1) expect(isCheck(q), "zweite Anweisung der Transaktion: " + q).toBe(true);
+      pos++;
     }
   }
-  expect(stmts.filter(isRole).length).toBeGreaterThanOrEqual(3);
-  expect(seen.some((q) => /^begin/i.test(q))).toBe(true);
+  expect(txs).toBeGreaterThanOrEqual(3);
   await sql.end();
+
+  // Fehlgeschlagener Rollenwechsel (echte Datenbank, Rolle fehlt): nach dem Wechselversuch folgt keine weitere Anweisung
+  await env.sql.unsafe("alter role management_ai rename to management_ai_weg");
+  try {
+    const seen2 = [];
+    const sql2 = postgres(`postgres://postgres@127.0.0.1:${port}/postgres`, { prepare: false, fetch_types: false, max: 1, onnotice: () => {}, debug: (_c, q) => seen2.push(q.replace(/\s+/g, " ").trim()) });
+    const repo2 = pgRepo(sql2, TEST_MAPPING, KPI_KEYS);
+    await expect(repo2.device("y".repeat(64))).rejects.toThrow();
+    await expect(repo2.redeem("z".repeat(64), { name: "x", tokenHash: "w".repeat(64), now })).rejects.toThrow();
+    expect(await repo2.aggregates(now)).toEqual([]);
+    const body2 = seen2.filter((q) => !isTx(q));
+    expect(body2.length).toBeGreaterThan(0);
+    expect(body2.every(isSwitch), "nach fehlgeschlagenem Wechsel nichts weiter: " + body2.join(" | ")).toBe(true);
+    await sql2.end();
+  } finally {
+    await env.sql.unsafe("alter role management_ai_weg rename to management_ai");
+  }
+
+  // Wechsel scheinbar erfolgreich, aber current_user stimmt nicht: Ausnahme, keine weitere Anweisung (nachgebildete Verbindung)
+  const sent = [];
+  const fake = (rows) => {
+    const t = (strings) => {
+      const q = strings.join("?").replace(/\s+/g, " ").trim();
+      sent.push(q);
+      return Promise.resolve(/current_user/.test(q) ? [{ u: "postgres" }] : rows);
+    };
+    return t;
+  };
+  const stub = { begin: async (a, b) => (typeof a === "function" ? a : b)(fake([{ revoked_at: null }])) };
+  const repo3 = pgRepo(stub, TEST_MAPPING, KPI_KEYS);
+  await expect(repo3.device("y".repeat(64))).rejects.toThrow("Rollenwechsel fehlgeschlagen");
+  await expect(repo3.redeem("z".repeat(64), { name: "x", tokenHash: "w".repeat(64), now })).rejects.toThrow("Rollenwechsel fehlgeschlagen");
+  expect(await repo3.aggregates(now)).toEqual([]);
+  expect(sent.every((q) => isSwitch(q) || /current_user/.test(q)), sent.join(" | ")).toBe(true);
   // Ohne möglichen Rollenwechsel → 503, keine Werte, nichts als postgres gelesen
   const tok = await newToken();
   // Rollenwechsel unmöglich machen (Rolle vorübergehend umbenannt; in der Testumgebung ist postgres Superuser, daher kein „revoke“)
