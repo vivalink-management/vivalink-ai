@@ -93,5 +93,19 @@ Die Gegenstelle **berechnet nichts selbst**. Sie liest ausschließlich die Auswe
   - Ein zusätzliches Supabase-Testprojekt braucht einen freien Platz (höchstens 2 aktive Free-Projekte).
 - **Bitte vor Schritt 5 prüfen:** <ul><li>Supabase-Tarif und Projektgrenzen (Anzahl Edge Functions, Aufrufe).</li><li>Ob die zugeordneten Views mit `security_invoker` laufen. Dann bräuchte die Rolle Leserechte auf Basistabellen, was nicht gewollt ist; solche Auswertungen würden übersprungen.</li></ul>
 
+## Bereitstellungspaket (26.11.2026)
+Erzeugt mit `node scripts/verwaltung.mjs paket <mapping> <zusatz.sql> <ziel> --rls-md5=…`. Die schemaspezifischen Dateien liegen nur im privaten Repository.
+
+| Datei | Zweck |
+|---|---|
+| `1-probelauf.sql` | Einrichtung probeweise, Prüfung, ROLLBACK |
+| `2-einrichtung.sql` | dieselben Prüfungen; COMMIT nur bei vollständigem Erfolg, sonst wird nichts gespeichert; bereits eingerichtet → keine Änderung |
+| `3-edge-function-index.ts` | Edge Function als EINE Datei für den Dashboard-Editor (verify_jwt aus) |
+| `4-kopplungscode.sql` | Kopplungscode (8 Ziffern, 10 Minuten) |
+| `5-abgleich.sql` | aktuelle Werte zum Vergleich mit dem Admin-Dashboard (nur lesend) |
+| `geraete.sql` / `widerruf.sql` / `rueckbau.sql` | Geräte anzeigen, alle Zugänge sperren, Anbindung vollständig entfernen |
+
+Die App-Konfiguration prüft automatisch (`check:syntax`), dass jede eingetragene Adresse HTTPS nutzt und in der Sicherheitsrichtlinie (CSP) erlaubt ist.
+
 ## Rückbau
 `drop schema management_ai cascade; drop owned by management_ai; drop role management_ai;` und Edge Function löschen (in der Testumgebung automatisch geprüft: die Daten und Auswertungen der Verwaltung bleiben unverändert). Die Vivalink-Plattform und die App sind davon nicht betroffen; bereits übernommene Kennzahlen bleiben in der Management AI erhalten.

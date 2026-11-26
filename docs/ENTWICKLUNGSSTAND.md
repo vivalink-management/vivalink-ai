@@ -79,7 +79,10 @@ Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
 - **Probelauf ohne bleibende Wirkung** liegt als `verwaltung/probelauf.sql` vor (Ersatz für ein Supabase-Testprojekt im Free-Tarif). Er richtet alles ein, prüft es und nimmt alles zurück; die Meldung enthält nur ja/nein. Ausführen nur mit Freigabe.
 - **Offen:**
   - ✅ zweite Bestandsaufnahme ausgewertet (Admin-Auswertungen nur mit Admin-Anmeldung nutzbar → eigene Zählungen mit denselben Filtern)
-  - Probelauf: grundsätzlich freigegeben (26.11.2026), `verwaltung/probelauf.sql` im privaten Repository; Gründer führt ihn selbst aus
+  - ✅ Probelauf in der produktiven Datenbank erfolgreich (26.11.2026): GESAMT OK, alles zurückgenommen.
+  - Ereignistrigger: issue_pg_graphql_access liegt in der aktuellen Supabase-Form vor, ensure_rls (RLS automatisch aktivieren) wird nur mit Prüfsumme und Inhaltsnachweis anerkannt.
+  - **Bereitstellungspaket fertig und getestet:** privates Repository, Ordner `bereitstellung/`, mit `ANLEITUNG.md`. Lebenszyklustest: Probelauf → Einrichtung → Edge Function → Abgleich → Widerruf → Rückbau.
+  - **Offen (Freigabe Gründer):** Einrichtung und Edge Function in Supabase, danach App-Version mit der Adresse der Edge Function.
   - Testkonten mit Nutzerrolle: nicht bekannt → gekennzeichnet (keine erfundenen Merkmale)
   - Einrichtung (Freigabe)
 - **Kosten** (Stand 26.11.2026, offizielle Supabase-Angaben):

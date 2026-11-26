@@ -123,7 +123,7 @@ order by 1, 2;
    Alle Fehler werden im DO-Block abgefangen, damit das abschließende ROLLBACK immer ausgeführt wird; selbst wenn
    nicht, wird eine abgebrochene Transaktion nie bestätigt. Ausgegeben werden nur Prüfungen (ja/nein/Fehlertext),
    keine Kennzahlen und keine Daten. */
-const FINGERPRINT = `(select md5(coalesce(string_agg(x, '|' order by x), '')) from (
+const FP = (ohne) => `(select md5(coalesce(string_agg(x, '|' order by x), '')) from (
       select 'c:' || n.nspname || '.' || c.relname || ':' || c.relkind::text || ':' || coalesce(c.relacl::text, '') || ':' || c.relrowsecurity::text || ':' || c.relforcerowsecurity::text as x
         from pg_class c join pg_namespace n on n.oid = c.relnamespace
        where n.nspname not in ('pg_catalog', 'information_schema', 'pg_toast') and n.nspname not like 'pg\\_temp%' and n.nspname not like 'pg\\_toast\\_temp%'
@@ -136,7 +136,7 @@ const FINGERPRINT = `(select md5(coalesce(string_agg(x, '|' order by x), '')) fr
       union all
       select 'r:' || rolname || ':' || rolsuper::text || ':' || rolcanlogin::text || ':' || rolbypassrls::text from pg_roles
       union all
-      select 'm:' || roleid::text || '>' || member::text from pg_auth_members
+      select 'm:' || pg_get_userbyid(roleid) || '>' || pg_get_userbyid(member) from pg_auth_members
       union all
       select 'p:' || schemaname || '.' || tablename || '.' || policyname || ':' || coalesce(qual, '') || ':' || coalesce(with_check, '') from pg_policies
       union all
@@ -145,8 +145,10 @@ const FINGERPRINT = `(select md5(coalesce(string_agg(x, '|' order by x), '')) fr
       select 'e:' || evtname || ':' || evtenabled::text from pg_event_trigger
       union all
       select 'd:' || defaclrole::text || ':' || defaclnamespace::text || ':' || defaclobjtype::text || ':' || coalesce(defaclacl::text, '') from pg_default_acl
-    ) s)`;
-export function dryRunSql(mapping, extraSql = [], { rlsAutoMd5 = [] } = {}) {
+    ) s${ohne ? " where x !~ 'management_ai'" : ""})`;
+const FINGERPRINT = FP(false);
+export function dryRunSql(mapping, extraSql = [], { rlsAutoMd5 = [], einrichtung = false } = {}) {
+  const E = einrichtung; // true: dauerhafte Einrichtung (COMMIT nur bei vollständigem Erfolg), false: Probelauf (ROLLBACK)
   for (const h of rlsAutoMd5) if (!/^[0-9a-f]{32}$/.test(h)) throw new Error("Ungültige Prüfsumme");
   const M = parseMapping(mapping, KPI_KEYS);
   if (M.errors.length) throw new Error("mapping.json fehlerhaft: " + M.errors.join("; "));
@@ -174,7 +176,15 @@ export function dryRunSql(mapping, extraSql = [], { rlsAutoMd5 = [] } = {}) {
     end;`;
     })
     .join("\n");
-  return `-- Vivalink Management AI: PROBELAUF der Verwaltungsanbindung – ohne bleibende Wirkung.
+  const kopf = E
+    ? `-- Vivalink Management AI: DAUERHAFTE EINRICHTUNG der Verwaltungsanbindung (nur nach ausdrücklicher Freigabe ausführen).
+-- Gleiche Prüfungen wie der Probelauf. Gespeichert wird NUR, wenn alle Prüfungen bestehen; sonst wird innerhalb der
+-- Transaktion alles zurückgenommen und das abschließende COMMIT speichert nichts. Neue Objekte nur im Schema und in der
+-- Rolle management_ai; bestehende Tabellen, Funktionen, Rechte und Daten werden nicht verändert.
+-- Bereits eingerichtet → Abbruch ohne Änderung (für eine Neueinrichtung zuerst den Rückbau ausführen).
+`
+    : "";
+  return `${kopf}-- Vivalink Management AI: ${E ? "Einrichtung" : "PROBELAUF"} der Verwaltungsanbindung${E ? "" : " – ohne bleibende Wirkung"}.
 -- Läuft vollständig in einer ausdrücklich gestarteten Transaktion, die am Ende mit ROLLBACK zurückgenommen wird.
 -- Schreibt in keine bestehende Tabelle und ruft keine Zahlungs-, Buchungs-, Benachrichtigungs- oder Netzwerkfunktionen auf.
 -- Ereignistrigger werden vorab geprüft (unbekannte → Abbruch ohne Änderung). Die Teilnachweise (Fingerabdruck,
@@ -197,6 +207,7 @@ declare
   api boolean;
   schreib bigint;
   schreib0 bigint;
+  vorher_ohne text;
   et_bekannt int;
   et_unbekannt int;
   et_namen text;
@@ -209,6 +220,7 @@ begin
   -- Schreibzähler zu Beginn (enthält ggf. noch nicht verbuchte Vorgänge früherer Abfragen – deshalb zählt die Differenz)
   select coalesce(sum(n_tup_ins + n_tup_upd + n_tup_del), 0) into schreib0 from pg_stat_xact_user_tables;
   vorher := ${FINGERPRINT};
+  vorher_ohne := ${FP(true)};
   -- Ereignistrigger (laufen bei Strukturänderungen mit) VOR jeder Änderung prüfen – nicht nur nach Namen, sondern nach
   -- tatsächlicher Zuordnung. Als unbedenklich gilt ein aktiver Ereignistrigger nur, wenn ALLES zutrifft:
   --  * Name, Ereignis und Funktion entsprechen genau dem Supabase-Standard (Funktion im Schema extensions, erwarteter Name),
@@ -298,14 +310,19 @@ begin
   if et_unbekannt > 0 then
     fehler := fehler + 1;
     raise exception 'vl_probelauf_et';
-  end if;
+  end if;${E ? `
+  if exists (select 1 from pg_namespace where nspname = 'management_ai') or exists (select 1 from pg_roles where rolname = 'management_ai') then
+    zeilen := zeilen || 'Bereits eingerichtet|ja – nichts verändert (für eine Neueinrichtung zuerst den Rückbau ausführen)'::text;
+    fehler := fehler + 1;
+    raise exception 'vl_probelauf_et';
+  end if;` : ""}
   -- Sicherungspunkt: alles in diesem Block wird am Ende durch eine absichtliche Ausnahme zurückgenommen
   begin
     begin
       execute ${inner}${body}${inner};
-      zeilen := zeilen || 'Einrichtung (probeweise)|ok'::text;
+      zeilen := zeilen || '${E ? "Einrichtung" : "Einrichtung (probeweise)"}|ok'::text;
     exception when others then
-      zeilen := zeilen || ('Einrichtung (probeweise)|FEHLER E-EINR (SQLSTATE ' || sqlstate || ')'); fehler := fehler + 1;
+      zeilen := zeilen || ('${E ? "Einrichtung" : "Einrichtung (probeweise)"}|FEHLER E-EINR (SQLSTATE ' || sqlstate || ')'); fehler := fehler + 1;
       raise exception 'vl_probelauf_zuruecknehmen';
     end;
     -- Kennzahlen als eingeschränkte Rolle lesen
@@ -321,7 +338,7 @@ ${keyChecks}
     zeilen := zeilen || ('Rechte: weitere lesbare Tabellen der Verwaltung|' || case when basis = 0 then 'keine' else basis || ' (PROBLEM)' end);
     zeilen := zeilen || ('Rechte: Zugriff über die Supabase-API|' || case when api then 'ja (PROBLEM)' else 'nein' end);
     if basis > 0 or api then fehler := fehler + 1; end if;
-    raise exception 'vl_probelauf_zuruecknehmen';
+    ${E ? "-- Einrichtung: nur bei einem Fehler zurücknehmen, sonst bleibt alles für das abschließende COMMIT erhalten\n    if fehler > 0 then raise exception 'vl_probelauf_zuruecknehmen'; end if;" : "raise exception 'vl_probelauf_zuruecknehmen';"}
   exception when others then
     if sqlerrm <> 'vl_probelauf_zuruecknehmen' then
       zeilen := zeilen || ('Prüfung abgebrochen|FEHLER E-PRF (SQLSTATE ' || sqlstate || ')'); fehler := fehler + 1;
@@ -330,23 +347,26 @@ ${keyChecks}
   -- Nachweise nach der Rücknahme des Sicherungspunkts
   nachher := ${FINGERPRINT};
   select coalesce(sum(n_tup_ins + n_tup_upd + n_tup_del), 0) - schreib0 into schreib from pg_stat_xact_user_tables;
-  zeilen := zeilen || ('Teilnachweis: Tabellen, Funktionen, Rollen, Rechte, Richtlinien, Trigger nach der Rücknahme unverändert|' || case when vorher = nachher then 'ja' else 'NEIN (PROBLEM)' end);
+  ${E ? `zeilen := zeilen || ('Teilnachweis: bestehende Tabellen, Funktionen, Rollen, Rechte, Richtlinien, Trigger unverändert (neu nur Schema und Rolle management_ai)|' || case when vorher_ohne = ${FP(true)} then 'ja' else 'NEIN (PROBLEM)' end);
+  if vorher_ohne <> ${FP(true)} then fehler := fehler + 1; end if;` : "zeilen := zeilen || ('Teilnachweis: Tabellen, Funktionen, Rollen, Rechte, Richtlinien, Trigger nach der Rücknahme unverändert|' || case when vorher = nachher then 'ja' else 'NEIN (PROBLEM)' end);"}
   zeilen := zeilen || ('Teilnachweis: Schreibvorgänge in Tabellen (auch Warteschlangen für Benachrichtigungen/Netzwerk)|' || schreib);
-  zeilen := zeilen || ('Hinweis|Die Teilnachweise decken nur die geprüften Bereiche ab und sind kein vollständiger Nachweis für das Ausbleiben jeder Nebenwirkung; maßgeblich ist das abschließende ROLLBACK.'::text);
-  if vorher <> nachher or schreib <> 0 then fehler := fehler + 1; end if;
+  zeilen := zeilen || ('Hinweis|Die Teilnachweise decken nur die geprüften Bereiche ab und sind kein vollständiger Nachweis für das Ausbleiben jeder Nebenwirkung; maßgeblich ist das abschließende ${E ? "COMMIT nur bei Erfolg" : "ROLLBACK"}.'::text);
+  if ${E ? "" : "vorher <> nachher or "}schreib <> 0 then fehler := fehler + 1; end if;${E ? `
+  -- Problem erst nach der Einrichtung festgestellt → alles zurücknehmen (gesamter äußerer Block)
+  if fehler > 0 then raise exception 'vl_einrichtung_zuruecknehmen'; end if;` : ""}
   exception when others then
     -- Sicherheitsnetz: jeder unerwartete Fehler wird gemeldet (nur Code), damit das abschließende ROLLBACK sicher ausgeführt wird
-    if sqlerrm <> 'vl_probelauf_et' then
+    if sqlerrm not in ('vl_probelauf_et', 'vl_einrichtung_zuruecknehmen') then
       zeilen := zeilen || ('Unerwarteter Fehler|FEHLER E-UNERW (SQLSTATE ' || sqlstate || ')'); fehler := fehler + 1;
     end if;
  end;
-  zeilen := zeilen || ('GESAMT|' || case when fehler = 0 then 'OK – alles wird mit ROLLBACK zurückgenommen' else 'PROBLEM (' || fehler || ') – alles wird mit ROLLBACK zurückgenommen' end);
+  zeilen := zeilen || ('GESAMT|' || case when fehler = 0 then '${E ? "OK – Anbindung eingerichtet (wird mit COMMIT dauerhaft gespeichert)" : "OK – alles wird mit ROLLBACK zurückgenommen"}' else 'PROBLEM (' || fehler || ') – ${E ? "nichts eingerichtet, alle Änderungen zurückgenommen" : "alles wird mit ROLLBACK zurückgenommen"}' end);
   -- Ergebnis ohne jede Strukturänderung weitergeben (transaktionslokale Einstellung, verschwindet mit dem ROLLBACK)
   perform set_config('vl.probelauf', array_to_string(zeilen, chr(10)), true);
 end ${tag};
 select split_part(z, '|', 1) as "Prüfung", substr(z, length(split_part(z, '|', 1)) + 2) as "Ergebnis"
   from unnest(string_to_array(current_setting('vl.probelauf', true), chr(10))) with ordinality as t(z, nr) order by nr;
-rollback;
+${E ? "commit;" : "rollback;"}
 `;
 }
 
@@ -381,6 +401,95 @@ order by 1;
 `;
 }
 
+/* ---------- Bereitstellungspaket (alles nur als Text; ausgeführt wird nichts) ---------- */
+
+/* Edge Function als EINE Datei (zum Einfügen im Supabase-Dashboard: Edge Functions › Deploy a new function › Via Editor).
+   Enthält dieselbe, getestete Logik wie kpi-core.mjs und kpi-pg.mjs sowie die Zuordnung. */
+export function edgeSingleFile(mapping) {
+  const M = parseMapping(mapping, KPI_KEYS);
+  if (M.errors.length) throw new Error("mapping.json fehlerhaft: " + M.errors.join("; "));
+  const strip = (src) =>
+    src
+      .split("\n")
+      .filter((l) => !/^import\s/.test(l))
+      .join("\n")
+      .replace(/^export\s+(async\s+function|function|const)\s/gm, "$1 ");
+  const core = strip(readFileSync(join(ROOT, "server/kpi-core.mjs"), "utf8"));
+  const pg = strip(readFileSync(join(ROOT, "server/kpi-pg.mjs"), "utf8"));
+  const main = readFileSync(join(FN, "index.ts"), "utf8")
+    .split("\n")
+    .filter((l) => !/^import\s.*from\s+"\.\/(kpi-core|kpi-pg)\.mjs"/.test(l) && !/^import mapping from/.test(l))
+    .join("\n");
+  return `// Vivalink Management AI – Supabase Edge Function „management-kpis“ (EINE Datei, automatisch erzeugt; nicht von Hand ändern).
+// Bereitstellung nur nach ausdrücklicher Freigabe. Einstellung im Dashboard: JWT-Prüfung AUS (verify_jwt = false),
+// weil sich die App mit einem widerrufbaren Gerätezugang anmeldet. SUPABASE_DB_URL stellt Supabase automatisch bereit.
+// @ts-nocheck
+${main.replace(/^\/\/.*\n/gm, "").split("\n").filter((l) => /^import\s/.test(l)).join("\n")}
+// ---- Zuordnung der Kennzahlen (aus mapping.json) ----
+const mapping = ${JSON.stringify(mapping, null, 2)};
+// ---- Logik aus server/kpi-core.mjs ----
+${core}
+// ---- Datenbankzugriff aus server/kpi-pg.mjs ----
+${pg}
+// ---- Edge Function (aus server/supabase/functions/management-kpis/index.ts) ----
+${main.replace(/^\/\/.*\n/gm, "").split("\n").filter((l) => !/^import\s/.test(l)).join("\n")}
+`;
+}
+
+/* Rückbau: entfernt ausschließlich Schema und Rolle management_ai (bestehende Objekte bleiben unberührt) */
+export const RUECKBAU_SQL = `-- Vivalink Management AI: RÜCKBAU der Verwaltungsanbindung (nur nach Entscheidung des Gründers ausführen).
+-- Entfernt nur das Schema management_ai (Gerätezugänge, Kopplungscodes, Kennzahl-Auswertungen) und die Rolle management_ai.
+-- Bestehende Tabellen, Funktionen und Daten der Verwaltung werden nicht verändert. Danach die Edge Function löschen.
+begin;
+set local lock_timeout = '3s';
+drop schema if exists management_ai cascade;
+do $$ begin
+  if exists (select 1 from pg_roles where rolname = 'management_ai') then
+    execute 'drop owned by management_ai';
+    execute 'drop role management_ai';
+  end if;
+end $$;
+select 'Schema management_ai vorhanden' as "Prüfung", case when exists (select 1 from pg_namespace where nspname = 'management_ai') then 'ja (PROBLEM)' else 'nein' end as "Ergebnis"
+union all
+select 'Rolle management_ai vorhanden', case when exists (select 1 from pg_roles where rolname = 'management_ai') then 'ja (PROBLEM)' else 'nein' end;
+commit;
+`;
+
+/* Kopplungscode (8 Ziffern, 10 Minuten gültig; gespeichert wird nur der Hash) */
+export const KOPPLUNGSCODE_SQL = `-- Vivalink Management AI: Kopplungscode erzeugen (8 Ziffern, 10 Minuten gültig, nur einmal verwendbar).
+select management_ai.new_pair_code() as "Kopplungscode";
+`;
+
+/* Geräte anzeigen bzw. alle Zugänge widerrufen */
+export const GERAETE_SQL = `-- Vivalink Management AI: gekoppelte Geräte (Name = interne Gerätekennung der App, keine Personendaten).
+select name as "Gerät", created_at as "gekoppelt am", last_used_at as "zuletzt abgerufen", revoked_at as "widerrufen am"
+  from management_ai.devices order by created_at;
+`;
+export const WIDERRUF_SQL = `-- Vivalink Management AI: ALLE Gerätezugänge sofort widerrufen (die App ruft danach nichts mehr ab).
+update management_ai.devices set revoked_at = now() where revoked_at is null;
+select count(*) as "aktive Zugänge" from management_ai.devices where revoked_at is null;
+`;
+
+/* Abgleich mit dem Admin-Dashboard: zeigt die aktuellen Werte genau so, wie die Management AI sie erhält.
+   Die Zahlen sieht nur, wer die Abfrage ausführt (Gründer im SQL-Editor); sie werden nirgends gespeichert. */
+const KPI_LABELS = { reg_total: "Registrierungen gesamt (ohne Admins)", reg_week: "Neue Registrierungen (7 Tage)", active_users: "Aktive Nutzer (30 Tage)", signups: "Anmeldungen nächstes Meetup", attend: "Teilnehmer letztes Meetup", noshow: "Absagen letztes Meetup", invites: "Einladungen (7 Tage)", invite_rate: "Annahmequote Einladungen (30 Tage, %)", payments: "Zahlungen (30 Tage, €)", refunds: "Erstattungen (30 Tage, €)", inc: "Einnahmen", exp: "Ausgaben", meetup_days: "Tage bis zum nächsten Meetup", meetup_capacity: "Plätze nächstes Meetup" };
+export function abgleichSql(mapping) {
+  const M = parseMapping(mapping, KPI_KEYS);
+  if (M.errors.length) throw new Error("mapping.json fehlerhaft: " + M.errors.join("; "));
+  const q = (x) => x.replace(/'/g, "''");
+  const parts = M.entries.map((e) => {
+    const src = e.source.split(".").map((x) => `"${x}"`).join(".") + (e.fn ? "()" : "");
+    const v = e.snapshot ? `(select "${e.value}"::text from ${src} limit 1)` : `(select "${e.value}"::text from ${src} order by "${e.date}" desc limit 1)`;
+    return `select ${M.entries.indexOf(e)} as nr, '${q(KPI_LABELS[e.key] || e.key)}' as "Kennzahl", ${v} as "Wert heute"`;
+  });
+  return `-- Vivalink Management AI: Abgleich mit dem Admin-Dashboard (nur lesend). Zeigt die Werte, die die Management AI erhält.
+-- Hinweis: Admin-Konten sind ausgeschlossen; ob weitere Testkonten enthalten sind, ist nicht bekannt.
+select "Kennzahl", "Wert heute" from (
+${parts.join("\n union all\n")}
+) t order by nr;
+`;
+}
+
 export function bundle(mapping, dir) {
   const fn = join(dir, "supabase/functions/management-kpis");
   mkdirSync(fn, { recursive: true });
@@ -399,7 +508,27 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const [cmd, a, b] = process.argv.slice(2);
   if (cmd === "inventory") process.stdout.write(INVENTORY_SQL);
   else if (cmd === "dryrun") process.stdout.write(dryRunSql(load(a), process.argv.slice(4).filter((f) => !f.startsWith("--rls-md5=")).map((f) => readFileSync(f, "utf8")), { rlsAutoMd5: process.argv.slice(4).filter((f) => f.startsWith("--rls-md5=")).map((f) => f.slice(10)) }));
-  else if (cmd === "etdiag") process.stdout.write(eventTriggerDiagSql());
+  else if (cmd === "paket") {
+    // node scripts/verwaltung.mjs paket <mapping> <zusatz.sql> <zielordner> [--rls-md5=…]
+    const args = process.argv.slice(3);
+    const md5 = args.filter((x) => x.startsWith("--rls-md5=")).map((x) => x.slice(10));
+    const [mp, zus, ziel] = args.filter((x) => !x.startsWith("--"));
+    const map = load(mp),
+      extra = [readFileSync(zus, "utf8")];
+    mkdirSync(ziel, { recursive: true });
+    const files = {
+      "1-probelauf.sql": dryRunSql(map, extra, { rlsAutoMd5: md5 }),
+      "2-einrichtung.sql": dryRunSql(map, extra, { rlsAutoMd5: md5, einrichtung: true }),
+      "3-edge-function-index.ts": edgeSingleFile(map),
+      "4-kopplungscode.sql": KOPPLUNGSCODE_SQL,
+      "5-abgleich.sql": abgleichSql(map),
+      "geraete.sql": GERAETE_SQL,
+      "widerruf.sql": WIDERRUF_SQL,
+      "rueckbau.sql": RUECKBAU_SQL,
+    };
+    for (const [f, t] of Object.entries(files)) writeFileSync(join(ziel, f), t);
+    console.log("Paket: " + Object.keys(files).join(", "));
+  } else if (cmd === "etdiag") process.stdout.write(eventTriggerDiagSql());
   else if (cmd === "facts") process.stdout.write(factsSql(JSON.parse(readFileSync(a, "utf8"))));
   else if (cmd === "grants") process.stdout.write(grantsSql(load(a)));
   else if (cmd === "check") {
