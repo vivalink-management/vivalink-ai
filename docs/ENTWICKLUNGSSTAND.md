@@ -1,7 +1,7 @@
 # Zentrale Entwicklungsübersicht: Vivalink Management AI
 
 **Fortsetzungsdokument für alle weiteren Entwicklungsaufträge.** Bei jedem Auftrag zuerst lesen und am Ende aktualisieren. Arbeitsweise (Tests, Gerätetests, Grenzen): **`CLAUDE.md`**.
-Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.7.1** (`main`, veröffentlicht am 25.11.2026) · Entwicklungszweig: **Version 2.8.0** (Meetup-Karte automatisch, noch nicht veröffentlicht)
+Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.7.1** (`main`, veröffentlicht am 25.11.2026) · Entwicklungszweig: **Version 2.8.1** (mehr Selbstständigkeit, Meetup-Karte automatisch; noch nicht veröffentlicht)
 
 ## 1. Umgesetzt und getestet (noch nicht veröffentlicht)
 
@@ -74,11 +74,13 @@ Stand: 25.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
 - Erste Bestandsaufnahme ausgewertet.
 - Die Zuordnung deckt 9 von 12 Kennzahlen ab, dazu das nächste Meetup (Datum, Plätze).
 - In der getrennten Testumgebung auf der nachgebildeten echten Struktur geprüft, inklusive Sonderfällen: Reservierungen, freigegebene Vormerkungen, Teilerstattungen, Tester, Beispiel-Meetups.
-- Schemaspezifische Dateien liegen lokal in `private/` als eigenes Git-Repository und sollen in ein privates GitHub-Repository; sie stehen nie im öffentlichen Repository.
+- Schemaspezifische Dateien liegen im **privaten Repository `vivalink-management/vivalink-verwaltung-intern`**. Sie werden in `vivalink-ai` als Ordner `private/` ausgecheckt (per `.gitignore` ausgeschlossen) und stehen nie im öffentlichen Repository.
+- **Zweite Bestandsaufnahme (datensparsam)** liegt im privaten Repository als `verwaltung/bestandsaufnahme-2.sql`. Sie gibt keinen Programmcode aus, nur Treffer aus einer vorgegebenen Begriffsliste und kurze Statuscodes.
+- **Probelauf ohne bleibende Wirkung** liegt als `verwaltung/probelauf.sql` vor (Ersatz für ein Supabase-Testprojekt im Free-Tarif). Er richtet alles ein, prüft es und nimmt alles zurück; die Meldung enthält nur ja/nein. Ausführen nur mit Freigabe.
 - **Offen:**
   - eng begrenzte zweite Bestandsaufnahme (Admin-Prüfung, Testkonten, Statuswerte)
-  - privates Repository anlegen
-  - Supabase-Tarif und Projektzahl klären
+  - Probelauf (Freigabe)
+  - Einrichtung (Freigabe)
 - **Kosten** (Stand 26.11.2026, offizielle Supabase-Angaben):
   - Free-Tarif: 500.000 Aufrufe von Edge Functions pro Monat je Organisation, ohne Nachberechnung; erwartet sind etwa 250.
   - Höchstens 2 aktive Free-Projekte; Free-Projekte pausieren nach 1 Woche Inaktivität.

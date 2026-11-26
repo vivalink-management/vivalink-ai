@@ -1,6 +1,17 @@
 # Änderungsprotokoll
 
-## 2.8.0 (Entwicklungszweig, noch nicht veröffentlicht) – Meetup-Karte automatisch, Verwaltungsanbindung verfeinert
+## 2.8.1 (Entwicklungszweig, noch nicht veröffentlicht) – mehr Selbstständigkeit, Verwaltungsanbindung verfeinert
+
+- **Strategische Empfehlungen aus echten Kennzahlen:** Absagequote, Erstattungsquote, Aktivierung der Registrierten, Annahmequote der Einladungen. Nur mit aktuellen Werten, Schwellen als Annahme gekennzeichnet.
+- **Instagram:** Die wöchentlichen Entwürfe erhalten automatisch einen Schwerpunkt aus den Kennzahlen (z. B. Werbung für ein schwach gefülltes Meetup); Zahlen werden nicht veröffentlicht.
+- **Weniger wiederholte Hinweise:** Nie genutzte Kennzahlen ohne Ziel werden nicht dauernd nachgefragt; automatisch gelieferte Werte erzeugen keine Eingabe-Hinweise.
+- **Selbstreparatur erweitert:** exakt doppelte Kennzahl-Einträge (z. B. nach dem Zusammenführen der Geräte) und Konflikte zu gelöschten Einträgen, mit Rückgängig-Punkt.
+- **Verwaltung:**
+  - zweite Bestandsaufnahme ohne Ausgabe von Programmcode (nur Treffer aus einer vorgegebenen Begriffsliste)
+  - Probelauf ohne bleibende Wirkung für den Free-Tarif
+- **Aus 2.8.0:** Meetup-Karte automatisch aus der Verwaltung (eigene Eingaben haben Vorrang).
+
+**2.8.0 (nicht veröffentlicht):**
 
 - **Nächstes Meetup automatisch aus der Verwaltung** (sobald angebunden):
   - Datum und Ziel (= Plätze) werden eingetragen, Verschiebungen übernommen
