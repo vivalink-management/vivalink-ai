@@ -199,21 +199,53 @@ declare
   schreib0 bigint;
   et_bekannt int;
   et_unbekannt int;
+  et_namen text;
 begin
  begin
 
   -- Schreibzähler zu Beginn (enthält ggf. noch nicht verbuchte Vorgänge früherer Abfragen – deshalb zählt die Differenz)
   select coalesce(sum(n_tup_ins + n_tup_upd + n_tup_del), 0) into schreib0 from pg_stat_xact_user_tables;
   vorher := ${FINGERPRINT};
-  -- Ereignistrigger (feuern bei Strukturänderungen) VOR jeder Änderung prüfen. Bekannt und unbedenklich sind die
-  -- Supabase-Standardtrigger: pgrst_* senden nur eine Benachrichtigung zum Neuladen des API-Schemas (wird erst beim
-  -- Bestätigen zugestellt, hier also nie); issue_* reagieren nur auf CREATE EXTENSION (kommt hier nicht vor).
-  -- Jeder andere aktive Ereignistrigger → Abbruch ohne jede Änderung (E-ET).
-  select count(*) filter (where evtname in ('pgrst_ddl_watch', 'pgrst_drop_watch', 'issue_pg_net_access', 'issue_pg_cron_access', 'issue_pg_graphql_access', 'issue_graphql_placeholder')),
-         count(*) filter (where evtname not in ('pgrst_ddl_watch', 'pgrst_drop_watch', 'issue_pg_net_access', 'issue_pg_cron_access', 'issue_pg_graphql_access', 'issue_graphql_placeholder'))
-    into et_bekannt, et_unbekannt from pg_event_trigger where evtenabled <> 'D';
-  zeilen := zeilen || ('Ereignistrigger: bekannte Supabase-Standardtrigger|' || et_bekannt);
-  zeilen := zeilen || ('Ereignistrigger: andere (würden bei Strukturänderungen laufen)|' || et_unbekannt || case when et_unbekannt > 0 then ' – ABBRUCH E-ET, nichts eingerichtet' else '' end);
+  -- Ereignistrigger (laufen bei Strukturänderungen mit) VOR jeder Änderung prüfen – nicht nur nach Namen, sondern nach
+  -- tatsächlicher Zuordnung. Als unbedenklich gilt ein aktiver Ereignistrigger nur, wenn ALLES zutrifft:
+  --  * Name, Ereignis und Funktion entsprechen genau dem Supabase-Standard (Funktion im Schema extensions, erwarteter Name),
+  --  * die Befehlsfilter (WHEN TAG) stimmen: issue_pg_net/cron nur CREATE EXTENSION, issue_graphql_placeholder nur
+  --    DROP EXTENSION, issue_pg_graphql_access nur CREATE FUNCTION,
+  --  * Trigger, die bei unseren Befehlen anspringen können (pgrst_ddl_watch, pgrst_drop_watch, issue_pg_graphql_access),
+  --    enthalten im Funktionsrumpf (ohne Kommentare und Zeichenketten) keine Netzwerk-, Datei- oder Hintergrundaufrufe
+  --    (http, net., dblink, pg_background, copy, lo_, pg_read, pg_write, pg_file); pgrst_* zusätzlich keine Schreib-/
+  --    Strukturbefehle und müssen eine Benachrichtigung (NOTIFY) enthalten. NOTIFY wird nur beim Bestätigen zugestellt.
+  -- Jeder andere, veränderte oder abweichend zugeordnete aktive Ereignistrigger → Abbruch ohne jede Änderung (E-ET).
+  select count(*) filter (where ok), count(*) filter (where not ok),
+         coalesce(string_agg(evtname, ', ' order by evtname) filter (where not ok and bekannt), '')
+    into et_bekannt, et_unbekannt, et_namen
+  from (
+    select e.evtname,
+      e.evtname in ('pgrst_ddl_watch', 'pgrst_drop_watch', 'issue_pg_net_access', 'issue_pg_cron_access', 'issue_pg_graphql_access', 'issue_graphql_placeholder') as bekannt,
+      coalesce(
+        n.nspname = 'extensions' and (
+          (e.evtname = 'pgrst_ddl_watch' and e.evtevent = 'ddl_command_end' and p.proname = 'pgrst_ddl_watch')
+          or (e.evtname = 'pgrst_drop_watch' and e.evtevent = 'sql_drop' and p.proname = 'pgrst_drop_watch')
+          or (e.evtname = 'issue_pg_net_access' and e.evtevent = 'ddl_command_end' and p.proname = 'grant_pg_net_access' and e.evttags is not null and e.evttags <@ array['CREATE EXTENSION'])
+          or (e.evtname = 'issue_pg_cron_access' and e.evtevent = 'ddl_command_end' and p.proname = 'grant_pg_cron_access' and e.evttags is not null and e.evttags <@ array['CREATE EXTENSION'])
+          or (e.evtname = 'issue_graphql_placeholder' and e.evtevent = 'sql_drop' and p.proname = 'set_graphql_placeholder' and e.evttags is not null and e.evttags <@ array['DROP EXTENSION'])
+          or (e.evtname = 'issue_pg_graphql_access' and e.evtevent = 'ddl_command_end' and p.proname = 'grant_pg_graphql_access' and e.evttags is not null and e.evttags <@ array['CREATE FUNCTION'])
+        )
+        and (e.evtname not in ('pgrst_ddl_watch', 'pgrst_drop_watch', 'issue_pg_graphql_access')
+             or (b.rumpf !~* '(\\mhttp|\\mnet\\.|\\mdblink|\\mpg_background|\\mcopy\\M|\\mlo_|\\mpg_read|\\mpg_write|\\mpg_file)'))
+        and (e.evtname not in ('pgrst_ddl_watch', 'pgrst_drop_watch')
+             or (b.rumpf ~* '\\mnotify\\M' and b.rumpf !~* '\\m(insert|update|delete|truncate|merge|create|alter|drop|grant|revoke|execute|perform|call|set_config|copy)\\M'))
+      , false) as ok
+    from pg_event_trigger e
+    join pg_proc p on p.oid = e.evtfoid
+    join pg_namespace n on n.oid = p.pronamespace
+    cross join lateral (select regexp_replace(regexp_replace(coalesce(p.prosrc, ''), '--[^\\n]*', '', 'g'), '''[^'']*''', '''''', 'g') as rumpf) b
+    where e.evtenabled <> 'D'
+  ) t;
+  zeilen := zeilen || ('Ereignistrigger: geprüft und unbedenklich (Supabase-Standard, Zuordnung und Inhalt passen)|' || et_bekannt);
+  zeilen := zeilen || ('Ereignistrigger: unbekannt oder verändert|' || et_unbekannt
+    || case when et_namen <> '' then ' (bekannter Name, aber abweichend: ' || et_namen || ')' else '' end
+    || case when et_unbekannt > 0 then ' – ABBRUCH E-ET, nichts eingerichtet' else '' end);
   if et_unbekannt > 0 then
     fehler := fehler + 1;
     raise exception 'vl_probelauf_et';

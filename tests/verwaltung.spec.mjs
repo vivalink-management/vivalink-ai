@@ -326,12 +326,12 @@ test("Zweite Bestandsaufnahme (nur Positivlisten): kein Programmcode, keine unbe
   await env.sql.unsafe("drop function public.admin_geheim(); drop table public.regeltest;");
 });
 
-test("Probelauf: ausdrückliche Transaktion mit ROLLBACK; leere Kennzahlen sind kein Fehler; Ereignistrigger geprüft; nur feste Fehlercodes", async ({}, info) => {
+test("Probelauf: ausdrückliche Transaktion mit ROLLBACK; leere Kennzahlen sind kein Fehler; Ereignistrigger nach Zuordnung und Inhalt geprüft; nur feste Fehlercodes", async ({}, info) => {
   serverOnly(info);
   test.setTimeout(120_000);
   const port = 54400 + info.parallelIndex;
   const fresh = async () => {
-    await env.sql.unsafe("drop database if exists probe");
+    await env.sql.unsafe("drop database if exists probe with (force)");
     await env.sql.unsafe("create database probe");
     const db = postgres(`postgres://postgres@127.0.0.1:${port}/probe`, { max: 1, onnotice: () => {} });
     for (const f of ["supabase-stub.sql", "fixture.sql"]) await db.unsafe(readFileSync(new URL("./verwaltung/" + f, import.meta.url), "utf8"));
@@ -356,7 +356,7 @@ test("Probelauf: ausdrückliche Transaktion mit ROLLBACK; leere Kennzahlen sind 
   };
   // Erlaubte Ausgabe: nur unsere festen Texte, Zahlen und Fehlercodes – nie Fehlertext der Datenbank
   const clean = (rows) => {
-    for (const r of rows) expect(r["Ergebnis"], r["Prüfung"]).toMatch(/^(ok|ja|nein|keine|\d+|funktioniert \((Werte vorhanden|derzeit keine Werte)\)|FEHLER E-(EINR|KZ|PRF|UNERW) \(SQLSTATE [0-9A-Z]{5}\)|\d+ – ABBRUCH E-ET, nichts eingerichtet|NEIN \(PROBLEM\)|\d+ \(PROBLEM\)|ja \(PROBLEM\)|Die Teilnachweise .*ROLLBACK\.|OK – alles wird mit ROLLBACK zurückgenommen|PROBLEM \(\d+\) – alles wird mit ROLLBACK zurückgenommen)$/);
+    for (const r of rows) expect(r["Ergebnis"], r["Prüfung"]).toMatch(/^(ok|ja|nein|keine|\d+|funktioniert \((Werte vorhanden|derzeit keine Werte)\)|FEHLER E-(EINR|KZ|PRF|UNERW) \(SQLSTATE [0-9A-Z]{5}\)|\d+( \(bekannter Name, aber abweichend: [a-z_, ]+\))? – ABBRUCH E-ET, nichts eingerichtet|NEIN \(PROBLEM\)|\d+ \(PROBLEM\)|ja \(PROBLEM\)|Die Teilnachweise .*ROLLBACK\.|OK – alles wird mit ROLLBACK zurückgenommen|PROBLEM \(\d+\) – alles wird mit ROLLBACK zurückgenommen)$/);
     expect(JSON.stringify(rows)).not.toMatch(/gibt_es_nicht|relation|column|does not exist|permission|@|Testperson/i);
   };
   const sql = dryRunSql(TEST_MAPPING);
@@ -365,7 +365,9 @@ test("Probelauf: ausdrückliche Transaktion mit ROLLBACK; leere Kennzahlen sind 
   expect(stmts.trim().startsWith("begin;")).toBe(true);
   expect(stmts.trim().endsWith("rollback;")).toBe(true);
   expect(stmts.replace(/on commit drop/gi, "").match(/\bcommit\b/gi)).toBeNull();
-  expect(stmts).not.toMatch(/\b(pg_notify|notify|http_|net\.|dblink|copy|pg_sleep|lo_export|nextval|setval)\b/i);
+  // keine AUFRUFE von Benachrichtigungs-, Netzwerk-, Datei- oder Sequenzfunktionen (die Wörter kommen nur als Suchmuster der Ereignistrigger-Prüfung vor)
+  expect(stmts).not.toMatch(/\b(pg_notify|dblink\w*|http_\w+|net\.\w+|pg_sleep|lo_export|lo_import|nextval|setval|pg_read_\w+|pg_write_\w+)\s*\(/i);
+  expect(stmts).not.toMatch(/^\s*(notify|listen|copy)\b/im);
   expect(stmts.match(/\|\|\s*sqlerrm/gi)).toBeNull(); // sqlerrm nur für interne Vergleiche, nie in der Ausgabe
 
   let db = await fresh();
@@ -410,42 +412,70 @@ test("Probelauf: ausdrückliche Transaktion mit ROLLBACK; leere Kennzahlen sind 
     expect(await snap(db)).toBe(before);
     expect(await frei(db)).toBe(true);
 
-    // 5) Bekannter Supabase-Ereignistrigger (sendet nur eine Benachrichtigung): läuft, Benachrichtigung wird nie zugestellt
-    await db.unsafe(`create function public.vl_et_notify() returns event_trigger language plpgsql as $$ begin perform pg_notify('pgrst', 'reload schema'); end $$;
-      create event trigger pgrst_ddl_watch on ddl_command_end execute function public.vl_et_notify();`);
+    // 5) Supabase-Standard-Ereignistrigger (realitätsnah nachgebildet): nach Zuordnung UND Inhalt geprüft → unbedenklich
+    await db.unsafe(readFileSync(new URL("./verwaltung/supabase-eventtrigger.sql", import.meta.url), "utf8"));
     const got = [];
     const listener = postgres(`postgres://postgres@127.0.0.1:${port}/probe`, { max: 1, onnotice: () => {} });
     await listener.listen("pgrst", (x) => got.push(x));
     before = await snap(db);
     r = await run(db, sql);
     clean(r.rows);
-    expect(r.by["Ereignistrigger: bekannte Supabase-Standardtrigger"]).toBe("1");
+    expect(r.by["Ereignistrigger: geprüft und unbedenklich (Supabase-Standard, Zuordnung und Inhalt passen)"]).toBe("6");
+    expect(r.by["Ereignistrigger: unbekannt oder verändert"]).toBe("0");
     expect(r.by["GESAMT"]).toMatch(/^OK/);
     await new Promise((x) => setTimeout(x, 500));
-    expect(got).toEqual([]); // keine Benachrichtigung – sie würde erst beim Bestätigen zugestellt
+    expect(got).toEqual([]); // Benachrichtigung „Schema neu laden“ wird ohne Bestätigung nie zugestellt
     await listener.end();
     expect(await snap(db)).toBe(before);
+    // Hilfsprüfung: Abbruch E-ET, Einrichtung nie versucht, nichts verändert, Protokolltabelle leer
+    await db.unsafe("create table public.vl_et_log (at timestamptz default now())");
+    const abort = async (variante, name) => {
+      await db.unsafe("delete from public.vl_et_log");
+      const b0 = await snap(db);
+      const x = await run(db, sql);
+      clean(x.rows);
+      expect(x.by["Ereignistrigger: unbekannt oder verändert"], variante).toMatch(new RegExp("^1 " + (name ? "\\(bekannter Name, aber abweichend: " + name + "\\) " : "") + "– ABBRUCH E-ET, nichts eingerichtet$"));
+      expect(x.by["Einrichtung (probeweise)"], variante).toBeUndefined();
+      expect(x.by["GESAMT"], variante).toMatch(/^PROBLEM/);
+      expect((await db`select count(*)::int n from public.vl_et_log`)[0].n, variante).toBe(0);
+      expect(await snap(db), variante).toBe(b0);
+      expect(await frei(db), variante).toBe(true);
+    };
+    // 5a) bekannter Name, aber veränderter Inhalt (schreibt zusätzlich in eine Tabelle)
+    const orig = (await db`select prosrc from pg_proc where proname = 'pgrst_ddl_watch' and pronamespace = 'extensions'::regnamespace`)[0].prosrc;
+    await db.unsafe(`create or replace function extensions.pgrst_ddl_watch() returns event_trigger language plpgsql as $f$ begin insert into public.vl_et_log default values; notify pgrst, 'reload schema'; end $f$`);
+    await abort("veränderter Inhalt", "pgrst_ddl_watch");
+    // 5b) bekannter Name, aber Netzwerkaufruf im Rumpf
+    await db.unsafe(`create or replace function extensions.pgrst_ddl_watch() returns event_trigger language plpgsql as $f$ begin if false then perform net.http_post('x'); end if; notify pgrst, 'reload schema'; end $f$`);
+    await abort("Netzwerkaufruf", "pgrst_ddl_watch");
+    await db.unsafe(`create or replace function extensions.pgrst_ddl_watch() returns event_trigger language plpgsql as $f$${orig}$f$`);
+    // 5c) bekannter Name, aber Funktion in einem anderen Schema
+    await db.unsafe(`create function public.pgrst_ddl_watch() returns event_trigger language plpgsql as $f$ begin notify pgrst, 'reload schema'; end $f$;
+      alter event trigger pgrst_ddl_watch rename to vl_tmp; drop event trigger vl_tmp;
+      create event trigger pgrst_ddl_watch on ddl_command_end execute function public.pgrst_ddl_watch();`);
+    await abort("anderes Schema", "pgrst_ddl_watch");
+    await db.unsafe(`drop event trigger pgrst_ddl_watch; create event trigger pgrst_ddl_watch on ddl_command_end execute function extensions.pgrst_ddl_watch();`);
+    // 5d) bekannter Name, aber ohne Befehlsfilter (würde bei jeder Strukturänderung laufen)
+    await db.unsafe(`drop event trigger issue_pg_net_access; create event trigger issue_pg_net_access on ddl_command_end execute function extensions.grant_pg_net_access();`);
+    await abort("ohne Befehlsfilter", "issue_pg_net_access");
+    await db.unsafe(`drop event trigger issue_pg_net_access; create event trigger issue_pg_net_access on ddl_command_end when tag in ('CREATE EXTENSION') execute function extensions.grant_pg_net_access();`);
+    // 5e) bekannter Name, aber andere Funktion zugeordnet
+    await db.unsafe(`drop event trigger issue_pg_cron_access; create event trigger issue_pg_cron_access on ddl_command_end when tag in ('CREATE EXTENSION') execute function extensions.grant_pg_net_access();`);
+    await abort("andere Funktion", "issue_pg_cron_access");
+    await db.unsafe(`drop event trigger issue_pg_cron_access; create event trigger issue_pg_cron_access on ddl_command_end when tag in ('CREATE EXTENSION') execute function extensions.grant_pg_cron_access();`);
+    // wieder Standard → OK
+    expect((await run(db, sql)).by["GESAMT"]).toMatch(/^OK/);
 
     // 6) Unbekannter Ereignistrigger (schreibt bei Strukturänderungen in ein Protokoll): Abbruch VOR jeder Änderung
-    await db.unsafe(`create table public.vl_et_log (at timestamptz default now());
-      create function public.vl_et_log() returns event_trigger language plpgsql as $$ begin insert into public.vl_et_log default values; end $$;
+    await db.unsafe(`create function public.vl_et_log() returns event_trigger language plpgsql as $$ begin insert into public.vl_et_log default values; end $$;
       create event trigger fremder_trigger on ddl_command_end execute function public.vl_et_log();`);
-    await db.unsafe("delete from public.vl_et_log");
-    before = await snap(db);
-    r = await run(db, sql);
-    clean(r.rows);
-    expect(r.by["Ereignistrigger: andere (würden bei Strukturänderungen laufen)"]).toBe("1 – ABBRUCH E-ET, nichts eingerichtet");
-    expect(r.by["Einrichtung (probeweise)"]).toBeUndefined(); // gar nicht erst versucht
-    expect(r.by["GESAMT"]).toMatch(/^PROBLEM/);
-    expect((await db`select count(*)::int n from public.vl_et_log`)[0].n).toBe(0); // Trigger nie ausgelöst
-    expect(await snap(db)).toBe(before);
-    expect(await frei(db)).toBe(true);
+    await abort("unbekannter Trigger", null);
 
     // Transaktionsbefehle im Einrichtungs-SQL werden abgelehnt
     expect(() => dryRunSql(TEST_MAPPING, ["commit;"])).toThrow();
   } finally {
     await db.end();
-    await env.sql.unsafe("drop database if exists probe");
+    await env.sql.unsafe("drop database if exists probe with (force)");
   }
 });
 
