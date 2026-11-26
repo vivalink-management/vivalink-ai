@@ -3,6 +3,7 @@
 //   node scripts/verwaltung.mjs grants [mapping.json]        → Leserechte der Rolle management_ai auf die zugeordneten Auswertungen
 //   node scripts/verwaltung.mjs bundle [mapping.json] <ziel> → Bereitstellungsordner (Edge Function + Migration + Rechte)
 //   node scripts/verwaltung.mjs check [mapping.json]         → Zuordnung prüfen
+//   node scripts/verwaltung.mjs definitions <funktionen> <tabellen> → eng begrenzte zweite Bestandsaufnahme (Namen kommagetrennt)
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -61,29 +62,34 @@ where p.pronargs = 0 and p.prokind = 'f'
 order by 1 desc, 2;
 `;
 
-/* Zweite Bestandsaufnahme: Programmcode der vorhandenen Admin-Auswertungen (Funktionen admin_* und is_admin, ohne
-   Aktionen wie run_now/reset/ack) und die Prüfregeln (CHECK) der Tabellen – daraus ergeben sich Filter (Testkonten,
-   Beispiel-Meetups) und Statuswerte. Nur Systemkatalog, KEINE Tabelleninhalte. Zeichenketten mit „@“ oder über
-   60 Zeichen werden geleert (falls im Code z. B. eine E-Mail-Adresse stünde); jede Zeichenkette wird
-   als Ganzes erkannt, damit die Zuordnung von Anfangs- und End-Anführungszeichen nicht verrutscht. */
-export const DEFINITIONS_SQL = `-- Vivalink Management AI: zweite lesende Bestandsaufnahme (nur Programmcode und Regeln, keine Inhalte, keine Änderungen).
--- Zeichenketten mit @ oder über 60 Zeichen werden geleert ('').
+/* Zweite Bestandsaufnahme, eng begrenzt: Programmcode NUR der ausdrücklich genannten Funktionen und Prüfregeln (CHECK)
+   NUR der genannten Tabellen. Nur Systemkatalog, keine Tabelleninhalte. Zeichenketten werden geleert, wenn sie „@“
+   enthalten, länger als 60 Zeichen sind oder nach Zugangsdaten aussehen (sk_, pk_, whsec_, key, secret, token, passw,
+   bearer). Jede Zeichenkette wird als Ganzes erkannt (Anführungszeichen verrutschen nicht).
+   Die echten Namen stehen nur im privaten Repository – hier ist nur der Baukasten. */
+const IDENT_RE = /^[a-z_][a-z0-9_]{0,62}$/;
+const MASK = `regexp_replace(%s, $re$'(?![^']*(sk_|pk_|whsec_|key|secret|token|passw|bearer))([^'@]{0,60})'|'[^']*'$re$, $r$'\\1'$r$, 'gi')`;
+export function definitionsSql({ functions = [], tables = [] }) {
+  for (const n of [...functions, ...tables]) if (!IDENT_RE.test(n)) throw new Error("Ungültiger Name: " + n);
+  if (!functions.length && !tables.length) throw new Error("Keine Namen angegeben");
+  const list = (a) => a.map((x) => `'${x}'`).join(", ") || "''";
+  return `-- Vivalink Management AI: zweite lesende Bestandsaufnahme (eng begrenzt; nur Programmcode und Prüfregeln, keine Inhalte, keine Änderungen).
+-- Zeichenketten mit @, über 60 Zeichen oder mit Hinweis auf Zugangsdaten werden geleert ('').
 select 'funktion' as art, p.proname as name,
-       regexp_replace(pg_get_functiondef(p.oid), $re$'([^'@]{0,60})'|'[^']*'$re$, $r$'\\1'$r$, 'g') as inhalt
+       ${MASK.replace("%s", "pg_get_functiondef(p.oid)")} as inhalt
 from pg_proc p
 join pg_namespace n on n.oid = p.pronamespace
-where n.nspname = 'public' and p.prokind = 'f'
-  and (p.proname = 'is_admin' or p.proname like 'admin\\_%')
-  and p.proname !~ '(run_now|reset|ack)'
+where n.nspname = 'public' and p.prokind = 'f' and p.proname in (${list(functions)})
 union all
 select 'regel', c.relname || '.' || k.conname,
-       regexp_replace(pg_get_constraintdef(k.oid), $re$'([^'@]{0,60})'|'[^']*'$re$, $r$'\\1'$r$, 'g')
+       ${MASK.replace("%s", "pg_get_constraintdef(k.oid)")}
 from pg_constraint k
 join pg_class c on c.oid = k.conrelid
 join pg_namespace n on n.oid = c.relnamespace
-where n.nspname = 'public' and k.contype = 'c'
+where n.nspname = 'public' and k.contype = 'c' and c.relname in (${list(tables)})
 order by 1, 2;
 `;
+}
 
 export function bundle(mapping, dir) {
   const fn = join(dir, "supabase/functions/management-kpis");
@@ -102,7 +108,7 @@ export function bundle(mapping, dir) {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const [cmd, a, b] = process.argv.slice(2);
   if (cmd === "inventory") process.stdout.write(INVENTORY_SQL);
-  else if (cmd === "definitions") process.stdout.write(DEFINITIONS_SQL);
+  else if (cmd === "definitions") process.stdout.write(definitionsSql({ functions: (a || "").split(",").filter(Boolean), tables: (b || "").split(",").filter(Boolean) }));
   else if (cmd === "grants") process.stdout.write(grantsSql(load(a)));
   else if (cmd === "check") {
     const M = parseMapping(load(a), KPI_KEYS);

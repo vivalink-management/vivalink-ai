@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { startEnv, pgBin, TEST_MAPPING } from "./verwaltung/env.mjs";
 import { pgRepo, parseMapping } from "../server/kpi-pg.mjs";
 import { KPI_KEYS, buildKpis, MAX_PAIR_FAILS } from "../server/kpi-core.mjs";
-import { grantsSql, INVENTORY_SQL, DEFINITIONS_SQL } from "../scripts/verwaltung.mjs";
+import { grantsSql, INVENTORY_SQL, definitionsSql } from "../scripts/verwaltung.mjs";
 import { ready, state, kv, expectToast } from "./helpers.mjs";
 
 test.describe.configure({ mode: "serial", timeout: 120_000 });
@@ -285,25 +285,31 @@ test("Bestandsaufnahme: nur Namen, Spalten und Datentypen – keine Inhalte, kei
   expect(readFileSync(new URL("../docs/bestandsaufnahme-verwaltung.sql", import.meta.url), "utf8")).toBe(INVENTORY_SQL);
 });
 
-test("Zweite Bestandsaufnahme: Programmcode der Admin-Auswertungen und Prüfregeln, Adressen unkenntlich, keine Inhalte", async ({}, info) => {
+test("Zweite Bestandsaufnahme (eng begrenzt): nur genannte Funktionen und Tabellen, Adressen und Zugangsdaten geleert, keine Inhalte", async ({}, info) => {
   serverOnly(info);
-  const rows = await env.sql.begin("read only", (t) => t.unsafe(DEFINITIONS_SQL));
+  await env.sql.unsafe(`create function public.admin_geheim() returns text language sql as $$ select 'sk_live_abcdef'::text || 'Token123' $$`);
+  const q = definitionsSql({ functions: ["admin_finance_summary", "admin_kontakt", "admin_geheim"], tables: ["meetup_participants"] });
+  const rows = await env.sql.begin("read only", (t) => t.unsafe(q));
   expect(Object.keys(rows[0])).toEqual(["art", "name", "inhalt"]);
-  const names = rows.map((r) => r.name);
-  expect(names).toContain("admin_finance_summary");
-  expect(names).toContain("admin_kontakt");
+  const names = rows.map((r) => r.name).sort();
+  expect(names.filter((n) => !n.startsWith("meetup_participants."))).toEqual(["admin_finance_summary", "admin_geheim", "admin_kontakt"]); // nichts darüber hinaus
   expect(names.some((n) => /^meetup_participants\..*status/.test(n))).toBe(true);
-  expect(rows.find((r) => r.name === "admin_finance_summary").inhalt).toMatch(/from public.payments/i);
+  expect(rows.some((r) => /^(profiles|payments|invitations)\./.test(r.name) || r.name === "admin_user_list")).toBe(false);
+  const fin = rows.find((r) => r.name === "admin_finance_summary").inhalt;
+  expect(fin).toMatch(/from public.payments/i);
+  expect(fin).toContain("'zahlung'"); // kurze Codes bleiben lesbar
   const out = JSON.stringify(rows);
   expect(out).not.toContain("@");
+  expect(out).not.toMatch(/sk_live|Token123/);
   expect(rows.find((r) => r.name === "admin_kontakt").inhalt).toContain("select ''::text");
-  expect(rows.find((r) => r.name === "admin_finance_summary").inhalt).toContain("'zahlung'"); // kurze Codes bleiben lesbar
   const people = await env.sql`select full_name, email from profiles`;
   expect(people.flatMap((p) => [p.full_name, p.email]).filter((x) => out.includes(x))).toEqual([]);
-  const stmt = DEFINITIONS_SQL.replace(/--.*$/gm, "").trim();
+  const stmt = q.replace(/--.*$/gm, "").trim();
   expect(stmt).toMatch(/^select /);
   expect(stmt).not.toMatch(/\b(insert|update|delete|drop|alter|create|grant|revoke|truncate|copy|call)\b/i);
-  expect(readFileSync(new URL("../docs/bestandsaufnahme-2-definitionen.sql", import.meta.url), "utf8")).toBe(DEFINITIONS_SQL);
+  expect(() => definitionsSql({ functions: ["x'; drop table profiles; --"] })).toThrow();
+  expect(() => definitionsSql({})).toThrow();
+  await env.sql.unsafe("drop function public.admin_geheim()");
 });
 
 test("Rückbau entfernt nur die Anbindung; Daten und Auswertungen der Verwaltung bleiben unverändert", async ({}, info) => {
