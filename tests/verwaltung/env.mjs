@@ -6,6 +6,7 @@ import { existsSync, mkdtempSync, readdirSync, rmSync, readFileSync, chmodSync }
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import postgres from "postgres";
+import net from "node:net";
 import { bundle, grantsSql } from "../../scripts/verwaltung.mjs";
 
 const HERE = new URL(".", import.meta.url).pathname;
@@ -23,9 +24,15 @@ const asRoot = process.getuid && process.getuid() === 0;
 // initdb/postgres laufen nicht als root → dann als Benutzer postgres
 const run = (bin, args, opts = {}) => (asRoot ? ["runuser", ["-u", "postgres", "--", bin, ...args], opts] : [bin, args, opts]);
 
-export async function startEnv({ pgPort, fnPort, mapping = TEST_MAPPING }) {
+export async function startEnv({ pgPort, fnPort, mapping = TEST_MAPPING, fixtures = [join(HERE, "fixture.sql")], extraSql = [] }) {
   const bin = pgBin();
   if (!bin) throw new Error("PostgreSQL nicht installiert (Testumgebung der Verwaltung)");
+  // Port muss frei sein – sonst würde unbemerkt eine übrig gebliebene Instanz mit altem Stand verwendet
+  const busy = await new Promise((r) => {
+    const c = net.connect(pgPort, "127.0.0.1", () => (c.destroy(), r(true)));
+    c.on("error", () => r(false));
+  });
+  if (busy) throw new Error(`Port ${pgPort} belegt (übrig gebliebene Testdatenbank?)`);
   const dir = mkdtempSync(join(tmpdir(), "vl-verwaltung-"));
   if (asRoot) execFileSync("chown", ["postgres", dir]), chmodSync(dir, 0o755);
   const data = join(dir, "data");
@@ -46,7 +53,8 @@ export async function startEnv({ pgPort, fnPort, mapping = TEST_MAPPING }) {
     }
   }
   if (!sql) throw new Error("PostgreSQL startet nicht");
-  for (const f of [join(HERE, "supabase-stub.sql"), join(HERE, "fixture.sql"), join(ROOT, "server/supabase/migrations/20261126_management_kpis.sql")]) await sql.unsafe(readFileSync(f, "utf8"));
+  // Reihenfolge wie später in Supabase: vorhandene Verwaltung → Migration → zusätzliche Auswertungen der Anbindung → Rechte
+  for (const f of [join(HERE, "supabase-stub.sql"), ...fixtures, join(ROOT, "server/supabase/migrations/20261126_management_kpis.sql"), ...extraSql]) await sql.unsafe(readFileSync(f, "utf8"));
   await sql.unsafe(grantsSql(mapping));
   // Edge Function wie für Supabase bündeln und unter Deno starten
   const fnDir = bundle(mapping, join(dir, "bundle"));

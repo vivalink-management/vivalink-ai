@@ -73,3 +73,6 @@ $$;
 
 -- Eine Auswertung MIT Personendaten (darf nie erreichbar sein; nicht in mapping.json)
 create view public.admin_user_list as select full_name, email, phone, created_at from public.profiles;
+
+-- Admin-Funktion mit einer Adresse im Programmcode (für den Test der Unkenntlichmachung in der zweiten Bestandsaufnahme)
+create function public.admin_kontakt() returns text language sql as $$ select 'leitung@example.invalid'::text $$;

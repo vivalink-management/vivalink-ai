@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { startEnv, pgBin, TEST_MAPPING } from "./verwaltung/env.mjs";
 import { pgRepo, parseMapping } from "../server/kpi-pg.mjs";
 import { KPI_KEYS, buildKpis, MAX_PAIR_FAILS } from "../server/kpi-core.mjs";
-import { grantsSql, INVENTORY_SQL } from "../scripts/verwaltung.mjs";
+import { grantsSql, INVENTORY_SQL, DEFINITIONS_SQL } from "../scripts/verwaltung.mjs";
 import { ready, state, kv, expectToast } from "./helpers.mjs";
 
 test.describe.configure({ mode: "serial", timeout: 120_000 });
@@ -283,6 +283,27 @@ test("Bestandsaufnahme: nur Namen, Spalten und Datentypen – keine Inhalte, kei
   expect(stmt.replace(/;\s*$/, "")).not.toContain(";");
   // Die Datei für den SQL-Editor entspricht genau dieser geprüften Abfrage
   expect(readFileSync(new URL("../docs/bestandsaufnahme-verwaltung.sql", import.meta.url), "utf8")).toBe(INVENTORY_SQL);
+});
+
+test("Zweite Bestandsaufnahme: Programmcode der Admin-Auswertungen und Prüfregeln, Adressen unkenntlich, keine Inhalte", async ({}, info) => {
+  serverOnly(info);
+  const rows = await env.sql.begin("read only", (t) => t.unsafe(DEFINITIONS_SQL));
+  expect(Object.keys(rows[0])).toEqual(["art", "name", "inhalt"]);
+  const names = rows.map((r) => r.name);
+  expect(names).toContain("admin_finance_summary");
+  expect(names).toContain("admin_kontakt");
+  expect(names.some((n) => /^meetup_participants\..*status/.test(n))).toBe(true);
+  expect(rows.find((r) => r.name === "admin_finance_summary").inhalt).toMatch(/from public.payments/i);
+  const out = JSON.stringify(rows);
+  expect(out).not.toContain("@");
+  expect(rows.find((r) => r.name === "admin_kontakt").inhalt).toContain("select ''::text");
+  expect(rows.find((r) => r.name === "admin_finance_summary").inhalt).toContain("'zahlung'"); // kurze Codes bleiben lesbar
+  const people = await env.sql`select full_name, email from profiles`;
+  expect(people.flatMap((p) => [p.full_name, p.email]).filter((x) => out.includes(x))).toEqual([]);
+  const stmt = DEFINITIONS_SQL.replace(/--.*$/gm, "").trim();
+  expect(stmt).toMatch(/^select /);
+  expect(stmt).not.toMatch(/\b(insert|update|delete|drop|alter|create|grant|revoke|truncate|copy|call)\b/i);
+  expect(readFileSync(new URL("../docs/bestandsaufnahme-2-definitionen.sql", import.meta.url), "utf8")).toBe(DEFINITIONS_SQL);
 });
 
 test("Rückbau entfernt nur die Anbindung; Daten und Auswertungen der Verwaltung bleiben unverändert", async ({}, info) => {

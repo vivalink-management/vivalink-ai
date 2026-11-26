@@ -11,6 +11,19 @@
 | Migration (`server/supabase/migrations/20261126_management_kpis.sql`) | fertig, in der Testumgebung ausgeführt; **nicht in Supabase ausgeführt** |
 | Zuordnung zu den vorhandenen Auswertungen (`mapping.json`) | **offen:** braucht die lesende Bestandsaufnahme der echten Verwaltung |
 
+## Ergebnis der Bestandsaufnahme (26.11.2026)
+- Die Bestandsaufnahme wurde ausgeführt: 71 Einträge, nur Struktur.
+- **Keine Views.** Die vorhandenen Auswertungen sind Admin-Funktionen (Security Definer). Sie liefern teils JSON, teils Werte je Meetup und prüfen vermutlich die Admin-Rolle des angemeldeten Kontos.
+- Ob die Gegenstelle sie direkt wiederverwenden kann, klärt die **zweite Bestandsaufnahme** `docs/bestandsaufnahme-2-definitionen.sql`. Sie liest nur den Programmcode dieser Funktionen und die Prüfregeln der Tabellen, ohne Inhalte. Zeichenketten mit „@“ oder über 60 Zeichen werden geleert. Automatisch geprüft.
+- **Zuordnung im Entwurf:**
+  - Abgedeckt sind 9 von 12 Kennzahlen (Registrierungen, aktive Nutzer, Anmeldungen, Absagen, Einladungen, Annahmequote, Zahlungen, Erstattungen).
+  - Schlanke, nur zählende Auswertungen im Schema `management_ai`.
+  - In der getrennten Testumgebung auf der nachgebildeten echten Struktur mit künstlichen Daten geprüft: Werte, Ausschluss von Testkonten und Beispiel-Meetups, keine Personendaten, Rechte, App Ende-zu-Ende.
+  - Die schemaspezifischen Dateien liegen aus Datenschutzgründen nicht im öffentlichen Repository.
+- **Nicht abgedeckt:**
+  - tatsächliche Teilnahme (wird nicht erfasst)
+  - Einnahmen und Ausgaben (keine Buchhaltungsdaten)
+
 ## Keine Doppelentwicklung
 Die Gegenstelle **berechnet nichts selbst**. Sie liest ausschließlich die Auswertungen, die die Verwaltung schon hat (Views oder parameterlose Funktionen), und zwar je Kennzahl nur zwei Spalten: Datum und Zahl. Welche Auswertung welche Kennzahl liefert, steht in `mapping.json`:
 

@@ -61,6 +61,30 @@ where p.pronargs = 0 and p.prokind = 'f'
 order by 1 desc, 2;
 `;
 
+/* Zweite Bestandsaufnahme: Programmcode der vorhandenen Admin-Auswertungen (Funktionen admin_* und is_admin, ohne
+   Aktionen wie run_now/reset/ack) und die Prüfregeln (CHECK) der Tabellen – daraus ergeben sich Filter (Testkonten,
+   Beispiel-Meetups) und Statuswerte. Nur Systemkatalog, KEINE Tabelleninhalte. Zeichenketten mit „@“ oder über
+   60 Zeichen werden geleert (falls im Code z. B. eine E-Mail-Adresse stünde); jede Zeichenkette wird
+   als Ganzes erkannt, damit die Zuordnung von Anfangs- und End-Anführungszeichen nicht verrutscht. */
+export const DEFINITIONS_SQL = `-- Vivalink Management AI: zweite lesende Bestandsaufnahme (nur Programmcode und Regeln, keine Inhalte, keine Änderungen).
+-- Zeichenketten mit @ oder über 60 Zeichen werden geleert ('').
+select 'funktion' as art, p.proname as name,
+       regexp_replace(pg_get_functiondef(p.oid), $re$'([^'@]{0,60})'|'[^']*'$re$, $r$'\\1'$r$, 'g') as inhalt
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public' and p.prokind = 'f'
+  and (p.proname = 'is_admin' or p.proname like 'admin\\_%')
+  and p.proname !~ '(run_now|reset|ack)'
+union all
+select 'regel', c.relname || '.' || k.conname,
+       regexp_replace(pg_get_constraintdef(k.oid), $re$'([^'@]{0,60})'|'[^']*'$re$, $r$'\\1'$r$, 'g')
+from pg_constraint k
+join pg_class c on c.oid = k.conrelid
+join pg_namespace n on n.oid = c.relnamespace
+where n.nspname = 'public' and k.contype = 'c'
+order by 1, 2;
+`;
+
 export function bundle(mapping, dir) {
   const fn = join(dir, "supabase/functions/management-kpis");
   mkdirSync(fn, { recursive: true });
@@ -78,6 +102,7 @@ export function bundle(mapping, dir) {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const [cmd, a, b] = process.argv.slice(2);
   if (cmd === "inventory") process.stdout.write(INVENTORY_SQL);
+  else if (cmd === "definitions") process.stdout.write(DEFINITIONS_SQL);
   else if (cmd === "grants") process.stdout.write(grantsSql(load(a)));
   else if (cmd === "check") {
     const M = parseMapping(load(a), KPI_KEYS);
