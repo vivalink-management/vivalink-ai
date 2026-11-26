@@ -288,35 +288,42 @@ test("Bestandsaufnahme: nur Namen, Spalten und Datentypen – keine Inhalte, kei
   expect(readFileSync(new URL("../docs/bestandsaufnahme-verwaltung.sql", import.meta.url), "utf8")).toBe(INVENTORY_SQL);
 });
 
-test("Zweite Bestandsaufnahme (datensparsam): kein Programmcode, nur Treffer aus unserer Begriffsliste und kurze Codes", async ({}, info) => {
+test("Zweite Bestandsaufnahme (nur Positivlisten): kein Programmcode, keine unbekannten Zeichenketten, nur Lesen", async ({}, info) => {
   serverOnly(info);
-  // Funktion mit Geheimnissen in jeder denkbaren Form (auch solche, die ein Muster nicht erkennen würde)
+  // Funktion und Prüfregeln mit Geheimnissen/unbekannten Werten in jeder Form
   await env.sql.unsafe(`create function public.admin_geheim() returns text language sql security definer as $$ select 'sk_live_abcdef' || 'meinpasswort' || 'leitung@example.invalid' || 'x' from public.payments where auth.uid() is not null $$`);
-  const q = factsSql({ functions: ["admin_finance_summary", "admin_kontakt", "admin_geheim"], tables: ["meetup_participants"], terms: ["auth.uid()", "is_admin()", "payments", "is_test_account", "'zahlung'", "'tester'"] });
+  await env.sql.unsafe(`create table public.regeltest (a text check (a in ('zahlung', 'geheimwert', 'leitung@example.invalid')), b text constraint geheimer_regelname check (b <> 'meinpasswort'))`);
+  const q = factsSql({ functions: ["admin_finance_summary", "admin_kontakt", "admin_geheim"], tables: ["meetup_participants", "regeltest"], terms: ["auth.uid()", "is_admin()", "payments", "is_test_account", "'zahlung'", "'tester'"], codes: ["angemeldet", "teilgenommen", "abgesagt", "zahlung"] });
+  // als eingeschränkte, rein lesende Transaktion
   const rows = await env.sql.begin("read only", (t) => t.unsafe(q));
   expect(Object.keys(rows[0])).toEqual(["art", "name", "befund"]);
   const by = Object.fromEntries(rows.map((r) => [r.name, r.befund]));
   expect(by.admin_finance_summary).toBe("security_definer, payments, code:zahlung");
   expect(by.admin_geheim).toBe("security_definer, auth.uid(), payments");
   expect(by.admin_kontakt).toBe("");
-  // Prüfregel der Tabelle: nur kurze Codes
-  const rule = rows.find((r) => r.art === "regel");
-  expect(rule.befund.split(", ").sort()).toEqual(["abgesagt", "angemeldet", "nicht_erschienen", "teilgenommen"]);
-  // Jede Ausgabe stammt aus unserer Liste bzw. besteht nur aus kurzen Codes – kein Text aus dem Programmcode
-  const allowed = new Set(["security_definer", "auth.uid()", "is_admin()", "payments", "is_test_account", "code:zahlung", "code:tester"]);
-  for (const r of rows.filter((x) => x.art === "funktion")) for (const w of r.befund.split(", ").filter(Boolean)) expect(allowed.has(w), w).toBe(true);
+  // Regeln: nur Codes aus der Positivliste, Unbekanntes nur als Anzahl; Regelnamen werden nicht ausgegeben
+  expect(by["meetup_participants #1"]).toBe("angemeldet, teilgenommen, abgesagt, weitere: 1"); // nicht_erschienen ist nicht in der Liste
+  const rt = rows.filter((r) => r.name.startsWith("regeltest #")).map((r) => r.befund).sort();
+  expect(rt).toEqual(["weitere: 1", "zahlung, weitere: 2"]);
+  // Jedes ausgegebene Wort stammt aus unseren Listen (oder ist „weitere: n“) – nie Text aus der Datenbank
+  const allowed = new Set(["security_definer", "auth.uid()", "is_admin()", "payments", "is_test_account", "code:zahlung", "code:tester", "angemeldet", "teilgenommen", "abgesagt", "zahlung"]);
+  for (const r of rows) {
+    for (const w of r.befund.split(", ").filter(Boolean)) expect(allowed.has(w) || /^weitere: \d+$/.test(w), w).toBe(true);
+    expect(r.name).toMatch(/^(admin_finance_summary|admin_kontakt|admin_geheim|meetup_participants #\d+|regeltest #\d+)$/);
+  }
   const out = JSON.stringify(rows);
-  expect(out).not.toMatch(/sk_live|meinpasswort|@|select|from public/i);
+  expect(out).not.toMatch(/sk_live|meinpasswort|geheimwert|geheimer_regelname|nicht_erschienen|@|select|from public/i);
   const people = await env.sql`select full_name, email from profiles`;
   expect(people.flatMap((p) => [p.full_name, p.email]).filter((x) => out.includes(x))).toEqual([]);
-  // Nur ein lesendes SELECT; Einschleusen über Namen oder Begriffe unmöglich
+  // Nur ein lesendes SELECT; Einschleusen über Namen, Begriffe oder Codes unmöglich
   const stmt = q.replace(/--.*$/gm, "").trim();
   expect(stmt).toMatch(/^with f as/);
-  expect(stmt).not.toMatch(/\b(insert|update|delete|drop|alter|create|grant|revoke|truncate|copy|call)\b/i);
+  expect(stmt).not.toMatch(/\b(insert|update|delete|drop|alter|create|grant|revoke|truncate|copy|call|set)\b/i);
   expect(() => factsSql({ functions: ["x'; drop table profiles; --"] })).toThrow();
   expect(() => factsSql({ functions: ["a"], terms: ["x$t$; drop"] })).toThrow();
+  expect(() => factsSql({ tables: ["a"], codes: ["x'); drop"] })).toThrow();
   expect(() => factsSql({})).toThrow();
-  await env.sql.unsafe("drop function public.admin_geheim()");
+  await env.sql.unsafe("drop function public.admin_geheim(); drop table public.regeltest;");
 });
 
 test("Probelauf ohne bleibende Wirkung: richtet alles ein, prüft es, nimmt alles zurück; meldet nur ja/nein", async ({}, info) => {

@@ -63,44 +63,54 @@ where p.pronargs = 0 and p.prokind = 'f'
 order by 1 desc, 2;
 `;
 
-/* Zweite Bestandsaufnahme, datensparsam: gibt KEINEN Programmcode aus. Für die genannten Funktionen wird nur gemeldet,
-   welche Begriffe aus einer VORGEGEBENEN Liste darin vorkommen (z. B. ob eine Admin-Prüfung erfolgt oder Beispiel-
-   Meetups ausgeschlossen werden) – die Ausgabe ist also immer eine Teilmenge unserer eigenen Liste, nie Text aus der
-   Datenbank. Für die genannten Tabellen werden aus den Prüfregeln (CHECK) nur kurze Codes aus Kleinbuchstaben und
-   Unterstrich ausgegeben (z. B. Statuswerte). Nur Systemkatalog, keine Tabelleninhalte, keine Änderungen.
-   Die echten Namen stehen nur im privaten Repository – hier ist nur der Baukasten. */
+/* Zweite Bestandsaufnahme, datensparsam: Die Ausgabe besteht AUSSCHLIESSLICH aus Werten, die wir selbst vorgeben.
+   - Funktionen (nur die genannten): welche Begriffe aus unserer Liste im Funktionsrumpf vorkommen.
+   - Tabellenregeln (CHECK, nur die genannten Tabellen): welche Codes aus unserer Positivliste vorkommen, dazu nur die
+     ANZAHL weiterer, unbekannter Zeichenketten (nie deren Inhalt). Statt des Regelnamens: Tabellenname + laufende Nummer.
+   Nichts aus der Datenbank wird als Text ausgegeben, außer den von uns genannten Tabellen-/Funktionsnamen.
+   Nur Systemkatalog, keine Tabelleninhalte, keine Änderungen. Echte Namen nur im privaten Repository. */
 const IDENT_RE = /^[a-z_][a-z0-9_]{0,62}$/;
 const TERM_RE = /^('[a-z_]{1,30}'|[a-z_][a-z0-9_.]{0,40}(\(\))?)$/;
-export function factsSql({ functions = [], tables = [], terms = [] }) {
+const CODE_RE = /^[a-z_]{1,30}$/;
+export function factsSql({ functions = [], tables = [], terms = [], codes = [] }) {
   for (const n of [...functions, ...tables]) if (!IDENT_RE.test(n)) throw new Error("Ungültiger Name: " + n);
   for (const t of terms) if (!TERM_RE.test(t)) throw new Error("Ungültiger Begriff: " + t);
+  for (const c of codes) if (!CODE_RE.test(c)) throw new Error("Ungültiger Code: " + c);
   if (!functions.length && !tables.length) throw new Error("Keine Namen angegeben");
   const list = (a) => a.map((x) => `'${x}'`).join(", ") || "''";
   const pattern = (t) => {
-    if (t.startsWith("'")) return "'" + t.slice(1, -1) + "'"; // Code in Anführungszeichen
+    if (t.startsWith("'")) return "'" + t.slice(1, -1) + "'";
     const body = t.replace(/\./g, "\\.").replace(/\(\)$/, "\\s*\\(");
     return "\\m" + body + (t.endsWith("()") ? "" : "\\M");
   };
   const label = (t) => (t.startsWith("'") ? "code:" + t.slice(1, -1) : t);
   const checks = terms.map((t) => `case when d ~* $t$${pattern(t)}$t$ then '${label(t)}' end`);
-  return `-- Vivalink Management AI: zweite lesende Bestandsaufnahme (datensparsam).
--- Gibt keinen Programmcode aus: je Funktion nur, welche Begriffe aus einer vorgegebenen Liste vorkommen;
--- je Tabelle nur kurze Codes aus den Prüfregeln. Geprüft wird nur der Funktionsrumpf (ohne Kopfzeile). Keine Inhalte, keine Änderungen.
+  const codeChecks = codes.map((c) => `case when r.d ~ $t$'${c}'$t$ then '${c}' end`);
+  return `-- Vivalink Management AI: zweite lesende Bestandsaufnahme (datensparsam, nur Positivlisten).
+-- Ausgabe: je Funktion nur Begriffe aus unserer Liste; je Tabellenregel nur Codes aus unserer Positivliste und die
+-- ANZAHL weiterer Zeichenketten (nie deren Inhalt). Keine Tabelleninhalte, keine Änderungen.
 with f as (
   select p.proname as name, p.prosecdef as definer, p.prosrc as d
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'public' and p.prokind = 'f' and p.proname in (${list(functions)})
+),
+r as (
+  select c.relname as tab, row_number() over (partition by c.relname order by k.oid) as nr, pg_get_constraintdef(k.oid) as d
+  from pg_constraint k
+  join pg_class c on c.oid = k.conrelid
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public' and k.contype = 'c' and c.relname in (${list(tables)})
 )
 select 'funktion' as art, name,
        concat_ws(', ', case when definer then 'security_definer' end${checks.length ? ",\n         " + checks.join(",\n         ") : ""}) as befund
 from f
 union all
-select 'regel', c.relname || '.' || k.conname,
-       (select string_agg(distinct m[1], ', ') from regexp_matches(pg_get_constraintdef(k.oid), $re$'([a-z_]{1,30})'$re$, 'g') as m)
-from pg_constraint k
-join pg_class c on c.oid = k.conrelid
-join pg_namespace n on n.oid = c.relnamespace
-where n.nspname = 'public' and k.contype = 'c' and c.relname in (${list(tables)})
+select 'regel', r.tab || ' #' || r.nr,
+       concat_ws(', '${codeChecks.length ? ",\n         " + codeChecks.join(",\n         ") : ""},
+         (select case when count(*) > 0 then 'weitere: ' || count(*) end
+            from regexp_matches(r.d, $re$'([^']*)'$re$, 'g') as m
+            where m[1] <> all (array[${codes.map((c) => `'${c}'`).join(", ") || "''"}]::text[])))
+from r
 order by 1, 2;
 `;
 }
