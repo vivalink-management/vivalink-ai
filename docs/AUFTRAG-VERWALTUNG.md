@@ -24,6 +24,15 @@
   - tatsächliche Teilnahme (wird nicht erfasst)
   - Einnahmen und Ausgaben (keine Buchhaltungsdaten)
 
+## Ergebnis der zweiten Bestandsaufnahme (26.11.2026)
+- Die vorhandenen Admin-Auswertungen prüfen die Admin-Rolle des **angemeldeten** Kontos und brechen sonst ab.
+- Eine Gegenstelle ohne Admin-Anmeldung kann sie daher nicht aufrufen. Ein Umgehen der Prüfung (z. B. durch Vortäuschen einer Anmeldung) ist aus Sicherheitsgründen ausgeschlossen.
+- Die Gegenstelle nutzt deshalb eigene, schlanke Zähl-Auswertungen mit **denselben Filtern** wie die Admin-Auswertungen: Beispiel-Meetups und ausgeblendete Meetups ausgeschlossen, dieselben Zahlungs- und Statusfelder.
+- Bestätigt:
+  - Rollen nur Admin und Nutzer; interne Konten sind Admins.
+  - Statuscodes für Buchungen, Meetups und Einladungen.
+- Offen für den Gründer: ob es Testkonten mit normaler Nutzerrolle gibt.
+
 ## Keine Doppelentwicklung
 Die Gegenstelle **berechnet nichts selbst**. Sie liest ausschließlich die Auswertungen, die die Verwaltung schon hat (Views oder parameterlose Funktionen), und zwar je Kennzahl nur zwei Spalten: Datum und Zahl. Welche Auswertung welche Kennzahl liefert, steht in `mapping.json`:
 
