@@ -1,6 +1,20 @@
 # Änderungsprotokoll
 
-## 2.11.0 (Entwicklungszweig, noch nicht veröffentlicht) – KI-Chat und Sprachmodus
+## 2.11.1 (Entwicklungszweig, noch nicht veröffentlicht) – Fehlerbehebung KI-Chat
+
+- **Behoben:** „KI nicht erreichbar (503)“ bei Fragen, für die das KI-Modell App-Daten über ein Werkzeug abruft. Die Werkzeugergebnisse gehen jetzt als Klartext an das Modell (die bisherige Form lehnte Workers AI ab); der letzte Schritt erfolgt ohne Werkzeuge, damit immer eine Antwort kommt.
+- Verständlichere Hinweise: Stundenlimit, Tageskontingent, ungültiger Zugang, Fehler des KI-Dienstes mit Code.
+- Worker `vivalink-ki` (vorbereitet): nimmt auch die Form von 2.11.0 an, grobe Fehlercodes ohne Inhalte, abgelehnte Eingaben verbrauchen kein Budget.
+- Tests: strenge Workers-AI-Attrappe, Werkzeugablauf über mehrere Schritte, Live-Diagnose (manuell, künstlicher Test-Zugang).
+- **Behoben: Sprachmodus konnte die App auf dem iPad unbedienbar machen.**
+  - Ursache: Endete die Spracherkennung von iOS sofort wieder oder meldete Fehler (typisch in der installierten App), startete die App sie ohne Grenze neu (etwa viermal pro Sekunde). Die Stille-Zeitgrenze wurde dabei jedes Mal zurückgesetzt, und die Sprachanzeige wurde jedes Mal neu aufgebaut, sodass Fingertipps auf „Beenden“ verloren gingen.
+  - Jetzt: höchstens drei Neustarts mit wachsender Pause, danach einmaliger Wechsel zur Server-Erkennung (falls freigegeben) oder Ende mit Hinweis. Die Anzeige wird nur noch aktualisiert; „Beenden“ ist jederzeit tippbar.
+  - Zeitgrenzen für Mikrofon, Aufnahme (30 s), Server-Erkennung (30 s), Antwort (75 s; KI-Antwort selbst höchstens 60 s) und Vorlesen. Fehlgeschlagene oder leere Erkennung wird begrenzt wiederholt.
+  - Neu: „Fertig gesprochen“ (Aufnahme sofort beenden). Installierte App unter iOS/iPadOS mit freigegebener KI nutzt die Server-Erkennung. Doppeltes Tippen auf „Sprechen“ startet nur eine Sitzung.
+  - Chat: Nach einer Antwort sowie nach „Bestätigen“/„Rückgängig“ wird die Ansicht sofort aktualisiert (vorher erst nach dem Speichern – ein schneller nächster Fingertipp konnte verloren gehen).
+  - Tests: 14 neue Fehlerfall-Tests (sofortiges Ende, Fehlerarten, hängende Erkennung/Antwort/Sprachausgabe, stilles oder blockiertes Mikrofon, Datenerhalt); Live-Prüfung der Spracherkennung mit künstlich erzeugter Sprache.
+
+## 2.11.0 (veröffentlicht, PR #9) – KI-Chat und Sprachmodus
 
 - **KI-Chat** (Navigation „KI-Chat“; „Aufträge an ChatGPT/Claude“ über die Umschaltung): beliebig viele Chats, automatisch benannt, umbenennen, fortsetzen, löschen, kopieren.
 - **Ein Assistent für Schreiben und Sprechen**, gemeinsamer Verlauf.

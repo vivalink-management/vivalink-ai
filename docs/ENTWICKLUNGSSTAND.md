@@ -1,7 +1,7 @@
 # Zentrale Entwicklungsübersicht: Vivalink Management AI
 
 **Fortsetzungsdokument für alle weiteren Entwicklungsaufträge.** Bei jedem Auftrag zuerst lesen und am Ende aktualisieren. Arbeitsweise (Tests, Gerätetests, Grenzen): **`CLAUDE.md`**.
-Stand: 26.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.10.0** (`main`, Pull Request #8; echte Kennzahlen, Testdaten getrennt; Supabase-Erweiterung, neue Edge Function und Kennzeichnung der vier Testkonten durch den Gründer erledigt – App zeigt 0 echte Nutzer) · Entwicklungszweig: **2.11.0** (KI-Chat und Sprachmodus; auf Basis von 2.10.0; nicht veröffentlicht) · Testversion „VL Test“: 2.8.3
+Stand: 27.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.10.0** (`main`, Pull Request #8; echte Kennzahlen, Testdaten getrennt; Supabase-Erweiterung, neue Edge Function und Kennzeichnung der vier Testkonten durch den Gründer erledigt – App zeigt 0 echte Nutzer) · Veröffentlicht: **2.11.0** (KI-Chat, PR #9) · Entwicklungszweig: **2.11.1** (Fehlerbehebung KI-Chat 503; nicht veröffentlicht) · Testversion „VL Test“: 2.8.3
 
 ## 1. Umgesetzt und getestet (noch nicht veröffentlicht)
 
@@ -82,10 +82,31 @@ Stand: 26.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
 - 2.11.0 enthält bereits Adresse und Sicherheitsrichtlinie des Workers (ohne Wirkung bis zum Einschalten).
 - Datensparsamkeit: lokale Antworten nicht an das Modell; Einschalten nur nach „Verbindung prüfen“.
 - Worker gehärtet: Ausweichmodell, Vorab-Buchung, Budget 8.000, Fehlversuchsgrenze, Status ohne Daten.
-- **Offen (Freigabe Gründer):**
-  - Veröffentlichung 2.11.0 (neuer Pull Request)
-  - Bereitstellung des Workers `vivalink-ki`
-  - Workers-Tarif im Dashboard prüfen (kostenlos)
+- ✅ 2.11.0 veröffentlicht (PR #9). Der Gründer hat den Workers-Tarif „Free“ bestätigt.
+- ✅ **Worker `vivalink-ki` bereitgestellt (27.11.2026, Freigabe des Gründers):** https://vivalink-ki.hidden-art-0326.workers.dev
+  - `vivalink-sync` und `vivalink-webseite` nachweislich unverändert (Änderungszeit und Versionskennung vorher/nachher gleich).
+  - Live-Prüfung KI bestanden: Status, 401 ohne Zugang, 403 fremde Webseiten.
+  - Funktionsprüfung mit künstlichem Test-Zugang: Llama 3.3 70B antwortet im kostenlosen Tarif, Werkzeugaufrufe funktionieren.
+  - Verbrauch der Prüfung: 14 Neurons. Der Test-Zugang wurde danach gesperrt.
+- ❗ **Fehler nach dem Einschalten (27.11.2026): „KI nicht erreichbar (503)“** bei Fragen mit Werkzeugaufruf.
+  - Ursache (Live-Diagnose mit künstlichem Test-Zugang, Workflow „Live-Prüfung KI“ mit `diagnose=ja`): Der erste Aufruf klappt, Llama ruft ein Werkzeug auf. Im zweiten Schritt sendete die App die Ergebnisse als `tool_calls` (leerer Assistenten-Text) + role `tool`; diese Form lehnt Workers AI ab. Der Worker wich dabei nicht aus und meldete 503. Zugang, Kontingent und Verbindung waren in Ordnung.
+  - Diagnose-Ergebnis: Form der App 2.11.0 → 503; Ergebnisse als Klartext → 200. Mit angebotenen Werkzeugen ruft Llama sie zudem gern erneut auf.
+  - **Lösung 2.11.1 (App):** Werkzeugergebnisse als Klartext-Nachricht, letzter Schritt ohne Werkzeuge, verständliche Fehlermeldungen mit Code.
+  - **Lösung Worker (vorbereitet, Bereitstellung braucht Freigabe):** wandelt die Form von 2.11.0 um (so funktioniert die veröffentlichte App sofort), nach Werkzeugergebnissen keine Werkzeuge mehr, grobe Fehlercodes (`modell_eingabe`, `modell_fehler`, `modell_nicht_verfuegbar`), abgelehnte Eingaben verbrauchen kein Budget; Protokoll nur Fehlercode, nie Inhalte.
+  - Tests: strenge Workers-AI-Attrappe (lehnt die alte Form wie live ab), Form 2.11.0 am Worker, dreistufiger Werkzeugablauf in der App, Fehlercode-Anzeige.
+- ✅ **Worker-Aktualisierung bereitgestellt (27.11.2026, Freigabe des Gründers):** `vivalink-ki` Version b6f2a4b5-c227-4527-9be5-478c2f463960. `vivalink-sync` und `vivalink-webseite` nachweislich unverändert (Änderungszeit/Kennung vorher = nachher); Supabase und App nicht verändert.
+  - Live-Prüfung danach: Form A (App 2.11.0) → 200 mit Antwort. Die **veröffentlichte App 2.11.0** (GitHub Pages, frischer Browser, künstliche Daten, `tests/live-ki-app.spec.mjs`) erhielt auf zwei Fragen mit Werkzeugaufruf vollständige KI-Antworten (Llama 3.3 70B, Kennzahlen bzw. Aufgaben abgerufen). Verbrauch 170 Neurons; Test-Zugang gesperrt.
+  - Beobachtung Antwortqualität: Die zweite Antwort wiederholte Sätze der ersten. Verbesserung der Anweisungen an das Modell sinnvoll (nächster Schritt).
+- ❗ **Hänger im Sprachmodus auf dem iPad (27.11.2026, gemeldet vom Gründer)** – behoben in 2.11.1 (nicht veröffentlicht):
+  - Nachgewiesene Ursache im Code: unbegrenzter Neustart der Spracherkennung (19 Neustarts in 5 s im Test), Stille-Zeitgrenze bei jedem Neustart zurückgesetzt, Sprachanzeige bei jeder Änderung neu aufgebaut (Fingertipps gingen verloren). Auf dem iPad aktiviert jeder Neustart Mikrofon und Audiosystem neu.
+  - Lösung und Tests: `js/voice.js` (Sitzungsnummer, Grenzen, Zeitgrenzen, stabile Anzeige, „Fertig gesprochen“, Server-Erkennung in der installierten iOS-App), `KI_T` in `js/assistant.js`; `tests/voice-robust.spec.mjs` (14 Fälle; schlagen mit 2.11.0 fehl). Live-Prüfung Whisper mit künstlicher Sprache: Workflow „Live-Prüfung KI“, Eingabe `stt=ja`.
+  - Kein Worker-Update nötig.
+  - Dabei zwei unzuverlässige Tests repariert: Chat-Ansicht wird jetzt vor dem Speichern aktualisiert (Fingertipp ging sonst verloren); Test-Datenbank-Port 25400+ statt 54400+ (lag im Bereich für ausgehende Verbindungen). Lokal und in GitHub Actions (mit WebKit) grün.
+  - Gerätetest nötig: Sprachmodus in Safari und in der installierten App auf iPad/iPhone (Mikrofonfreigabe, Wechsel Aufnahme/Wiedergabe, Stimmen).
+- **Offen:**
+  - Freigabe der Veröffentlichung 2.11.1 (PR #10); für die Fehlerbehebung nicht mehr zwingend, da der Worker die Form von 2.11.0 annimmt.
+  - Gründer schaltet das KI-Modell auf iPad und iPhone ein (KI-Einstellungen, je Gerät) und gibt die Datenbereiche frei.
+  - Gerätetest von Sprachmodus und Server-Spracherkennung in der installierten App.
 - **Gerätetests nötig:** Mikrofon und Spracherkennung in Safari bzw. in der installierten App, Stimmenqualität.
 - Kostenpflichtiger Echtzeit-Sprachmodus (OpenAI Realtime) nur als Information; nichts aktiviert.
 

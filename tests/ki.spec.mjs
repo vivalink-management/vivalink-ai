@@ -14,12 +14,23 @@ function memStore() {
   const m = new Map();
   return { m, get: async (k) => (m.has(k) ? JSON.parse(m.get(k)) : null), put: async (k, o) => void m.set(k, JSON.stringify(o)), del: async (k) => void m.delete(k) };
 }
+// Streng wie Workers AI (Live-Diagnose 27.11.2026): Assistenten-Nachrichten mit „tool_calls“ bzw. leerem Inhalt lehnt
+// das Modell mit einem Eingabefehler ab – genau das führte in App 2.11.0 zur Meldung „KI nicht erreichbar (503)“.
+export function validateAiInput(input) {
+  if (!Array.isArray(input.messages) || !input.messages.length) throw new Error("AiError: 5006: Input validation failed: messages");
+  for (const m of input.messages) {
+    const extra = Object.keys(m).filter((k) => !["role", "content", "name"].includes(k));
+    if (extra.length || !["system", "user", "assistant", "tool"].includes(m.role) || typeof m.content !== "string" || (m.role === "assistant" && !m.content))
+      throw new Error("AiError: 5006: Input validation failed: messages");
+  }
+}
 function fakeAi(script) {
   const calls = [];
   return {
     calls,
     async run(model, input) {
       calls.push({ model, input: JSON.parse(JSON.stringify(input)) });
+      if (input.messages) validateAiInput(input);
       const s = script.shift();
       if (s instanceof Error) throw s;
       return typeof s === "function" ? s(input) : s;
@@ -70,7 +81,7 @@ test("Gegenstelle: nur gekoppelte Geräte, Budget unter dem kostenlosen Kontinge
   // Fehler des KI-Dienstes → 503 ohne Einzelheiten
   ai = fakeAi([new Error("interner Fehler mit Geheimnis xyz")]);
   r = await handleKi(req({ vault: VID, messages: msgs }), { ai, store });
-  expect([r.status, r.body]).toEqual([503, '{"error":"unavailable"}']);
+  expect([r.status, r.body]).toEqual([503, '{"error":"unavailable","code":"modell_fehler"}']); // nur grober Code, kein Inhalt
   // Werkzeugaufrufe als Zeichenkette werden sicher gelesen
   ai = fakeAi([{ response: "", tool_calls: [{ name: "kennzahlen", arguments: "{}" }, { name: "x", arguments: "kaputt{" }] }]);
   r = await handleKi(req({ vault: VID, messages: msgs }), { ai, store });
@@ -115,10 +126,14 @@ test("App mit KI-Modell (Attrappe): Werkzeuge liefern nur freigegebene Daten, ve
   await expect(page.locator(".msg.ai .bub").last()).toContainText("Die Registrierungen steigen leicht");
   await expect(page.locator(".msg.ai .bub").last()).toContainText("An die KI übermittelt: Kennzahlen und Befunde");
   // zweiter Aufruf enthält die Werkzeugergebnisse: Kennzahlen (freigegeben), Gedächtnis „nicht freigegeben“
+  // (als Klartext-Nachricht, nicht als „tool_calls“/role „tool“ – die lehnt Workers AI ab)
   const second = JSON.parse(sent[1]);
-  const tools = second.messages.filter((m) => m.role === "tool");
-  expect(tools.find((t) => t.name === "kennzahlen").content).toContain("[Fakt] Neue Registrierungen pro Woche: 9");
-  expect(tools.find((t) => t.name === "gedaechtnis").content).toBe("nicht freigegeben: Gedächtnis (ohne private Einträge)");
+  expect(second.messages.some((m) => m.role === "tool" || "tool_calls" in m)).toBe(false);
+  const res = second.messages.at(-1);
+  expect(res.role).toBe("user");
+  expect(res.content).toMatch(/### kennzahlen\n[^#]*\[Fakt\] Neue Registrierungen pro Woche: 9/);
+  expect(res.content).toContain("### gedaechtnis\nnicht freigegeben: Gedächtnis (ohne private Einträge)");
+  expect(ai.calls.length).toBe(2); // beide Aufrufe vom (strengen) Modell angenommen
   expect(sent.join("")).not.toContain("kontakt@example.invalid"); // vertraulicher Eintrag nie übertragen
   expect(sent.join("")).not.toContain("Testnotiz\\u0000");
   // Auftrag aus der KI: Aufgabe mit Rückgängig angelegt (Stufe 1) – über dieselbe Freigabelogik
@@ -230,4 +245,86 @@ test("Datensparsam: frühere Antworten des lokalen Assistenten (mit App-Daten) g
   expect(all).toContain("Antwort des lokalen Assistenten mit App-Daten – nicht übermittelt");
   expect(all).not.toContain("Gamma");
   expect(all).not.toContain("Testinhalt");
+});
+
+// Ursache der Meldung „KI nicht erreichbar (503)“ in 2.11.0 (Live-Diagnose 27.11.2026): Der zweite Schritt sendete
+// Werkzeugergebnisse als „tool_calls“ + role „tool“; Workers AI lehnte das ab. Der Worker wandelt diese Form jetzt um,
+// damit auch die veröffentlichte App 2.11.0 funktioniert, und meldet Fehler mit einem groben Code.
+test("Gegenstelle: Werkzeugrunde im Format von App 2.11.0 wird angenommen; Eingabefehler ohne Verbrauch und mit Code", async ({}, info) => {
+  test.skip(info.project.name !== "chromium-desktop", "Serverlogik einmal prüfen");
+  const store = memStore();
+  await store.put("v:" + VID, { th: sha(TOK), version: 1 });
+  const day = new Date().toISOString().slice(0, 10);
+  const tools = [{ type: "function", function: { name: "kennzahlen", description: "x", parameters: { type: "object", properties: {} } } }];
+  const alt = [
+    { role: "system", content: "Du bist der Assistent." },
+    { role: "user", content: "Wie entwickelt sich Vivalink aktuell? Wie viele echte Nutzer haben wir?" },
+    { role: "assistant", content: "", tool_calls: [{ name: "kennzahlen", arguments: {} }] },
+    { role: "tool", name: "kennzahlen", content: "[Fakt] Echte Nutzer: 0 (künstliche Testzahl)" },
+  ];
+  // Nachweis, dass die strenge Attrappe die alte Form wie Workers AI ablehnt
+  expect(() => validateAiInput({ messages: alt })).toThrow(/5006/);
+  const ai = fakeAi([{ response: "Derzeit 0 echte Nutzer.", usage: { prompt_tokens: 300, completion_tokens: 20 } }]);
+  let r = await handleKi(req({ vault: VID, messages: alt, tools }), { ai, store });
+  expect(r.status).toBe(200);
+  expect(JSON.parse(r.body).text).toBe("Derzeit 0 echte Nutzer.");
+  const got = ai.calls[0].input;
+  expect(got.messages.some((m) => m.role === "tool" || "tool_calls" in m)).toBe(false);
+  expect(got.messages.at(-1)).toMatchObject({ role: "user" });
+  expect(got.messages.at(-1).content).toContain("### kennzahlen\n[Fakt] Echte Nutzer: 0");
+  expect(got.messages[2]).toEqual({ role: "assistant", content: "(Werkzeuge aufgerufen: kennzahlen)" });
+  expect(got.tools).toBeUndefined(); // nach Werkzeugergebnissen soll das Modell antworten, nicht erneut Werkzeuge aufrufen
+  // mehrere Werkzeugergebnisse werden zu einer Nachricht zusammengefasst
+  const multi = [...alt.slice(0, 2), { role: "assistant", content: "", tool_calls: [{ name: "a" }, { name: "b" }] }, { role: "tool", name: "a", content: "1" }, { role: "tool", name: "b", content: "2" }];
+  const ai2 = fakeAi([{ response: "ok" }]);
+  expect((await handleKi(req({ vault: VID, messages: multi }), { ai: ai2, store })).status).toBe(200);
+  expect(ai2.calls[0].input.messages.filter((m) => m.role === "user").at(-1).content).toMatch(/### a\n1\n\n### b\n2/);
+  // Eingabe vom Modell abgelehnt → 503 mit Code „modell_eingabe“, kein Ausweichen, nichts vom Budget verbraucht
+  const before = (await store.get("ki:tag:" + day)).neurons;
+  const seen = [];
+  r = await handleKi(req({ vault: VID, messages: msgs }), { ai: { run: async (m) => (seen.push(m), Promise.reject(new Error("AiError: 5006: Input validation failed: geheimer Inhalt"))) }, store });
+  expect([r.status, JSON.parse(r.body)]).toEqual([503, { error: "unavailable", code: "modell_eingabe" }]);
+  expect(r.body).not.toContain("geheim");
+  expect(seen.length).toBe(1);
+  expect((await store.get("ki:tag:" + day)).neurons).toBe(before);
+  // alle Modelle nicht verfügbar → eigener Code
+  r = await handleKi(req({ vault: VID, messages: msgs }), { ai: { run: async () => Promise.reject(new Error("403 (5035)")) }, store });
+  expect(JSON.parse(r.body)).toEqual({ error: "unavailable", code: "modell_nicht_verfuegbar" });
+});
+
+test("App: ruft das Modell immer wieder Werkzeuge auf, kommt im letzten Schritt ohne Werkzeuge trotzdem eine Antwort; Fehlercode wird verständlich angezeigt", async ({ page }) => {
+  const store = memStore();
+  await store.put("v:" + VID, { th: sha(TOK), version: 1 });
+  const sent = [];
+  let ai;
+  await page.addInitScript(() => (window.VL_KI_URL = "http://127.0.0.1:4173/ki-test"));
+  await page.route("**/ki-test/**", async (route) => {
+    const r = route.request();
+    sent.push(JSON.parse(r.postData()));
+    const out = await handleKi({ method: r.method(), path: new URL(r.url()).pathname.replace("/ki-test", ""), auth: await r.headerValue("authorization"), body: r.postData() }, { ai, store });
+    await route.fulfill({ status: out.status, headers: out.headers, body: out.body });
+  });
+  await page.clock.setFixedTime(new Date("2026-03-10T09:00:00"));
+  await seed(page, { state: v2State(), "sync-config": { vid: VID, token: TOK, mk: "x", kv: 1, version: 1, devices: {} }, "ki-config": { on: true, freigaben: { kennzahlen: true } } });
+  // wie live beobachtet: Llama ruft mit angebotenen Werkzeugen erneut Werkzeuge auf
+  const again = (input) => (input.tools ? { response: "", tool_calls: [{ name: "kennzahlen", arguments: {} }] } : { response: "Antwort aus den Kennzahlen (künstliche Testdaten)." });
+  ai = fakeAi([again, again, again]);
+  await page.click('nav button[data-id="ai"]');
+  await page.click('button[data-a="chatNew"]');
+  await page.fill("#chatIn", "Wie entwickelt sich Vivalink aktuell?");
+  await page.click('button[data-a="chatSend"]');
+  await expect.poll(() => page.evaluate(() => S.chatMsgs.length)).toBe(2);
+  await expect(page.locator(".msg.ai .bub").last()).toContainText("Antwort aus den Kennzahlen");
+  await expect(page.locator(".msg.ai .bub").last()).not.toContainText("KI nicht verfügbar");
+  expect(sent.length).toBe(3);
+  expect(sent.map((b) => Array.isArray(b.tools) && b.tools.length > 0)).toEqual([true, true, false]);
+  for (const b of sent) expect(b.messages.some((m) => m.role === "tool" || "tool_calls" in m)).toBe(false);
+  expect(await page.evaluate(() => S.chatMsgs.at(-1).engine)).toBe("ki");
+  // Eingabefehler des Modells → lokale Antwort mit verständlichem Hinweis samt Code (statt nur „503“)
+  ai = fakeAi([new Error("AiError: 5006: Input validation failed")]);
+  await page.fill("#chatIn", "Welche Aufgaben sind offen?");
+  await page.click('button[data-a="chatSend"]');
+  await expect.poll(() => page.evaluate(() => S.chatMsgs.length)).toBe(4);
+  await expect(page.locator(".msg.ai .bub").last()).toContainText("KI-Dienst meldet einen Fehler (modell_eingabe)");
+  await expect(page.locator(".msg.ai .bub").last()).toContainText("Offene Aufgaben");
 });

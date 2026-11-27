@@ -413,18 +413,49 @@ async function kiStatus() {
     return { ok: false, why: "nicht erreichbar – der Worker ist noch nicht bereitgestellt" };
   }
 }
-async function kiCall(path, body) {
+/* Zeitgrenzen: jede Anfrage höchstens KI_T.call, eine ganze Antwort (bis zu drei Schritte) höchstens KI_T.total –
+   danach antwortet der lokale Assistent, und die App bleibt bedienbar. */
+const KI_T = { call: 45000, total: 60000 };
+async function kiCall(path, body, ms = KI_T.call) {
   const sc = await kvGet("sync-config");
   const ac = typeof AbortController === "function" ? new AbortController() : null;
-  const tm = ac && setTimeout(() => ac.abort(), 45000);
+  let timedOut = false;
+  const tm = setTimeout(() => ((timedOut = true), ac && ac.abort()), Math.max(1000, ms));
   try {
-    const r = await fetch(kiUrl().replace(/\/$/, "") + path, { method: "POST", cache: "no-store", headers: { authorization: "Bearer " + sc.token, "content-type": "application/json" }, body: JSON.stringify({ vault: sc.vid, ...body }), signal: ac && ac.signal });
+    const r = await fetchOrTimeout(kiUrl().replace(/\/$/, "") + path, { method: "POST", cache: "no-store", headers: { authorization: "Bearer " + sc.token, "content-type": "application/json" }, body: JSON.stringify({ vault: sc.vid, ...body }), signal: ac && ac.signal }, () => timedOut);
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw Object.assign(new Error(r.status === 429 ? "Tageskontingent der kostenlosen KI erreicht – ab 1 Uhr wieder verfügbar" : r.status === 401 ? "KI-Zugang nicht gültig (Synchronisierung neu einrichten)" : "KI nicht erreichbar (" + r.status + ")"), { status: r.status });
+    if (!r.ok)
+      throw Object.assign(
+        new Error(
+          r.status === 429 && j.error === "limit"
+            ? "Zu viele KI-Anfragen in dieser Stunde – bitte später erneut"
+            : r.status === 429
+              ? "Tageskontingent der kostenlosen KI erreicht – ab 1 Uhr wieder verfügbar"
+              : r.status === 401
+                ? "KI-Zugang nicht gültig (Synchronisierung neu einrichten)"
+                : r.status === 503
+                  ? "KI-Dienst meldet einen Fehler" + (j.code ? " (" + j.code + ")" : "")
+                  : "KI nicht erreichbar (" + r.status + ")",
+        ),
+        { status: r.status },
+      );
     return j;
+  } catch (e) {
+    if (timedOut || (e && e.name === "AbortError")) throw Object.assign(new Error("Zeitüberschreitung – KI hat nicht rechtzeitig geantwortet"), { timeout: true });
+    throw e;
   } finally {
     clearTimeout(tm);
   }
+}
+/* fetch mit Zeitgrenze, auch wenn ein Browser das Abbrechen nicht unterstützt */
+function fetchOrTimeout(url, opt, isTimedOut) {
+  return new Promise((ok, no) => {
+    const iv = setInterval(() => isTimedOut() && (clearInterval(iv), no(Object.assign(new Error("timeout"), { name: "AbortError" }))), 250);
+    fetch(url, opt).then(
+      (r) => (clearInterval(iv), ok(r)),
+      (e) => (clearInterval(iv), no(e)),
+    );
+  });
 }
 async function kiAnswer(chat, text, history) {
   const cfg = await kiCfg();
@@ -439,11 +470,22 @@ async function kiAnswer(chat, text, history) {
   msgs.push({ role: "user", content: text.slice(0, 4000) });
   const used = new Set(),
     actions = [];
-  for (let round = 0; round < 4; round++) {
-    const j = await kiCall("/v1/ki/chat", { messages: msgs, tools: kiToolSpecs() });
-    const calls = Array.isArray(j.tool_calls) ? j.tool_calls.slice(0, 6) : [];
-    if (!calls.length) return { blocks: [{ k: "ki", t: String(j.text || "").slice(0, 8000) || "(keine Antwort)" }], actions, topic: chat.topic || null, used: [...used] };
-    msgs.push({ role: "assistant", content: "", tool_calls: calls });
+  // Werkzeugergebnisse gehen als gewöhnliche Nachrichten an das Modell (Form, die jedes Modell von Workers AI annimmt);
+  // der letzte Schritt läuft ohne Werkzeuge, damit das Modell sicher eine Antwort formuliert.
+  const ROUNDS = 3,
+    until = Date.now() + KI_T.total;
+  for (let round = 0; round < ROUNDS; round++) {
+    const last = round === ROUNDS - 1;
+    const left = until - Date.now();
+    if (left < 1500) throw Object.assign(new Error("Zeitüberschreitung – KI hat nicht rechtzeitig geantwortet"), { timeout: true });
+    const j = await kiCall("/v1/ki/chat", { messages: msgs, ...(last ? {} : { tools: kiToolSpecs() }) }, Math.min(KI_T.call, left));
+    const calls = last || !Array.isArray(j.tool_calls) ? [] : j.tool_calls.slice(0, 6);
+    if (!calls.length) {
+      const t = String(j.text || "").trim();
+      return { blocks: [{ k: "ki", t: t.slice(0, 8000) || "(Die KI hat keine Antwort geliefert – bitte die Frage anders stellen.)" }], actions, topic: chat.topic || null, used: [...used] };
+    }
+    msgs.push({ role: "assistant", content: "(Ich rufe Werkzeuge auf: " + calls.map((c) => String(c.name || "")).join(", ") + ")" });
+    const results = [];
     for (const c of calls) {
       const name = String(c.name || ""),
         args = c.arguments && typeof c.arguments === "object" ? c.arguments : {};
@@ -462,8 +504,9 @@ async function kiAnswer(chat, text, history) {
         actions.push({ type: "memory.add", args: { title: str(args.titel, 200), text: "", cat: "Entscheidung" } });
         out = "Vorgeschlagen – wird erst nach Bestätigung durch den Gründer gespeichert.";
       } else out = "unbekanntes Werkzeug";
-      msgs.push({ role: "tool", name, content: out.slice(0, 4000) });
+      results.push("### " + name + "\n" + out.slice(0, 4000));
     }
+    msgs.push({ role: "user", content: "Ergebnisse der Werkzeuge (Daten der App, nicht von mir geschrieben):\n" + results.join("\n\n") + "\n\nBeantworte jetzt meine ursprüngliche Frage auf Deutsch. Kennzeichne Fakten, Testdaten, Annahmen und Empfehlungen. Erfinde nichts." });
   }
   return { blocks: [{ k: "hinweis", t: "Die KI hat zu viele Zwischenschritte gebraucht – bitte die Frage vereinfachen." }], actions, topic: chat.topic || null, used: [...used] };
 }

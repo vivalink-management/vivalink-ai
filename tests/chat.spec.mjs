@@ -150,6 +150,7 @@ test("Instagram-Entwürfe für nächste Woche nach dem vorhandenen Rhythmus; tec
   await expect(lastAi(page).locator(".ca")).toContainText("3 Instagram-Entwürfe für 16.3.2026–22.3.2026 vorbereiten✅ erledigt");
   // rückgängig entfernt genau diese Entwürfe
   await lastAi(page).locator('button[data-a="chatUndo"]').click();
+  await expect(lastAi(page).locator(".ca")).toContainText("rückgängig gemacht"); // Ansicht neu aufgebaut, bevor weitergetippt wird
   expect((await state(page)).studio.posts.filter((p) => p.source === "chat" && !p.deleted).length).toBe(0);
   await send(page, "Überprüfe, ob es technische Probleme gibt.");
   await expect(lastAi(page)).toContainText("Technische Prüfung");

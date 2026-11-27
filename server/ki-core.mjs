@@ -101,6 +101,30 @@ function cleanMessages(m) {
   }
   return total > 60000 ? null : out;
 }
+/* Werkzeugrunden in eine Form bringen, die jedes Textmodell von Workers AI annimmt: Werkzeugaufrufe des Assistenten als
+   kurzer Text, Werkzeugergebnisse (role "tool") gesammelt als Nutzer-Nachricht. So funktionieren auch App-Versionen,
+   die Werkzeugergebnisse noch als role "tool" senden (2.11.0). */
+export function normalizeMessages(messages) {
+  const out = [];
+  let pending = [];
+  const flush = () => {
+    if (!pending.length) return;
+    out.push({ role: "user", content: "Ergebnisse der Werkzeuge (Daten der App):\n" + pending.join("\n\n") + "\n\nBeantworte jetzt die ursprüngliche Frage auf Deutsch. Erfinde nichts." });
+    pending = [];
+  };
+  for (const m of messages) {
+    if (m.role === "tool") {
+      pending.push("### " + (m.name || "werkzeug") + "\n" + m.content);
+      continue;
+    }
+    flush();
+    if (m.role === "assistant" && Array.isArray(m.tool_calls) && m.tool_calls.length)
+      out.push({ role: "assistant", content: (m.content ? m.content + " " : "") + "(Werkzeuge aufgerufen: " + m.tool_calls.map((c) => c.name).join(", ") + ")" });
+    else out.push({ role: m.role, content: m.content || (m.role === "assistant" ? "(keine Angabe)" : "") });
+  }
+  flush();
+  return out;
+}
 function cleanTools(t) {
   if (t == null) return [];
   if (!Array.isArray(t) || t.length > 20 || JSON.stringify(t).length > 20000) return null;
@@ -133,9 +157,13 @@ export async function handleKi({ method, path, auth, body, client = "", now = Da
       await book(store, r, est);
       return json(200, { text: String((out && out.text) || "").slice(0, 4000) });
     }
-    const messages = cleanMessages(b.messages),
-      tools = cleanTools(b.tools);
+    const cm = cleanMessages(b.messages),
+      messages = cm && normalizeMessages(cm);
+    let tools = cleanTools(b.tools);
     if (!messages || !tools) return json(400, { error: "bad request" });
+    // Folgen auf die letzte Nachricht Werkzeugergebnisse (App 2.11.0), soll das Modell antworten statt erneut Werkzeuge
+    // aufzurufen (Live-Diagnose 27.11.2026: mit angebotenen Werkzeugen rief Llama sie sonst erneut auf)
+    if (cm[cm.length - 1].role === "tool") tools = [];
     // Schätzung mit dem teuersten möglichen Modell der Liste (falls auf das nächste ausgewichen wird)
     const est = Math.max(...models.map((m) => estimateChat(messages, tools, m)));
     const r = await reserve(store, b.vault, est, now);
@@ -148,15 +176,18 @@ export async function handleKi({ method, path, auth, body, client = "", now = Da
         model = m;
         break;
       } catch (e) {
-        if (!/\b(410|403|5028|5035|404|5007)\b/.test(String((e && e.message) || e))) {
-          await book(store, r, est);
-          throw e; // anderer Fehler: nicht auf das nächste Modell ausweichen
-        }
+        const msg = String((e && e.message) || e);
+        if (/\b(410|403|5028|5035|404|5007)\b/.test(msg)) continue; // Modell nicht verfügbar → nächstes
+        // Eingabe abgelehnt (keine Rechenleistung verbraucht) bzw. anderer Fehler: grober Code, keine Inhalte
+        const code = /\b(5006|400)\b|validat|invalid|schema/i.test(msg) ? "modell_eingabe" : "modell_fehler";
+        console.error("ki", code, (msg.match(/\b\d{4}\b/) || [""])[0]); // nur Fehlercode, nie Inhalte
+        await book(store, r, code === "modell_eingabe" ? 0 : est);
+        return json(503, { error: "unavailable", code });
       }
     }
     if (!model) {
       await book(store, r, 0);
-      return json(503, { error: "unavailable" });
+      return json(503, { error: "unavailable", code: "modell_nicht_verfuegbar" });
     }
     const u = out && out.usage;
     const [ni, no] = rate(model);

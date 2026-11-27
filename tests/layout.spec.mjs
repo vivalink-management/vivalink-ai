@@ -244,6 +244,13 @@ for (const small of [false, 375, 320]) {
       });
       if (!vb) found["Sprachanzeige"] = ["nicht vollständig sichtbar"];
       await check("KI-Chat/Sprachmodus aktiv");
+      // mit langem Zwischenergebnis und „Fertig gesprochen“ sowie beim Vorlesen mit „Unterbrechen“ (ab 2.11.1)
+      await page.evaluate(() => ((VO.interim = "Wie entwickelt sich Vivalink aktuell und welche Maßnahmen würdest du für die nächsten zwei Wochen ganz konkret empfehlen, damit wir mehr echte Nutzer gewinnen"), voiceBar()));
+      await expect(page.locator('#voicebar button[data-a="voiceDone"]')).toBeVisible();
+      await check("Sprachanzeige/Zwischenergebnis", "#voicebar");
+      await page.evaluate(() => setState("spricht"));
+      await expect(page.locator('#voicebar button[data-a="voiceInterrupt"]')).toBeVisible();
+      await check("Sprachanzeige/Vorlesen", "#voicebar");
       await page.click('#voicebar button[data-a="voiceStop"]');
       await openAuftraege(page);
       await check("KI-Chat/Aufträge");

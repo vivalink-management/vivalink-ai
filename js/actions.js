@@ -34,6 +34,7 @@ const POLICY = {
   "ki.settings": { lvl: 2, n: "KI-Einstellungen und Datenfreigaben ändern" },
   "voice.start": { lvl: 2, n: "Sprachmodus starten (Mikrofon)" },
   "voice.stop": { lvl: 0, n: "Sprachmodus beenden" },
+  "voice.mode": { lvl: 0, n: "Sprachmodus: Wechsel der Spracherkennung" },
 };
 const LVL = ["automatisch", "automatisch mit Rückgängig-Punkt", "nur nach deiner Freigabe", "nie automatisch"];
 let ACTIONS = [];
