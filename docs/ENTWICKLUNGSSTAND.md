@@ -1,7 +1,7 @@
 # Zentrale Entwicklungsübersicht: Vivalink Management AI
 
 **Fortsetzungsdokument für alle weiteren Entwicklungsaufträge.** Bei jedem Auftrag zuerst lesen und am Ende aktualisieren. Arbeitsweise (Tests, Gerätetests, Grenzen): **`CLAUDE.md`**.
-Stand: 27.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.10.0** (`main`, Pull Request #8; echte Kennzahlen, Testdaten getrennt; Supabase-Erweiterung, neue Edge Function und Kennzeichnung der vier Testkonten durch den Gründer erledigt – App zeigt 0 echte Nutzer) · Veröffentlicht: **2.12.1** (PR #12) · Nächster Schritt: **Entwicklungsplan KI** (`docs/ENTWICKLUNGSPLAN-KI.md`, wartet auf Freigabe) · Testversion „VL Test“: 2.8.3
+Stand: 27.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.10.0** (`main`, Pull Request #8; echte Kennzahlen, Testdaten getrennt; Supabase-Erweiterung, neue Edge Function und Kennzeichnung der vier Testkonten durch den Gründer erledigt – App zeigt 0 echte Nutzer) · Veröffentlicht: **2.12.1** (PR #12) · Entwicklungszweig: **2.13.0** (Phase 1 des KI-Plans: Unternehmensprofil, Playbook, Antwortarten, Prüfungen; nicht veröffentlicht) · Testversion „VL Test“: 2.8.3
 
 ## 1. Umgesetzt und getestet (noch nicht veröffentlicht)
 
@@ -122,6 +122,12 @@ Stand: 27.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
   - Cloudflare-Sprachausgabe geprüft: keine kostenlose deutsche Stimme → nicht umgesetzt (Begründung in `docs/KI-CHAT.md`).
 - ✅ 2.12.1 veröffentlicht (PR #12).
 - **Entwicklungsplan KI (27.11.2026):** Analyse von Architektur und Schwachstellen und priorisierter Plan (Unternehmensprofil, Antwortmodi, Analyse-Werkzeug, Gesprächsnotizen, Modellvergleich, Eigenständigkeit) in `docs/ENTWICKLUNGSPLAN-KI.md`. Nichts umgesetzt; wartet auf Freigabe des Gründers (Abschnitt 8).
+- **Phase 1 (2.13.0) umgesetzt:**
+  - Profil (`js/profile.js`) und Playbook (`js/playbook.js`, Lesefassung `docs/VIVALINK-PLAYBOOK.md`) als Entwürfe – aktiv erst nach Freigabe des Gründers in der App.
+  - Antwortarten und Prüfungen in `js/assistant.js` (`answerMode`, `kiReview`, `fixLabels`, `repetitionScore`, `missingStructure`, `alreadySaid`).
+  - Qualitäts-Testset (`tests/qualitaet-rubrik.mjs`, live: Workflow-Eingabe `qualitaet=ja`).
+  - Tests: `profil`, `antwort`, `qualitaet`, `update-2130` (Fixture `legacy-v2121`), Layout.
+  - Nächste Phase nach Freigabe: Gesprächsgedächtnis.
 - **Offen (vorher):**
   - Gerätetest 2.12.1; danach Gerätetest: drei Fragen per Sprache. Erwartet: „Ich höre zu.“ beim Start, jede Antwort automatisch vorgelesen. Sonst Protokoll kopieren.; für die Fehlerbehebung nicht mehr zwingend, da der Worker die Form von 2.11.0 annimmt.
   - Gründer schaltet das KI-Modell auf iPad und iPhone ein (KI-Einstellungen, je Gerät) und gibt die Datenbereiche frei.

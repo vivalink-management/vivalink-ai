@@ -143,7 +143,8 @@ test("Gesprächszusammenhang: Rückfrage bekommt die vorige KI-Antwort (ohne Hin
   await expect.poll(() => msgCount(page)).toBe(4);
   const sys = calls.inputs[0].messages[0].content;
   for (const rule of ["Wiederhole keine Zahlen", "Rückfragen", "[Fakt]", "[Annahme]", "[Empfehlung]", "Testdaten sind nie echte Kennzahlen", "erster Schritt", "Eine Aufgabe legst du nur an, wenn der Gründer ausdrücklich darum bittet"]) expect(sys).toContain(rule);
-  const second = calls.inputs.at(-1).messages;
+  // Hauptaufruf zur Rückfrage (danach kann ein Nachfass-Aufruf der Beratungsprüfung folgen – eigener Test)
+  const second = calls.inputs.find((i) => i.messages.at(-1).content === "Welche konkrete Maßnahme würdest du davon als Erstes umsetzen und warum?").messages;
   const prev = second.find((m) => m.role === "assistant" && m.content.includes("Mehr Marketing über Instagram"));
   expect(prev, "vorige KI-Antwort im Verlauf").toBeTruthy();
   expect(prev.content).not.toContain("An die KI übermittelt"); // keine Hinweiszeilen als Rauschen

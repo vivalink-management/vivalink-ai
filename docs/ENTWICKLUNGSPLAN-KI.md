@@ -1,6 +1,6 @@
 # Entwicklungsplan: Vivalink Management AI als Unternehmensberater und technischer Assistent
 
-Stand: 27.11.2026 · Grundlage: Version 2.12.1 (Code auf `main`, Live-Prüfungen mit künstlichen Daten) · **Nur Plan – nichts umgesetzt.**
+Stand: 27.11.2026 · Grundlage: Version 2.12.1 · **Plan vom Gründer freigegeben.** Reihenfolge: 1 Unternehmensverständnis und Antwortqualität → 2 Gesprächsgedächtnis → 3 Datenverknüpfung → 4 Modellvergleich → 5 Eigenständigkeit. Phase 1 umgesetzt in 2.13.0 (Pull Request, nicht veröffentlicht).
 
 Legende: ✅ existiert · 🔧 existiert, muss verbessert werden · 🆕 neu
 
