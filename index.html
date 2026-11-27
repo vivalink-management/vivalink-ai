@@ -28,6 +28,18 @@ button.s{min-height:36px;padding:5px 11px;font-size:14px}
 input,select,textarea{font:inherit;width:100%;padding:10px;border:1px solid var(--bd);border-radius:10px;background:var(--bg);color:var(--tx);margin:3px 0 10px}
 textarea{min-height:90px}label{font-size:14px;color:var(--mut)}
 .chip{display:inline-block;font-size:13px;padding:2px 9px;border-radius:99px;border:1px solid var(--bd);color:var(--mut)}
+.seg{display:flex;gap:6px;margin:0 0 6px}.seg button{flex:1;min-height:44px;font-size:14px}.seg button.on{border-color:var(--ac);color:var(--ac);font-weight:700}
+.chathead{position:sticky;top:0;background:var(--bg);z-index:2;padding:4px 0}.ctitle{flex:1;min-width:0;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;padding:12px 4px}
+#chatLog{display:flex;flex-direction:column;gap:2px;padding-bottom:6px}.msg{display:flex;flex-direction:column;max-width:92%}.msg.me{align-self:flex-end;align-items:flex-end}.msg.ai{align-self:flex-start}
+.bub{border:1px solid var(--bd);background:var(--card);border-radius:14px;padding:10px 12px;overflow-wrap:anywhere;line-height:1.45}.msg.me .bub{background:var(--ac);color:var(--act);border-color:var(--ac)}
+.cb{margin:3px 0}.cb-h{font-weight:700;margin:8px 0 2px}.cb-l{font-size:11px;padding:0 6px;vertical-align:1px}.cb-test .cb-l{border-color:var(--warn);color:var(--warn)}.cb-empfehlung .cb-l{border-color:var(--ac);color:var(--ac)}.cb-fakt .cb-l{border-color:var(--ok);color:var(--ok)}
+.mmeta{font-size:12px;color:var(--mut);margin:2px 4px 8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}.mbtn{min-height:44px;font-size:12px;padding:4px 10px}.ca{margin:8px 0 2px}
+.composer{position:sticky;bottom:calc(58px + env(safe-area-inset-bottom,0px));background:var(--bg);padding:6px 0 4px;z-index:3}.composer textarea{min-height:46px;max-height:160px;margin:0 0 6px}.composer .row button{flex:1}
+.voicebtn{border-color:var(--ac);color:var(--ac);font-weight:700}
+body.vb-on .composer{display:none}body.vb-on main{padding-bottom:230px}
+.voicebar{position:fixed;left:8px;right:8px;bottom:calc(62px + env(safe-area-inset-bottom,0px));z-index:20;background:var(--card);border:2px solid var(--bad);border-radius:14px;padding:10px 12px;box-shadow:0 6px 24px rgba(0,0,0,.18);max-width:624px;margin:0 auto}.voicebar .row button{flex:1}
+.vb-dot{display:inline-block;width:12px;height:12px;border-radius:50%;background:var(--bad);margin-right:6px;vertical-align:-1px;animation:vbp 1.2s infinite}.vb-denkt .vb-dot,.vb-spricht .vb-dot,.vb-diktat .vb-dot{background:var(--mut);animation:none}.vb-i{font-size:14px;color:var(--mut);margin:4px 0}
+@keyframes vbp{50%{opacity:.35}}@media(prefers-reduced-motion:reduce){.vb-dot{animation:none}}
 .chips{display:flex;gap:6px;overflow-x:auto;padding:4px 0 8px}.chips button{white-space:nowrap;min-height:34px;padding:4px 12px;font-size:14px}
 .chips button.on{background:var(--ac);color:var(--act);border-color:var(--ac)}
 nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--card);border-top:1px solid var(--bd);padding-bottom:env(safe-area-inset-bottom,0px);z-index:5}
@@ -53,24 +65,27 @@ nav button{flex:1;border:0;border-radius:0;background:none;color:var(--mut);font
 <nav id="nav"></nav>
 <div class="sheet" id="sheet" hidden></div>
 <div id="toast"></div>
-<script src="js/config.js?v=2.10.0"></script>
-<script src="js/core.js?v=2.10.0"></script>
-<script src="js/data.js?v=2.10.0"></script>
-<script src="js/metrics.js?v=2.10.0"></script>
-<script src="js/actions.js?v=2.10.0"></script>
-<script src="js/rules.js?v=2.10.0"></script>
-<script src="js/studio.js?v=2.10.0"></script>
-<script src="js/advice.js?v=2.10.0"></script>
-<script src="js/manage.js?v=2.10.0"></script>
-<script src="js/render.js?v=2.10.0"></script>
-<script src="js/prompts.js?v=2.10.0"></script>
-<script src="js/aitest.js?v=2.10.0"></script>
-<script src="js/views.js?v=2.10.0"></script>
-<script src="js/studio-view.js?v=2.10.0"></script>
-<script src="js/diag.js?v=2.10.0"></script>
-<script src="js/sync.js?v=2.10.0"></script>
-<script src="js/autonomy.js?v=2.10.0"></script>
-<script src="js/kpi.js?v=2.10.0"></script>
-<script src="js/app.js?v=2.10.0"></script>
+<script src="js/config.js?v=2.11.0"></script>
+<script src="js/core.js?v=2.11.0"></script>
+<script src="js/data.js?v=2.11.0"></script>
+<script src="js/metrics.js?v=2.11.0"></script>
+<script src="js/actions.js?v=2.11.0"></script>
+<script src="js/rules.js?v=2.11.0"></script>
+<script src="js/studio.js?v=2.11.0"></script>
+<script src="js/advice.js?v=2.11.0"></script>
+<script src="js/manage.js?v=2.11.0"></script>
+<script src="js/render.js?v=2.11.0"></script>
+<script src="js/prompts.js?v=2.11.0"></script>
+<script src="js/aitest.js?v=2.11.0"></script>
+<script src="js/views.js?v=2.11.0"></script>
+<script src="js/studio-view.js?v=2.11.0"></script>
+<script src="js/diag.js?v=2.11.0"></script>
+<script src="js/sync.js?v=2.11.0"></script>
+<script src="js/autonomy.js?v=2.11.0"></script>
+<script src="js/kpi.js?v=2.11.0"></script>
+<script src="js/assistant.js?v=2.11.0"></script>
+<script src="js/chat.js?v=2.11.0"></script>
+<script src="js/voice.js?v=2.11.0"></script>
+<script src="js/app.js?v=2.11.0"></script>
 </body>
 </html>

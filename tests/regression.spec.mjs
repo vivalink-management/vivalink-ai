@@ -1,7 +1,7 @@
 // Regressionstests: alle Funktionen aus Version 1 (GitHub) und Version 2 (Artefakt) über die Oberfläche.
 import { test, expect } from "@playwright/test";
 import { APP, SCHEMA, CACHE, METRICS } from "./version.mjs";
-import { guard, open, ready, nav, state, stubClipboard, clip, toastText, seed } from "./helpers.mjs";
+import { guard, open, ready, nav, state, stubClipboard, clip, toastText, seed, openAuftraege } from "./helpers.mjs";
 import { v2State } from "./fixtures.mjs";
 
 let g;
@@ -116,7 +116,7 @@ test("Datenschutzfilter: E-Mail und Telefonnummer werden als vertraulich markier
 
 test("Arbeitsaufträge: alle 7 Vorlagen, Vertrauliches ausgeschlossen, Optionen, Antwort speichern", async ({ page }) => {
   await seed(page, { state: v2State() });
-  await nav(page, "ai");
+  await openAuftraege(page);
   const tpl = page.locator('[data-a="tpl"]');
   await expect(tpl).toHaveCount(7);
   for (const k of ["ig", "cap", "strat", "week", "dec", "prob", "sum"]) {

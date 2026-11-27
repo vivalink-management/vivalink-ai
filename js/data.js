@@ -17,6 +17,9 @@ function migrate(T = S) {
   }
   if (!T.meetup) (T.meetup = { date: "", place: "", goal: "", note: "", updatedAt: 0 }), (ch = true);
   if (!Array.isArray(T.grants)) (T.grants = []), (ch = true); // widerrufbare Berechtigungen (additiv, ältere Versionen ignorieren sie)
+  // KI-Chat (ab Datenversion 5): Chats und Nachrichten als eigene Listen (additiv)
+  if (!Array.isArray(T.chats)) (T.chats = []), (ch = true);
+  if (!Array.isArray(T.chatMsgs)) (T.chatMsgs = []), (ch = true);
   // Instagram-Studio (ab Datenversion 4): fehlende Felder ergänzen, Vorhandenes nie überschreiben
   const sd = studioDefaults();
   if (!T.studio || typeof T.studio !== "object") (T.studio = sd), (ch = true);
@@ -129,6 +132,25 @@ function cleanEntry(e) {
     revs: revList(e.revs),
   };
 }
+/* KI-Chat: nur bekannte Felder, begrenzte Längen; Aufträge nur mit bekannten Arten und Zuständen */
+const CHAT_ACT_TYPES = ["task.add", "task.done", "drafts", "repair", "memory.add", "task.delete"];
+const CHAT_ACT_STATES = ["offen", "erledigt", "abgelehnt", "fehler", "rueckgaengig"];
+function cleanChat(r) {
+  if (!r || typeof r !== "object" || !isId(r.id)) return null;
+  return { id: r.id, title: str(r.title, 80) || "Chat", createdAt: optNum(r.createdAt) || 0, updatedAt: optNum(r.updatedAt) || 0, deleted: !!r.deleted, auto: !!r.auto, summary: str(r.summary, 6000), summaryAt: optNum(r.summaryAt), topic: str(r.topic, 40), revs: revList(r.revs) };
+}
+function cleanChatMsg(r) {
+  if (!r || typeof r !== "object" || !isId(r.id) || !isId(r.chat) || !["user", "assistant"].includes(r.role)) return null;
+  const o = { id: r.id, chat: r.chat, role: r.role, text: str(r.text, 20000), at: optNum(r.at) || 0, via: r.via === "voice" ? "voice" : "text", updatedAt: optNum(r.updatedAt) || 0, deleted: !!r.deleted, revs: revList(r.revs) };
+  if (r.engine === "ki" || r.engine === "lokal") o.engine = r.engine;
+  if (Array.isArray(r.blocks)) o.blocks = r.blocks.slice(0, 60).filter((b) => b && typeof b === "object").map((b) => ({ k: ["h", "fakt", "test", "annahme", "empfehlung", "hinweis", "ki"].includes(b.k) ? b.k : "hinweis", t: str(b.t, 4000) }));
+  if (Array.isArray(r.actions))
+    o.actions = r.actions
+      .slice(0, 10)
+      .filter((x) => x && CHAT_ACT_TYPES.includes(x.type) && isId(x.id))
+      .map((x) => ({ id: x.id, type: x.type, title: str(x.title, 300), lvl: Number(x.lvl) || 0, status: CHAT_ACT_STATES.includes(x.status) ? x.status : "fehler", note: str(x.note, 300), args: x.args && typeof x.args === "object" ? JSON.parse(JSON.stringify(x.args).slice(0, 20000) || "{}") : {}, ...(x.undo && typeof x.undo === "object" ? { undo: x.undo } : {}) }));
+  return o;
+}
 function cleanMetric(r) {
   if (!r || typeof r !== "object" || !isId(r.id)) return null;
   const entries = [];
@@ -238,7 +260,15 @@ function parseBackup(text) {
 }
 
 function cleanIncoming(data, aitest) {
-  const out = { memory: [], tasks: [], metrics: [], meetup: null, suggest: {}, aitest: [], posts: [], brand: null, settings: null, grants: [], skipped: 0 };
+  const out = { memory: [], tasks: [], metrics: [], meetup: null, suggest: {}, aitest: [], posts: [], brand: null, settings: null, grants: [], chats: [], chatMsgs: [], skipped: 0 };
+  for (const r of Array.isArray(data.chats) ? data.chats : []) {
+    const c = cleanChat(r);
+    c ? out.chats.push(c) : out.skipped++;
+  }
+  for (const r of Array.isArray(data.chatMsgs) ? data.chatMsgs : []) {
+    const c = cleanChatMsg(r);
+    c ? out.chatMsgs.push(c) : out.skipped++;
+  }
   for (const r of Array.isArray(data.grants) ? data.grants : []) {
     const c = cleanGrant(r);
     c ? out.grants.push(c) : out.skipped++;
@@ -377,6 +407,13 @@ function mergeInto(T, inc) {
     mergeList(T, T.memory, "memory", [r], rep, ["active", "supersededBy"]);
   }
   mergeList(T, T.tasks, "tasks", inc.tasks, rep);
+  // KI-Chat: Chats wie Aufgaben; Nachrichten nur hinzufügen bzw. neuere übernehmen; gelöschte Chats ohne Nachrichten
+  if (!Array.isArray(T.chats)) T.chats = [];
+  if (!Array.isArray(T.chatMsgs)) T.chatMsgs = [];
+  mergeList(T, T.chats, "chats", inc.chats || [], rep, ["summary", "summaryAt", "topic"]);
+  mergeList(T, T.chatMsgs, "chatMsgs", inc.chatMsgs || [], rep);
+  const gone = new Set(T.chats.filter((c) => c.deleted).map((c) => c.id));
+  if (gone.size) T.chatMsgs = T.chatMsgs.filter((m) => !gone.has(m.chat));
   if (!Array.isArray(T.grants)) T.grants = [];
   mergeList(T, T.grants, "grants", inc.grants || [], rep);
   for (const r of inc.metrics) {

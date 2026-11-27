@@ -44,7 +44,7 @@ async function switchTo(page, port, root, v) {
 }
 const verw = (s, key) => s.metrics.find((m) => m.key === key).entries.filter((e) => !e.deleted && e.src === "verwaltung");
 
-test("Update 2.9.0 → aktuell → Rückbau → aktuell: Werte aus der Verwaltung bleiben erhalten, ungeprüfte werden nicht verwendet", async ({ page }, info) => {
+test("Update 2.9.0 → aktuell → Rückbau → aktuell: Werte aus der Verwaltung und Chats bleiben erhalten, ungeprüfte Werte werden nicht verwendet", async ({ page }, info) => {
   test.setTimeout(90_000);
   const port = 4400 + info.parallelIndex;
   const errors = [];
@@ -85,6 +85,15 @@ test("Update 2.9.0 → aktuell → Rückbau → aktuell: Werte aus der Verwaltun
   });
   s = await state(page);
   expect(verw(s, "reg_total").map((e) => [e.value, e.real])).toEqual([[0, true]]);
+  // Datenversion 5: Sicherheitskopie des Stands vor dem Update; Chats werden angelegt
+  expect(s.v).toBe(5);
+  expect((await page.evaluate(() => kvGet("safety-v4"))).data.tasks).toEqual(v290.tasks);
+  await page.evaluate(async () => {
+    const c = newChat("Chat vor dem Rückbau");
+    addMsg(c, { role: "user", text: "Wie läuft Vivalink?" });
+    await save();
+  });
+  s = await state(page);
   const cur1 = s;
 
   // Rückbau auf 2.9.0: alle Daten (inkl. Kennzeichen) bleiben, die alte Version läuft fehlerfrei
@@ -92,6 +101,8 @@ test("Update 2.9.0 → aktuell → Rückbau → aktuell: Werte aus der Verwaltun
   s = await state(page);
   expect(s.metrics).toEqual(cur1.metrics);
   expect(s.tasks).toEqual(cur1.tasks);
+  expect(s.chats).toEqual(cur1.chats); // 2.9.0 kennt Chats nicht, behält sie aber unverändert
+  expect(s.chatMsgs).toEqual(cur1.chatMsgs);
   await page.evaluate(() => {
     S.tasks.push({ id: "t-rb", title: "Im Rückbau angelegt", prio: "mittel", area: "App", due: "", done: false, updatedAt: Date.now() });
     return save();
@@ -103,6 +114,8 @@ test("Update 2.9.0 → aktuell → Rückbau → aktuell: Werte aus der Verwaltun
   expect(verw(s, "reg_total").map((e) => [e.value, e.real])).toEqual([[0, true]]);
   expect(verw(s, "active_users").map((e) => [e.value, e.real ?? null])).toEqual([[4, null]]); // alt, ungeprüft, gespeichert
   expect(s.tasks.map((t) => t.id)).toEqual(expect.arrayContaining(["t-upd", "t-rb"]));
+  expect(s.chats.map((c) => c.title)).toEqual(["Chat vor dem Rückbau"]);
+  expect(s.chatMsgs.map((m) => m.text)).toEqual(["Wie läuft Vivalink?"]);
   r = await page.evaluate(() => ({ reg: cur(S.metrics.find((m) => m.key === "reg_total")).value, act: cur(S.metrics.find((m) => m.key === "active_users")) }));
   expect(r).toEqual({ reg: 0, act: null });
   expect(errors).toEqual([]);

@@ -110,6 +110,8 @@ const syncData = () => {
   const d = clone(S);
   for (const k of ["conflicts", "lastBackup", "dev", "accent"]) delete d[k];
   if (d.studio) delete d.studio.learned;
+  // KI-Chat: nur der neueste Teil je Chat und insgesamt begrenzt (js/chat.js) – Älteres bleibt auf dem Gerät
+  if (Array.isArray(d.chatMsgs) && typeof chatSyncSlice === "function") d.chatMsgs = chatSyncSlice(d);
   return d;
 };
 

@@ -7,7 +7,9 @@ document.addEventListener("click", async (e) => {
     tab = id;
     render();
     scrollTo(0, 0);
-  } else if (a === "close") close();
+    if (tab === "ai" && kiTab === "chat" && chatOpen) chatScroll();
+  } else if (/^(chat|ki[A-Z]|voice)/.test(a) && (await chatAction(a, id, b))) return;
+  else if (a === "close") close();
   else if (a === "newTask") taskForm();
   else if (a === "editTask") taskForm(S.tasks.find((y) => y.id === id));
   else if (a === "delTask") {

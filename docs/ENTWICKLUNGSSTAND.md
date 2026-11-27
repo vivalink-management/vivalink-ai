@@ -1,7 +1,7 @@
 # Zentrale Entwicklungsübersicht: Vivalink Management AI
 
 **Fortsetzungsdokument für alle weiteren Entwicklungsaufträge.** Bei jedem Auftrag zuerst lesen und am Ende aktualisieren. Arbeitsweise (Tests, Gerätetests, Grenzen): **`CLAUDE.md`**.
-Stand: 26.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.9.0** (`main`, veröffentlicht am 26.11.2026: Verwaltungsanbindung aktiv, dazu 2.8.2/2.8.3) · Entwicklungszweig: **2.10.0** (echte Kennzahlen, Testdaten getrennt; nicht veröffentlicht) · Testversion „VL Test“: 2.8.3
+Stand: 26.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.9.0** (`main`, veröffentlicht am 26.11.2026: Verwaltungsanbindung aktiv, dazu 2.8.2/2.8.3) · Entwicklungszweig: **2.11.0** (KI-Chat und Sprachmodus; enthält 2.10.0 echte Kennzahlen/Testdaten getrennt; nicht veröffentlicht) · Testversion „VL Test“: 2.8.3
 
 ## 1. Umgesetzt und getestet (noch nicht veröffentlicht)
 
@@ -69,6 +69,22 @@ Stand: 26.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
 3. **Wirkungsmessung über Zeit:** mehrere Wochen echter Daten, damit Trends und Maßnahmenkontrolle belastbar werden.
 4. **Reaktion in Echtzeit:** heute wöchentlich bzw. beim Öffnen; schneller nur mit kostenpflichtiger KI-API (nur mit Zustimmung).
 5. **Weitere Aufgabenbereiche** (später): E-Mail/Newsletter-Entwürfe, Meetup-Organisation, Auswertung der Website.
+
+### KI-Chat und Sprachmodus (2.11.0, 27.11.2026) – Einzelheiten in `docs/KI-CHAT.md`
+- Fertig und getestet:
+  - Chat mit lokalem Assistenten ohne KI-Modell (Werkzeuge auf vorhandene Funktionen, Herkunftskennzeichnung)
+  - Aufträge über POLICY/act
+  - Gedächtnis nur nach Bestätigung
+  - Sprachmodus mit Geräte-Spracherkennung (Gesprächsschleife, Unterbrechen, Anzeige, Diktiermodus als ehrlicher Ersatz)
+  - Chats über die vorhandene Synchronisierung (begrenzt)
+  - Datenversion 5
+- Vorbereitet, nicht bereitgestellt: Worker `vivalink-ki` (Workers AI: Llama 3.3 70B, Whisper) mit Tagesbudget 9.000 Neurons, Zugang über Tresor-Zugang, Datenfreigaben je Bereich.
+- **Offen (Freigabe Gründer):**
+  - Worker bereitstellen und Datenübertragung an Cloudflare
+  - danach `VL_KI_URL` und Sicherheitsrichtlinie
+  - Veröffentlichung 2.10/2.11
+- **Gerätetests nötig:** Mikrofon und Spracherkennung in Safari bzw. in der installierten App, Stimmenqualität.
+- Kostenpflichtiger Echtzeit-Sprachmodus (OpenAI Realtime) nur als Information; nichts aktiviert.
 
 ### Stand Verwaltungsanbindung (26.11.2026)
 - Erste Bestandsaufnahme ausgewertet.

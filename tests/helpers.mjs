@@ -27,6 +27,11 @@ export async function open(page) {
   await ready(page);
 }
 export const nav = (page, id) => page.click(`nav button[data-id="${id}"]`);
+/* Tab „KI-Chat“ → Bereich „Aufträge an ChatGPT/Claude“ (seit 2.11 hinter der Umschaltung Chat | Aufträge) */
+export async function openAuftraege(page) {
+  await nav(page, "ai");
+  await page.click('.seg button[data-a="kiTab"][data-id="auftraege"]');
+}
 /* Legt Daten direkt im Gerätespeicher ab und lädt die App neu (simuliert vorhandene Nutzerdaten). */
 export async function seed(page, kv) {
   await open(page);
