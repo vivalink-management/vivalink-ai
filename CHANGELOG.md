@@ -1,6 +1,13 @@
 # Änderungsprotokoll
 
-## 2.11.0 (Entwicklungszweig, noch nicht veröffentlicht) – KI-Chat und Sprachmodus
+## 2.11.1 (Entwicklungszweig, noch nicht veröffentlicht) – Fehlerbehebung KI-Chat
+
+- **Behoben:** „KI nicht erreichbar (503)“ bei Fragen, für die das KI-Modell App-Daten über ein Werkzeug abruft. Die Werkzeugergebnisse gehen jetzt als Klartext an das Modell (die bisherige Form lehnte Workers AI ab); der letzte Schritt erfolgt ohne Werkzeuge, damit immer eine Antwort kommt.
+- Verständlichere Hinweise: Stundenlimit, Tageskontingent, ungültiger Zugang, Fehler des KI-Dienstes mit Code.
+- Worker `vivalink-ki` (vorbereitet): nimmt auch die Form von 2.11.0 an, grobe Fehlercodes ohne Inhalte, abgelehnte Eingaben verbrauchen kein Budget.
+- Tests: strenge Workers-AI-Attrappe, Werkzeugablauf über mehrere Schritte, Live-Diagnose (manuell, künstlicher Test-Zugang).
+
+## 2.11.0 (veröffentlicht, PR #9) – KI-Chat und Sprachmodus
 
 - **KI-Chat** (Navigation „KI-Chat“; „Aufträge an ChatGPT/Claude“ über die Umschaltung): beliebig viele Chats, automatisch benannt, umbenennen, fortsetzen, löschen, kopieren.
 - **Ein Assistent für Schreiben und Sprechen**, gemeinsamer Verlauf.

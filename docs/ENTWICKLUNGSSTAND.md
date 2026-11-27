@@ -1,7 +1,7 @@
 # Zentrale Entwicklungsübersicht: Vivalink Management AI
 
 **Fortsetzungsdokument für alle weiteren Entwicklungsaufträge.** Bei jedem Auftrag zuerst lesen und am Ende aktualisieren. Arbeitsweise (Tests, Gerätetests, Grenzen): **`CLAUDE.md`**.
-Stand: 26.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.10.0** (`main`, Pull Request #8; echte Kennzahlen, Testdaten getrennt; Supabase-Erweiterung, neue Edge Function und Kennzeichnung der vier Testkonten durch den Gründer erledigt – App zeigt 0 echte Nutzer) · Entwicklungszweig: **2.11.0** (KI-Chat und Sprachmodus; auf Basis von 2.10.0; nicht veröffentlicht) · Testversion „VL Test“: 2.8.3
+Stand: 27.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.10.0** (`main`, Pull Request #8; echte Kennzahlen, Testdaten getrennt; Supabase-Erweiterung, neue Edge Function und Kennzeichnung der vier Testkonten durch den Gründer erledigt – App zeigt 0 echte Nutzer) · Veröffentlicht: **2.11.0** (KI-Chat, PR #9) · Entwicklungszweig: **2.11.1** (Fehlerbehebung KI-Chat 503; nicht veröffentlicht) · Testversion „VL Test“: 2.8.3
 
 ## 1. Umgesetzt und getestet (noch nicht veröffentlicht)
 
@@ -88,7 +88,14 @@ Stand: 26.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
   - Live-Prüfung KI bestanden: Status, 401 ohne Zugang, 403 fremde Webseiten.
   - Funktionsprüfung mit künstlichem Test-Zugang: Llama 3.3 70B antwortet im kostenlosen Tarif, Werkzeugaufrufe funktionieren.
   - Verbrauch der Prüfung: 14 Neurons. Der Test-Zugang wurde danach gesperrt.
+- ❗ **Fehler nach dem Einschalten (27.11.2026): „KI nicht erreichbar (503)“** bei Fragen mit Werkzeugaufruf.
+  - Ursache (Live-Diagnose mit künstlichem Test-Zugang, Workflow „Live-Prüfung KI“ mit `diagnose=ja`): Der erste Aufruf klappt, Llama ruft ein Werkzeug auf. Im zweiten Schritt sendete die App die Ergebnisse als `tool_calls` (leerer Assistenten-Text) + role `tool`; diese Form lehnt Workers AI ab. Der Worker wich dabei nicht aus und meldete 503. Zugang, Kontingent und Verbindung waren in Ordnung.
+  - Diagnose-Ergebnis: Form der App 2.11.0 → 503; Ergebnisse als Klartext → 200. Mit angebotenen Werkzeugen ruft Llama sie zudem gern erneut auf.
+  - **Lösung 2.11.1 (App):** Werkzeugergebnisse als Klartext-Nachricht, letzter Schritt ohne Werkzeuge, verständliche Fehlermeldungen mit Code.
+  - **Lösung Worker (vorbereitet, Bereitstellung braucht Freigabe):** wandelt die Form von 2.11.0 um (so funktioniert die veröffentlichte App sofort), nach Werkzeugergebnissen keine Werkzeuge mehr, grobe Fehlercodes (`modell_eingabe`, `modell_fehler`, `modell_nicht_verfuegbar`), abgelehnte Eingaben verbrauchen kein Budget; Protokoll nur Fehlercode, nie Inhalte.
+  - Tests: strenge Workers-AI-Attrappe (lehnt die alte Form wie live ab), Form 2.11.0 am Worker, dreistufiger Werkzeugablauf in der App, Fehlercode-Anzeige.
 - **Offen:**
+  - Freigabe der Worker-Aktualisierung `vivalink-ki`, danach Live-Diagnose erneut (Form A muss 200 liefern); Freigabe der Veröffentlichung 2.11.1.
   - Gründer schaltet das KI-Modell auf iPad und iPhone ein (KI-Einstellungen, je Gerät) und gibt die Datenbereiche frei.
   - Gerätetest von Sprachmodus und Server-Spracherkennung in der installierten App.
 - **Gerätetests nötig:** Mikrofon und Spracherkennung in Safari bzw. in der installierten App, Stimmenqualität.

@@ -31,10 +31,12 @@ Ein Assistent, ein Gesprächsverlauf: Schreiben und Sprechen landen im selben Ch
   Inhalte › Stimmen › Deutsch“ eine „erweiterte“ Stimme laden) und das Verhalten der installierten App lassen sich
   nur auf echten Geräten prüfen.
 
-## Vorbereitet: echtes KI-Modell ohne Zusatzkosten (braucht deine Freigabe)
+## Echtes KI-Modell ohne Zusatzkosten (Worker `vivalink-ki`, bereitgestellt am 27.11.2026)
 
 **Cloudflare Workers AI im vorhandenen Cloudflare-Konto**, eigener kleiner Worker `vivalink-ki`
-(`server/ki-worker.js`, `server/ki-core.mjs`, `server/ki-wrangler.toml`), **nicht bereitgestellt**.
+(`server/ki-worker.js`, `server/ki-core.mjs`, `server/ki-wrangler.toml`).
+
+**Werkzeugrunden:** Die App sendet Werkzeugergebnisse als Klartext-Nachricht (nicht als `tool_calls`/role `tool`, das lehnt Workers AI ab; Ursache des 503 in 2.11.0). Der letzte von drei Schritten erfolgt ohne Werkzeuge. Fehler meldet der Worker nur mit grobem Code (`modell_eingabe`, `modell_fehler`, `modell_nicht_verfuegbar`).
 
 - **Modelle:** zuerst Llama 3.3 70B. Ist es nicht verfügbar (außer Betrieb genommen oder nur im kostenpflichtigen
   Tarif), weicht der Worker automatisch auf Gemma 4 26B aus; laut Cloudflare ist es im kostenlosen Tarif nutzbar.
