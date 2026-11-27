@@ -1,7 +1,7 @@
 # Zentrale Entwicklungsübersicht: Vivalink Management AI
 
 **Fortsetzungsdokument für alle weiteren Entwicklungsaufträge.** Bei jedem Auftrag zuerst lesen und am Ende aktualisieren. Arbeitsweise (Tests, Gerätetests, Grenzen): **`CLAUDE.md`**.
-Stand: 27.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.10.0** (`main`, Pull Request #8; echte Kennzahlen, Testdaten getrennt; Supabase-Erweiterung, neue Edge Function und Kennzeichnung der vier Testkonten durch den Gründer erledigt – App zeigt 0 echte Nutzer) · Veröffentlicht: **2.11.1** (PR #10) · Entwicklungszweig: **2.12.0** (Gesprächsfluss, Vorlesen, Absichtsprüfung; nicht veröffentlicht) · Testversion „VL Test“: 2.8.3
+Stand: 27.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.10.0** (`main`, Pull Request #8; echte Kennzahlen, Testdaten getrennt; Supabase-Erweiterung, neue Edge Function und Kennzeichnung der vier Testkonten durch den Gründer erledigt – App zeigt 0 echte Nutzer) · Veröffentlicht: **2.12.0** (PR #11) · Entwicklungszweig: **2.12.1** (automatisches Vorlesen auf dem iPad; nicht veröffentlicht) · Testversion „VL Test“: 2.8.3
 
 ## 1. Umgesetzt und getestet (noch nicht veröffentlicht)
 
@@ -114,8 +114,14 @@ Stand: 27.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
   - „Tests / test (push)“ schlug einmal fehl (WebKit iPad, Zusammenführungs-Test): echter kleiner Synchronisierungsfehler – eine Änderung während einer laufenden Synchronisierung wurde nicht nachgereicht. Behoben in `js/sync.js`, gezielter Test `tests/sync-laufend.spec.mjs` (schlägt ohne Behebung fehl).
   - Ergebnis: lokal 645 bestanden, GitHub Actions mit WebKit iPhone/iPad grün (PR #11).
   - Tests: `tests/praxis.spec.mjs` (schlagen mit 2.11.1 fehl), `sprachfluss`, `absicht`, `update-2112`, `voice-fakes.mjs`; Live: `live-ki-gespraech` (Workflow-Eingabe `gespraech=ja`).
+- ✅ 2.12.0 veröffentlicht (PR #11). Gerätetest des Gründers: Whisper und KI-Antworten funktionieren, aber keine Antwort wurde automatisch hörbar vorgelesen (Protokoll: je Satz „Ende nicht gemeldet“ nach ca. 20 s); 🔊 per Tippen funktioniert.
+- **2.12.1:**
+  - Ursache: leerer Freischalt-Satz (Lautstärke 0) blieb hängen bzw. schaltete iOS nicht frei. Alle Antworten lagen stumm in der Warteschlange; `speaking` wurde fälschlich als Start gewertet.
+  - Lösung: echter Freischalt-Satz beim Tippen, Warteschlange leeren, Start nur per Ereignis, Tipp-Ausweg „🔊 Antwort vorlesen“, ausführliches Protokoll ohne Inhalte.
+  - Tests: `tests/vorlesen-ios.spec.mjs` (iOS-Modell in `voice-fakes.mjs`; schlägt mit 2.12.0 fehl).
+  - Cloudflare-Sprachausgabe geprüft: keine kostenlose deutsche Stimme → nicht umgesetzt (Begründung in `docs/KI-CHAT.md`).
 - **Offen:**
-  - Freigabe der Veröffentlichung 2.12.0 (PR); danach Gerätetest (Anleitung in `docs/KI-CHAT.md`).; für die Fehlerbehebung nicht mehr zwingend, da der Worker die Form von 2.11.0 annimmt.
+  - Freigabe der Veröffentlichung 2.12.1; danach Gerätetest: drei Fragen per Sprache. Erwartet: „Ich höre zu.“ beim Start, jede Antwort automatisch vorgelesen. Sonst Protokoll kopieren.; für die Fehlerbehebung nicht mehr zwingend, da der Worker die Form von 2.11.0 annimmt.
   - Gründer schaltet das KI-Modell auf iPad und iPhone ein (KI-Einstellungen, je Gerät) und gibt die Datenbereiche frei.
   - Gerätetest von Sprachmodus und Server-Spracherkennung in der installierten App.
 - **Gerätetests nötig:** Mikrofon und Spracherkennung in Safari bzw. in der installierten App, Stimmenqualität.

@@ -49,6 +49,24 @@ Ein Assistent, ein Gesprächsverlauf: Schreiben und Sprechen landen im selben Ch
 - Protokoll ohne Inhalte: KI-Einstellungen › Sprachmodus-Protokoll. Bei Problemen auf dem Gerät „Protokoll kopieren“
   und mir schicken. Es enthält keine Fragen oder Antworten, nur Ereignisse und Zeiten.
 
+**Automatisches Vorlesen auf iPhone/iPad (ab 2.12.1)**
+- iOS erlaubt die Sprachausgabe einer Web-App erst nach einer Bedienung. Beim Tippen auf „Sprechen“ sagt die App
+  deshalb kurz „Ich höre zu.“ – damit ist das Vorlesen für das Gespräch freigeschaltet.
+- Vor jeder Antwort wird eine hängende Warteschlange geleert. Gilt nur ein echtes Start-Ereignis als Start, wird
+  höchstens einmal wiederholt.
+- Sollte iPadOS das automatische Vorlesen trotzdem nicht erlauben, erscheint nach wenigen Sekunden ein großer Knopf
+  „🔊 Antwort vorlesen“. Die App hört weiter zu; nach dem Tippen geht es automatisch weiter.
+- **Cloudflare-Alternative geprüft (nicht umgesetzt):**
+  - Laut Cloudflare-Unterlagen (Suche am 27.11.2026; die Modellseiten selbst waren aus der Arbeitsumgebung nicht
+    abrufbar) gibt es keine kostenlose deutsche Sprachausgabe in Workers AI.
+  - MeloTTS ist mit Englisch, Französisch u. a. dokumentiert, Deutsch ist nicht belegt, und das Modell ist zur
+    Abschaltung vorgesehen.
+  - Deepgram Aura-2 gibt es für Englisch und Spanisch.
+  - Inworld TTS (Partner-Modell) kostet je Zeichen; eine Antwort von 400 Zeichen läge bei weit über 1.000 Neurons, das
+    Tageskontingent reichte nur für wenige Antworten.
+  - Außerdem bräuchte auch abgespieltes Audio auf iOS dieselbe Freischaltung. Deshalb keine Umstellung; die Geräte-Stimme
+    bleibt kostenlos.
+
 **Aufträge: nur, was du ausdrücklich verlangst**
 - Die App prüft vor jeder schreibenden Aktion technisch, ob deine Nachricht ein ausdrücklicher Auftrag war. Das
   geschieht unabhängig vom Sprachmodell.

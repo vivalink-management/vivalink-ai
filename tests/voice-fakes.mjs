@@ -66,13 +66,40 @@ export const FAKES = (o) => {
     delete window.SpeechRecognition;
   }
   const pending = [];
+  // iOS-Modell (o.tts = "ios" bzw. "ios-streng"), abgeleitet aus WebKit-Berichten und dem Protokoll des Gründers:
+  //  - Sprachausgabe braucht eine Bedienung (Tippen) zum Freischalten; ein leerer Satz („ “) schaltet NICHT frei und
+  //    bleibt hängen (speaking = true, keine Ereignisse, kein Ton).
+  //  - Solange etwas hängt oder nicht freigeschaltet ist, landen neue Sätze stumm in der Warteschlange (speaking/pending
+  //    = true, kein onstart/onend) – bis cancel() die Warteschlange leert.
+  //  - „ios-streng“: JEDER Satz braucht eine Bedienung in der letzten Sekunde.
+  window.__act = -1e9;
+  for (const ev of ["pointerdown", "pointerup", "click", "touchend", "keydown"]) addEventListener(ev, () => (window.__act = now()), true);
+  let unlocked = false,
+    stuck = [];
+  const iosMode = () => (window.__ttsMode || o.tts || "").startsWith("ios");
   const tts = {
+    pending: false,
     speaking: false,
     paused: false,
     getVoices: () => [{ name: "Anna (Erweitert)", lang: "de-DE" }],
     speak(u) {
-      if (!u.text.trim()) return;
       const t = now();
+      if (iosMode()) {
+        const active = t - window.__act < 1000;
+        const strict = (window.__ttsMode || o.tts) === "ios-streng";
+        if (!u.text.trim()) {
+          stuck.push(u); // leerer Satz: hängt
+          tts.speaking = true;
+          return;
+        }
+        if (stuck.length || !(active || (unlocked && !strict))) {
+          stuck.push(u); // stumm in der Warteschlange
+          tts.speaking = tts.pending = true;
+          window.__said.push({ text: u.text, heard: false, blocked: true });
+          return;
+        }
+        if (active) unlocked = true;
+      } else if (!u.text.trim()) return;
       const srLive = window.__sr.some((r) => r.live);
       const heard = !(window.__mic.live > 0 || srLive || t - window.__srEnd < 300 || t - window.__cancelAt < 250);
       window.__said.push({ text: u.text, heard });
@@ -85,11 +112,13 @@ export const FAKES = (o) => {
       setTimeout(() => u.onstart && u.onstart(), 5);
       if (mode === "keinEnde") return;
       if (window.__holdTts) return pending.push(u);
-      setTimeout(() => ((tts.speaking = false), u.onend && u.onend()), 20);
+      setTimeout(() => ((tts.speaking = false), u.onend && u.onend()), 20 + Math.min(400, u.text.length * 2));
     },
     cancel() {
       window.__cancelAt = now();
       tts.speaking = false;
+      tts.pending = false;
+      stuck = [];
       while (pending.length) {
         const u = pending.shift();
         u.onend && u.onend();

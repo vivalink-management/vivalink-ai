@@ -29,10 +29,10 @@
    - Dauert eine Antwort zu lange, bleibt der Sprachmodus an; die Antwort erscheint später im Chat.
    - Jedes Ende außer „Beenden“ wird dauerhaft im Chat angezeigt (Grund + „Erneut starten“).
    - Protokoll ohne Inhalte (nur Ereignisse und Zeiten) für Gerätetests: KI-Einstellungen › Sprachmodus-Protokoll. */
-const VO = { on: false, mode: "", state: "aus", gen: 0, rec: null, buf: "", interim: "", silenceT: null, retryT: null, watchT: null, fails: 0, sttFails: 0, sttEmpty: 0, switched: false, chat: null, rec2: null, stream: null, actx: null, lastErr: "", lastInput: 0, srStopAt: -1e9, cancelAt: -1e9, utts: [], ttsBroken: false, hint: "", wake: null, endInfo: null, late: false };
+const VO = { on: false, mode: "", state: "aus", gen: 0, rec: null, buf: "", interim: "", silenceT: null, retryT: null, watchT: null, fails: 0, sttFails: 0, sttEmpty: 0, switched: false, chat: null, rec2: null, stream: null, actx: null, lastErr: "", lastInput: 0, srStopAt: -1e9, cancelAt: -1e9, utts: [], ttsBroken: false, hint: "", wake: null, endInfo: null, late: false, needTap: false, tapText: "", unlockP: null, vcfg: { voice: "", rate: 1, barge: false } };
 const SRC = () => window.SpeechRecognition || window.webkitSpeechRecognition || null;
 /* Zeitgrenzen und Wiederholungsgrenzen (Millisekunden bzw. Anzahl; in Tests verkürzbar) */
-const VO_T = { silence: 1300, idle: 120000, idleWarn: 20000, think: 75000, recMax: 30000, stt: 30000, mic: 15000, ttsStart: 3000, ttsBase: 8000, ttsPerChar: 90, fails: 3, sttFails: 3, sttEmpty: 8, quickEnd: 1500, gap: 400, speakMax: 520 };
+const VO_T = { silence: 1300, idle: 120000, idleWarn: 20000, think: 75000, recMax: 30000, stt: 30000, mic: 15000, ttsStart: 2000, ttsBase: 4000, ttsPerChar: 80, fails: 3, sttFails: 3, sttEmpty: 8, quickEnd: 1500, gap: 400, speakMax: 520 };
 const vNow = () => (typeof performance !== "undefined" && performance.now ? performance.now() : Date.now()); // unabhängig von Uhrumstellungen
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function withTimeout(p, ms, what = "Zeitüberschreitung") {
@@ -65,6 +65,9 @@ function voLogText() {
 async function voiceCfg() {
   return { voice: "", rate: 1, barge: false, ...((await kvGet("voice-config")) || {}) };
 }
+voiceCfg()
+  .then((c) => (VO.vcfg = c))
+  .catch(() => {});
 async function voiceMode() {
   const server = await serverPossible();
   if (SRC() && !(server && iosStandalone())) return "geraet";
@@ -101,7 +104,7 @@ function voiceBar() {
     el = document.createElement("div");
     el.id = "voicebar";
     el.setAttribute("role", "status");
-    el.innerHTML = `<div class="vb-t"><span class="vb-dot"></span><b>Sprachmodus aktiv</b> · <span class="vb-s" aria-live="polite"></span></div><div class="vb-i" hidden></div><div class="vb-h" hidden></div><div class="row"><button class="p" data-a="voiceInterrupt" hidden>Unterbrechen</button><button class="p" data-a="voiceDone" hidden>Fertig gesprochen</button><button class="p" data-a="voiceKeep" hidden>Weiter zuhören</button><button data-a="voiceStop">Beenden</button></div>`;
+    el.innerHTML = `<div class="vb-t"><span class="vb-dot"></span><b>Sprachmodus aktiv</b> · <span class="vb-s" aria-live="polite"></span></div><div class="vb-i" hidden></div><div class="vb-h" hidden></div><div class="row"><button class="p" data-a="voiceInterrupt" hidden>Unterbrechen</button><button class="p" data-a="voiceDone" hidden>Fertig gesprochen</button><button class="p" data-a="voiceKeep" hidden>Weiter zuhören</button><button class="p" data-a="voiceSayTap" hidden>🔊 Antwort vorlesen</button><button data-a="voiceStop">Beenden</button></div>`;
     document.body.appendChild(el);
   }
   const cls = "voicebar vb-" + VO.state;
@@ -122,6 +125,7 @@ function voiceBar() {
   el.querySelector('[data-a="voiceInterrupt"]').hidden = VO.state !== "spricht";
   el.querySelector('[data-a="voiceDone"]').hidden = !(VO.state === "hoert" && (VO.mode === "server" || VO.interim));
   el.querySelector('[data-a="voiceKeep"]').hidden = !warn;
+  el.querySelector('[data-a="voiceSayTap"]').hidden = !(VO.tapText && VO.state === "hoert");
 }
 function setState(s) {
   if (VO.state !== s) voLog("zustand", s);
@@ -160,12 +164,6 @@ async function voiceStart() {
   if (!("speechSynthesis" in window)) return toast("Sprachausgabe wird von diesem Gerät nicht unterstützt");
   // Im Rahmen des Tippens freischalten (iOS verlangt eine Bedienung): Sprachausgabe und – für die Server-Erkennung –
   // die Audioverarbeitung. Beides VOR dem ersten „await“, sonst gilt es nicht mehr als Bedienung.
-  try {
-    const u = new SpeechSynthesisUtterance(" ");
-    u.volume = 0;
-    VO.utts = [u];
-    speechSynthesis.speak(u);
-  } catch {}
   const AC = window.AudioContext || window.webkitAudioContext;
   if (AC && (!SRC() || iosStandalone()))
     try {
@@ -176,6 +174,11 @@ async function voiceStart() {
     }
   VO.on = true; // sofort: doppeltes Tippen startet nichts doppelt
   VO.gen++;
+  // Sprachausgabe mit einem ECHTEN kurzen Satz freischalten (ein leerer Satz mit Lautstärke 0 schaltet iOS nicht frei
+  // und blieb hängen – danach landeten alle Antworten stumm in der Warteschlange). Bestätigt zugleich hörbar den Start.
+  VO.needTap = false;
+  VO.tapText = "";
+  VO.unlockP = ttsRun(["Ich höre zu."], VO.gen, { clear: true, trustSpeaking: true, tag: "vorlesen-freigabe" });
   VO.state = "start";
   VO.fails = VO.sttFails = VO.sttEmpty = 0;
   VO.switched = VO.ttsBroken = VO.late = false;
@@ -205,6 +208,12 @@ async function voiceStart() {
   render();
   clearInterval(VO.watchT);
   VO.watchT = setInterval(voiceWatch, 1000);
+  voiceCfg()
+    .then((c) => (VO.vcfg = c))
+    .catch(() => {});
+  // erst zuhören, wenn die Bestätigung gesprochen ist (sonst nimmt das Mikrofon sie auf); höchstens 3,5 s
+  await Promise.race([VO.unlockP, sleep(3500)]);
+  if (g !== VO.gen || !VO.on) return;
   if (VO.mode === "diktat") {
     setState("diktat");
     setTimeout(() => $("#chatIn") && $("#chatIn").focus(), 50);
@@ -239,6 +248,7 @@ function voiceStop(reason = "beendet", detail = "") {
   VO.interim = VO.buf = "";
   VO.state = "aus";
   VO.hint = "";
+  VO.tapText = "";
   voiceBar();
   logAction("voice.stop", "gruender", true, reason);
   voLog("ende", reason);
@@ -274,31 +284,45 @@ function voiceDone() {
   if (VO.mode === "server") return VO.rec2 && VO.rec2.finish(true);
   if (VO.interim) finalize(VO.gen);
 }
-/* 🔊 an einer Nachricht: per Tippen vorlesen (Tippen erlaubt iOS die Ausgabe immer). Im Sprachmodus danach weiter zuhören. */
-async function voiceSpeakMsg(m) {
-  if (!m) return;
-  const text = speechText((m.blocks || [{ k: "ki", t: m.text }]).concat(actionBlocks(m.actions || [])));
+/* Vorlesen per Tippen – 🔊 an einer Nachricht oder „🔊 Antwort vorlesen“ in der Anzeige. Die Ausgabe wird OHNE
+   Wartezeit im Rahmen des Tippens gestartet (iOS erlaubt sie dann immer); im Sprachmodus danach weiter zuhören. */
+function voiceSayTap(text, full = false) {
+  text = text || VO.tapText;
+  if (!text) return;
+  VO.tapText = "";
   if (!VO.on) {
-    try {
-      speechSynthesis.cancel();
-    } catch {}
-    VO.cancelAt = vNow();
-    await sleep(Math.max(300, VO_T.gap - (vNow() - VO.srStopAt))); // Umschaltpause nach Erkennung/Abbruch (iOS)
-    const v = pickVoice((await voiceCfg()).voice);
-    for (const p of splitSpeech(text, 4000)) {
-      const u = new SpeechSynthesisUtterance(p);
-      u.lang = "de-DE";
-      if (v) u.voice = v;
-      VO.utts.push(u);
-      speechSynthesis.speak(u);
-    }
+    // wie der bewährte 🔊-Ablauf: kurz nach Beenden/Abbruch umschalten lassen (zählt für iOS noch als Tippen)
+    const pause = Math.max(0, VO_T.gap - (vNow() - VO.srStopAt), 300 - (vNow() - VO.cancelAt));
+    const g0 = VO.gen;
+    (pause ? sleep(pause) : Promise.resolve()).then(() => ttsRun(splitSpeech(text, 4000), g0, { clear: true, trustSpeaking: true, ignoreOn: true, tag: "vorlesen-tippen" }));
     return;
   }
   const g = ++VO.gen;
+  clearVoTimers();
   stopRecognizer();
+  if (VO.rec2) {
+    const r = VO.rec2;
+    VO.rec2 = null;
+    try {
+      r.recd.onstop = null;
+      r.recd.stop();
+    } catch {}
+  }
   releaseMic();
-  await speak(text, g, { full: true });
-  if (g === VO.gen && VO.on) listen({ fresh: true, delay: VO_T.gap });
+  setState("spricht");
+  // nach beendeter Geräte-Erkennung kurz umschalten lassen (wie beim bewährten 🔊-Ablauf; zählt für iOS noch als Tippen)
+  const pause = Math.max(0, VO_T.gap - (vNow() - VO.srStopAt));
+  (pause ? sleep(pause) : Promise.resolve())
+    .then(() => (g === VO.gen && VO.on ? ttsRun(splitSpeech(text, full ? 4000 : VO_T.speakMax), g, { clear: true, trustSpeaking: true, tag: "vorlesen-tippen" }) : "abbruch"))
+    .then((r) => {
+    // Erfolg per Tippen beweist nur, dass Tippen geht – automatisch bleibt bei einem kurzen Versuch (VO.needTap)
+    if (r === "ok" || r === "kein-ende") VO.hint = VO.needTap ? "Automatisches Vorlesen ist auf diesem Gerät gerade nicht erlaubt – nach jeder Antwort „🔊 Antwort vorlesen“ tippen." : "";
+    if (g === VO.gen && VO.on) listen({ fresh: true, delay: VO_T.gap });
+  });
+}
+function voiceSpeakMsg(m) {
+  if (!m) return;
+  voiceSayTap(speechText((m.blocks || [{ k: "ki", t: m.text }]).concat(actionBlocks(m.actions || []))), true);
 }
 document.addEventListener("visibilitychange", () => {
   if (document.hidden && VO.on) voiceStop("App im Hintergrund oder Bildschirm gesperrt", "iOS beendet Mikrofon und Sprachausgabe, sobald die App nicht mehr sichtbar ist.");
@@ -453,82 +477,138 @@ function splitSpeech(text, max) {
   }
   return out;
 }
-/* Vorlesen in Sätzen. iOS-Besonderheiten:
-   - Ausgabe erst, wenn Erkennung/Aufnahme beendet und eine kurze Umschaltpause vergangen ist (sonst stumm).
-   - Nicht direkt nach cancel() sprechen (dann fehlen die Ereignisse).
-   - Sätze halten (sonst meldet iOS das Ende teils nie), Start überwachen und einmal wiederholen.
-   Gelingt der Start nicht, wird das Vorlesen übersprungen (Antwort steht im Chat) – das Gespräch geht weiter. */
+/* Zustand der Sprachausgabe fürs Protokoll (ohne Inhalte) */
+function ttsFlags() {
+  let f = "";
+  try {
+    f = "spricht=" + +!!speechSynthesis.speaking + " wartet=" + +!!speechSynthesis.pending + " pausiert=" + +!!speechSynthesis.paused;
+  } catch {}
+  return f + " mikro=" + (VO.stream ? 1 : 0) + " audio=" + (VO.actx ? VO.actx.state : "-");
+}
+/* Sätze in die Warteschlange der Sprachausgabe geben – SOFORT (synchron), damit es beim Tippen als Bedienung gilt –
+   und den tatsächlichen Verlauf überwachen:
+   - Start nur bei echtem Start-Ereignis (speaking = true bedeutet auf iOS auch „hängt in der Warteschlange“);
+     bei Ausgabe per Tippen genügt speaking (direkt nach cancel fehlen auf iOS die Ereignisse).
+   - Ende bei Ende-Ereignis aller Sätze oder wenn iOS weder spricht noch etwas wartet; Zeitgrenze nach Textlänge.
+   Ergebnis: "ok" | "kein-ende" | "startet-nicht" | "abbruch" | "fehler". */
+function ttsRun(parts, g, o = {}) {
+  const live = () => g === VO.gen && (o.ignoreOn || VO.on);
+  const tag = o.tag || "vorlesen";
+  const chars = parts.reduce((n, p) => n + p.length, 0);
+  try {
+    if (o.clear && (speechSynthesis.speaking || speechSynthesis.pending)) {
+      voLog("warteschlange-geleert", ttsFlags());
+      speechSynthesis.cancel();
+      VO.cancelAt = vNow();
+    }
+    speechSynthesis.paused && speechSynthesis.resume && speechSynthesis.resume();
+  } catch {}
+  const v = pickVoice(VO.vcfg.voice);
+  let started = false,
+    ended = 0;
+  const t0 = vNow();
+  const us = parts.map((p) => {
+    const u = new SpeechSynthesisUtterance(p);
+    u.lang = "de-DE";
+    if (v) u.voice = v;
+    u.rate = Number(VO.vcfg.rate) || 1;
+    u.onstart = () => {
+      if (!started) (started = true), voLog(tag + "-start", "nach " + Math.round(vNow() - t0) + " ms");
+    };
+    u.onend = () => ended++;
+    u.onerror = (e) => (ended++, voLog(tag + "-fehler", (e && e.error) || "unbekannt"));
+    return u;
+  });
+  VO.utts = VO.utts.concat(us).slice(-60); // halten, bis gesprochen (sonst gehen iOS-Ereignisse verloren)
+  voLog(tag + "-satz", parts.length + " Sätze, " + chars + " Zeichen, " + ttsFlags());
+  try {
+    for (const u of us) speechSynthesis.speak(u);
+  } catch {
+    voLog(tag + "-fehler", "speak");
+    return Promise.resolve("fehler");
+  }
+  return (async () => {
+    const startMs = o.startMs || VO_T.ttsStart;
+    while (!started) {
+      if (!live()) return "abbruch";
+      if (ended >= us.length) break; // sehr kurz: Ende ohne Start-Ereignis
+      if (o.trustSpeaking && vNow() - t0 > 400 && speechSynthesis.speaking && !speechSynthesis.paused) {
+        started = true;
+        voLog(tag + "-start", "läuft (ohne Ereignis)");
+        break;
+      }
+      if (vNow() - t0 > startMs) {
+        voLog(tag + "-startet-nicht", ttsFlags());
+        return "startet-nicht";
+      }
+      await sleep(100);
+    }
+    const maxDur = startMs + VO_T.ttsBase + chars * VO_T.ttsPerChar;
+    let quiet = null;
+    for (;;) {
+      if (!live()) return "abbruch";
+      if (ended >= us.length) {
+        voLog(tag + "-ende", Math.round(vNow() - t0) + " ms");
+        return "ok";
+      }
+      if (!speechSynthesis.speaking && !speechSynthesis.pending) {
+        quiet = quiet || vNow();
+        if (vNow() - quiet > 600) {
+          voLog(tag + "-ende", "ohne Ereignis, " + Math.round(vNow() - t0) + " ms");
+          return "ok";
+        }
+      } else quiet = null;
+      if (vNow() - t0 > maxDur) {
+        voLog(tag + "-ende", "Zeitgrenze – Ende nicht gemeldet, " + ttsFlags());
+        return "kein-ende";
+      }
+      await sleep(150);
+    }
+  })();
+}
+/* Automatisch vorlesen (Sprachmodus). Vorher: Aufnahme/Erkennung aus, Umschaltpause, hängende Warteschlange leeren.
+   Startet die Ausgabe nicht: ein zweiter Versuch; danach „🔊 Antwort vorlesen“ (Tippen) und weiter zuhören –
+   keine wiederholten stummen Versuche, keine langen Wartezeiten. */
 async function speak(text, g = VO.gen, o = {}) {
   if (!VO.on || g !== VO.gen) return;
   setState("spricht");
-  const cfg = await voiceCfg().catch(() => ({ rate: 1 }));
-  const v = pickVoice(cfg.voice);
   const wait = Math.max(VO_T.gap - (vNow() - VO.srStopAt), 300 - (vNow() - VO.cancelAt), 0);
   if (wait > 0) await sleep(wait);
   if (!VO.on || g !== VO.gen) return;
   try {
-    speechSynthesis.paused && speechSynthesis.resume && speechSynthesis.resume();
+    if (speechSynthesis.speaking || speechSynthesis.pending) {
+      voLog("warteschlange-blockiert", ttsFlags());
+      speechSynthesis.cancel();
+      VO.cancelAt = vNow();
+      await sleep(350); // iOS: direkt nach cancel() gesprochene Sätze bekommen keine Ereignisse
+      if (!VO.on || g !== VO.gen) return;
+    }
   } catch {}
   const parts = splitSpeech(text, o.full ? 4000 : VO_T.speakMax);
-  let barge = null;
-  if (cfg.barge && VO.mode === "geraet") barge = bargeListen(g);
-  const say1 = (p) =>
-    new Promise((res) => {
-      let done = false,
-        started = false,
-        t1 = null,
-        t2 = null;
-      const fin = (x) => {
-        if (done) return;
-        done = true;
-        clearTimeout(t1);
-        clearTimeout(t2);
-        res(x);
-      };
-      try {
-        const u = new SpeechSynthesisUtterance(p);
-        u.lang = "de-DE";
-        if (v) u.voice = v;
-        u.rate = Number(cfg.rate) || 1;
-        u.onstart = () => (started = true);
-        u.onend = () => fin("ok");
-        u.onerror = (e) => fin(e && e.error === "interrupted" ? "ok" : "fehler");
-        VO.utts.push(u); // halten, bis gesprochen
-        if (VO.utts.length > 40) VO.utts = VO.utts.slice(-40);
-        speechSynthesis.speak(u);
-      } catch {
-        return fin("fehler");
-      }
-      // startet die Ausgabe nicht, ist sie auf diesem Gerät gerade gestört
-      t1 = setTimeout(() => !started && !speechSynthesis.speaking && fin("startet-nicht"), VO_T.ttsStart);
-      t2 = setTimeout(() => fin("kein-ende"), VO_T.ttsStart + VO_T.ttsBase + p.length * VO_T.ttsPerChar); // iOS meldet das Ende nicht immer
-    });
-  for (const p of parts) {
-    if (!VO.on || g !== VO.gen) break;
-    let r = await say1(p);
-    if (r === "startet-nicht" && VO.on && g === VO.gen) {
-      voLog("vorlesen", "startet nicht – zweiter Versuch");
-      try {
-        speechSynthesis.cancel();
-      } catch {}
-      VO.cancelAt = vNow();
-      await sleep(350);
-      if (!VO.on || g !== VO.gen) break;
-      r = await say1(p);
-    }
-    if (r === "startet-nicht") {
-      VO.ttsBroken = true;
-      VO.hint = "Vorlesen reagiert gerade nicht – die Antwort steht im Chat (🔊 zum Vorlesen tippen).";
-      voLog("vorlesen", "gestört");
-      try {
-        speechSynthesis.cancel();
-      } catch {}
-      VO.cancelAt = vNow();
-      if (g === VO.gen) voiceBar();
-      break;
-    }
-    if (r === "ok" && VO.ttsBroken) (VO.ttsBroken = false), (VO.hint = "");
-    if (r === "kein-ende") voLog("vorlesen", "Ende nicht gemeldet");
+  const barge = VO.vcfg.barge && VO.mode === "geraet" ? bargeListen(g) : null;
+  let r = await ttsRun(parts, g, { startMs: VO.needTap ? 1500 : VO_T.ttsStart });
+  if (r === "startet-nicht" && !VO.needTap && VO.on && g === VO.gen) {
+    try {
+      speechSynthesis.cancel();
+    } catch {}
+    VO.cancelAt = vNow();
+    await sleep(350);
+    if (VO.on && g === VO.gen) r = await ttsRun(parts, g, {});
+  }
+  if (r === "startet-nicht") {
+    try {
+      speechSynthesis.cancel(); // keine stummen Sätze in der Warteschlange lassen
+    } catch {}
+    VO.cancelAt = vNow();
+    VO.needTap = VO.ttsBroken = true;
+    VO.tapText = text;
+    VO.hint = "Vorlesen reagiert gerade nicht automatisch – tippe auf „🔊 Antwort vorlesen“.";
+    voLog("tippen nötig", "automatisches Vorlesen nicht erlaubt");
+    if (g === VO.gen) voiceBar();
+  } else if (r === "ok" || r === "kein-ende") {
+    VO.needTap = VO.ttsBroken = false;
+    VO.tapText = "";
+    VO.hint = "";
   }
   if (barge) barge();
 }
