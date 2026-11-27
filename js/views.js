@@ -110,7 +110,7 @@ ${IS_TEST && typeof demoCard === "function" ? demoCard() : ""}<h2>Verwaltung</h2
 }
 
 function render() {
-  const v = { home: vHome, tasks: vTasks, memory: vMem, studio: vStudio, ai: vAi, more: vMore }[tab]();
+  const v = { home: vHome, tasks: vTasks, memory: vMem, studio: vStudio, ai: vKi, more: vMore }[tab]();
   $("#app").innerHTML = (IS_TEST ? '<div class="testbar">TESTVERSION · nur künstliche Testdaten · getrennt von deiner Vivalink AI</div>' : "") + v;
   document.documentElement.style.setProperty("--ac", S.accent || "#0f766e");
   $("#nav").innerHTML = [
@@ -118,7 +118,7 @@ function render() {
     ["tasks", "Aufgaben"],
     ["memory", "Gedächtnis"],
     ["studio", "Studio"],
-    ["ai", "Aufträge"],
+    ["ai", "KI-Chat"],
     ["more", "Mehr"],
   ]
     .map((x) => `<button class="${tab === x[0] ? "on" : ""}" data-a="tab" data-id="${esc(x[0])}">${x[1]}</button>`)

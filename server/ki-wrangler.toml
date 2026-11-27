@@ -1,0 +1,25 @@
+# Cloudflare-Worker „vivalink-ki“ (KI-Chat und Spracherkennung, Workers AI) – VORBEREITET, NICHT BEREITGESTELLT.
+# Bereitstellung nur nach ausdrücklicher Freigabe:  cd server && npx -y wrangler@4.168.0 deploy -c ki-wrangler.toml
+# Kosten: Workers AI im kostenlosen Kontingent (10.000 Neurons/Tag); der Worker begrenzt selbst auf 8.000 (ki-core.mjs).
+# Enthält keine Geheimnisse. Nutzt dieselbe D1-Datenbank wie die Synchronisierung (Tresor-Zugänge nur lesen, Tageszähler).
+name = "vivalink-ki"
+main = "ki-worker.js"
+compatibility_date = "2025-11-01"
+workers_dev = true
+preview_urls = false
+
+[vars]
+ALLOWED_ORIGIN = "https://vivalink-management.github.io"
+# Modelle in Reihenfolge (Ausweichen, falls eines außer Betrieb oder kostenpflichtig ist); nur Modelle des kostenlosen Tarifs
+KI_MODELS = "@cf/meta/llama-3.3-70b-instruct-fp8-fast,@cf/google/gemma-4-26b-a4b-it"
+
+[ai]
+binding = "AI"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "vivalink-sync"
+database_id = "e7fe02bf-a75d-4b6a-b641-28ae887b75ff"
+
+[observability]
+enabled = false

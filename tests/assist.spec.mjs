@@ -1,7 +1,7 @@
 // Assistenz: KI-Antwort → Aufgaben (mit Auswahl, Abhängigkeiten, Entscheidungen), Wochenbericht, Selbstreparatur Stufe 1.
 // Nur künstliche Daten.
 import { test, expect } from "@playwright/test";
-import { guard, seed, nav, state, kv, expectToast } from "./helpers.mjs";
+import { guard, seed, nav, state, kv, expectToast, openAuftraege } from "./helpers.mjs";
 import { v2State } from "./fixtures.mjs";
 
 const NOW = new Date("2026-03-10T10:00:00");
@@ -20,7 +20,7 @@ const ANSWER = `1. Kurzfazit: …
 test("KI-Antwort → Aufgaben: Auswahl, Abhängigkeit, Dubletten erkannt, Preisfragen nur als Entscheidung", async ({ page }) => {
   const g = await guard(page);
   await seed(page, { state: v2State() });
-  await nav(page, "ai");
+  await openAuftraege(page);
   await page.click('[data-a="tpl"][data-id="week"]');
   await expect(page.locator("#pv")).toHaveValue(/vivalink-actions/);
   // Kaputte Antwort
@@ -46,7 +46,7 @@ test("KI-Antwort → Aufgaben: Auswahl, Abhängigkeit, Dubletten erkannt, Preisf
   await nav(page, "home");
   await expect(page.locator("#decide")).toContainText("Entscheidung: Teilnahmepreis");
   // Gleiche Antwort erneut → als ähnlich markiert und nicht vorausgewählt
-  await nav(page, "ai"); // der zuletzt geöffnete Auftrag bleibt geöffnet
+  await nav(page, "ai"); // der zuletzt geöffnete Bereich (Aufträge) und Auftrag bleiben geöffnet
   await expect(page.locator("#pv")).toHaveValue(/vivalink-actions/);
   await page.fill("#ans", ANSWER);
   await page.click('button[data-a="ansTasks"]');

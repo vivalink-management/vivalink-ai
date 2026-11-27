@@ -1,6 +1,6 @@
 // Sicherheit: manipulierte Daten können keinen Code ausführen, keine fremden Server, Content-Security-Policy greift.
 import { test, expect } from "@playwright/test";
-import { guard, open, seed, nav, state, kv, expectToast } from "./helpers.mjs";
+import { guard, open, seed, nav, state, kv, expectToast, openAuftraege } from "./helpers.mjs";
 import { v1State, v2State } from "./fixtures.mjs";
 
 let g;
@@ -26,7 +26,7 @@ test("Manipuliertes Backup: Inhalte werden nur als Text gezeigt, ungültige Date
   for (const t of ["home", "tasks", "memory", "ai", "more"]) await nav(page, t);
   await nav(page, "memory");
   await expect(page.locator("#list")).toContainText('<img src=x onerror="window.__pwned=1">Böser Titel');
-  await nav(page, "ai");
+  await openAuftraege(page);
   await page.click('[data-a="tpl"][data-id="strat"]');
   expect(await page.inputValue("#pv")).not.toContain("<script>window.__pwned=1</script>"); // Inhalt mit ungültiger Kategorie nicht im Auftrag
   await nav(page, "more");
@@ -43,7 +43,7 @@ test("Manipuliertes Backup: Inhalte werden nur als Text gezeigt, ungültige Date
 
 test("KI-Antwort mit HTML wird nicht ausgeführt", async ({ page }) => {
   await open(page);
-  await nav(page, "ai");
+  await openAuftraege(page);
   await page.click('[data-a="tpl"][data-id="sum"]');
   await page.fill("#ans", '<img src=x onerror="window.__pwned=1"> Antwort');
   await page.click('button[data-a="saveAns"][data-id="estimate"]');
@@ -55,7 +55,7 @@ test("KI-Antwort mit HTML wird nicht ausgeführt", async ({ page }) => {
 test("Rundgang durch alle Ansichten: keine Verstöße gegen die Sicherheitsrichtlinie, keine fremden Server", async ({ page }) => {
   await seed(page, { state: v2State() });
   for (const t of ["home", "tasks", "memory", "ai", "more"]) await nav(page, t);
-  await nav(page, "ai");
+  await openAuftraege(page);
   await page.click('[data-a="tpl"][data-id="ig"]');
   await nav(page, "more");
   await page.click('button[data-a="aiTest"]');

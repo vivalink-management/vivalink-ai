@@ -352,3 +352,45 @@ test("Echte App mit eingetragenem Server: ohne eingerichtete Synchronisierung wi
   expect(sent).toEqual([]);
   await ctx.close();
 });
+
+test("KI-Chat über die verschlüsselte Synchronisierung: Chat vom iPhone auf dem iPad fortsetzen, Server sieht keinen Chattext", async ({ browser }) => {
+  const a = await device(browser, "iPhone");
+  await a.evaluate(async (s) => {
+    S = s;
+    migrate();
+    await save();
+    return syncCreate();
+  }, v1State());
+  const b = await device(browser, "iPad");
+  expect(await pairDevices(a, b)).toMatchObject({ state: "done", ok: true });
+  // iPhone: Sprachfrage im Chat (über denselben Ablauf wie Chat und Sprachmodus)
+  await a.evaluate(async () => {
+    const c = newChat("Morgenrunde");
+    chatOpen = c.id;
+    await chatSend("Wie läuft Vivalink geheimwortZebra?", "voice", c.id);
+    return syncOnce();
+  });
+  const dump = JSON.stringify(await vaultDump(a));
+  expect(dump).not.toContain("geheimwortZebra");
+  expect(dump).not.toContain("Morgenrunde");
+  // iPad: gleicher Chat, schriftliche Folgefrage, dann zurück aufs iPhone
+  await syncNow(b);
+  const cid = await b.evaluate(() => chatList()[0].id);
+  expect(await b.evaluate(() => chatList().map((c) => c.title))).toEqual(["Morgenrunde"]);
+  await b.evaluate(async (id) => {
+    chatOpen = id;
+    await chatSend("Welche Maßnahmen würdest du jetzt empfehlen?", "text", id);
+    return syncOnce();
+  }, cid);
+  const r = await syncNow(a);
+  expect(r.ok).toBe(true);
+  const sa = await state(a);
+  expect(await a.evaluate((id) => chatMsgs(id).map((m) => [m.role, m.via]), cid)).toEqual([
+    ["user", "voice"],
+    ["assistant", "voice"],
+    ["user", "text"],
+    ["assistant", "text"],
+  ]);
+  expect(sa.conflicts.filter((c) => !c.resolved).length).toBe(0);
+  expect([...a.errors, ...b.errors]).toEqual([]);
+});

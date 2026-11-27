@@ -8,7 +8,7 @@
 // Läuft in allen Projekten (Desktop, iPhone, iPad; in GitHub Actions zusätzlich WebKit) und zusätzlich auf einem kleinen iPhone (375 px).
 // Grenze: Echte Geräte (Schriftgrößen-Einstellung, Safari-Leisten, Tastatur) können abweichen.
 import { test, expect } from "@playwright/test";
-import { seed, nav, guard } from "./helpers.mjs";
+import { seed, nav, guard, openAuftraege } from "./helpers.mjs";
 import { v2State } from "./fixtures.mjs";
 
 const NOW = new Date("2026-03-02T09:00:00");
@@ -177,13 +177,79 @@ for (const small of [false, 375, 320]) {
       await page.click('button[data-a="report"]');
       await check("Wochenbericht");
       await page.click('#sheet button[data-a="close"]');
-      await nav(page, "ai");
+      await openAuftraege(page);
       await page.click('[data-a="tpl"][data-id="week"]');
       await page.fill("#ans", '```json\n{"format":"vivalink-actions","version":1,"tasks":[{"title":"Eine ziemlich lange Aufgabe aus der Antwort der KI mit vielen Wörtern","prio":"hoch","area":"Meetup","dueDays":5,"why":"Begründung mit etwas mehr Text, damit umgebrochen werden muss"}]}\n```');
       await page.click('button[data-a="ansTasks"]');
       await check("Aufgaben übernehmen");
       expect(found).toEqual({});
       expect(g.errors).toEqual([]);
+    });
+
+    test("KI-Chat und Sprachmodus: Chatliste, Unterhaltung mit Aufträgen, Menüs, KI-Einstellungen, Sprachanzeige", async ({ page }) => {
+      const g = await guard(page);
+      // Spracherkennung/-ausgabe als Attrappe (nur für die Anzeige)
+      await page.addInitScript(() => {
+        window.SpeechRecognition = window.webkitSpeechRecognition = class {
+          start() {}
+          abort() {}
+        };
+        Object.defineProperty(window, "speechSynthesis", { value: { getVoices: () => [{ name: "Anna (Erweitert)", lang: "de-DE" }], speak() {}, cancel() {} }, configurable: true });
+        window.SpeechSynthesisUtterance = function (t) {
+          this.text = t;
+        };
+      });
+      await seed(page, { state: rich() });
+      await page.evaluate(async () => {
+        const c = newChat("Ein ziemlich langer Chattitel zur Wochenplanung mit vielen Wörtern und mehr");
+        addMsg(c, { role: "user", text: "Bereite drei Instagram-Beiträge für nächste Woche vor und erkläre mir ausführlich, warum genau diese Themen sinnvoll sind." });
+        addMsg(c, { role: "assistant", text: "x", engine: "lokal", blocks: [{ k: "h", t: "Kennzahlen" }, { k: "fakt", t: "Gesamtzahl der Registrierungen: 120 (Stand 9.3.2026, Verwaltung, ohne Testkonten) · 7 Tage: +2 (+29 %) · Ziel 150" }, { k: "test", t: "Getrennt, nicht in den Kennzahlen: 4 Testkonten, 3 Buchungen, 2 Einladungen, Zahlungen 27 €, Erstattungen 0 €." }, { k: "empfehlung", t: "Sehr lange Empfehlung ohne Leerzeichen: Einladungstextverbesserungsmaßnahmenvorschlagsliste" }], actions: [{ id: "a1", type: "memory.add", args: { title: "x" }, title: "Ins Gedächtnis übernehmen: „Eine lange Information, die wir bestätigen sollen“", lvl: 2, status: "offen", note: "Bitte auf dem Bildschirm bestätigen (nicht per Sprache)." }, { id: "a2", type: "task.add", args: {}, title: "Aufgabe anlegen: „Fotos sortieren“", lvl: 1, status: "erledigt", undo: { task: "zz" } }] });
+        addMsg(c, { role: "user", text: "Kurz", via: "voice" });
+        newChat("Zweiter Chat");
+        await save();
+      });
+      const found = {};
+      const check = async (name, scope = "#app") => {
+        await page.waitForTimeout(150);
+        const i = await issues(page, scope);
+        if (i.length) found[name] = i;
+      };
+      await nav(page, "ai");
+      await check("KI-Chat/Liste");
+      if (!(await bottomClear(page))) found["KI-Chat/Liste"] = ["letzter Inhalt unter der Navigationsleiste"];
+      await page.locator('[data-a="chatOpen"]', { hasText: "Ein ziemlich langer" }).click();
+      await check("KI-Chat/Unterhaltung");
+      // Eingabe und Senden bleiben über der Navigationsleiste sichtbar
+      const clear = await page.evaluate(() => {
+        const c = document.querySelector(".composer").getBoundingClientRect(),
+          n = document.querySelector("nav").getBoundingClientRect();
+        return c.bottom <= n.top + 1 && c.top >= 0;
+      });
+      if (!clear) (found["KI-Chat/Eingabe"] = found["KI-Chat/Eingabe"] || []).push("Eingabefeld verdeckt");
+      for (const [btn, name] of [['button[data-a="chatMenu"]', "KI-Chat/Menü"], ['.msg.me button[data-a="chatMem"]', "KI-Chat/Gedächtnis"], [".ctitle", "KI-Chat/Umbenennen"]]) {
+        await page.locator(btn).first().click();
+        await check(name, "#sheet");
+        await page.click('#sheet button[data-a="close"]');
+      }
+      await page.click('button[data-a="chatBack"]');
+      await page.click('button[data-a="kiSettings"]');
+      await check("KI-Einstellungen", "#sheet");
+      await page.click('#sheet button[data-a="close"]');
+      await page.locator('button[data-a="voiceStart"]').first().click();
+      await expect(page.locator("#voicebar")).toBeVisible();
+      await check("Sprachanzeige", "#voicebar");
+      const vb = await page.evaluate(() => {
+        const r = document.querySelector("#voicebar").getBoundingClientRect();
+        return r.top >= 0 && r.right <= innerWidth + 1 && r.left >= -1;
+      });
+      if (!vb) found["Sprachanzeige"] = ["nicht vollständig sichtbar"];
+      await check("KI-Chat/Sprachmodus aktiv");
+      await page.click('#voicebar button[data-a="voiceStop"]');
+      await openAuftraege(page);
+      await check("KI-Chat/Aufträge");
+      expect(found).toEqual({});
+      expect(g.errors).toEqual([]);
+      expect(g.external).toEqual([]);
     });
   });
 }

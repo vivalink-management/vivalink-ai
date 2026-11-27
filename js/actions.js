@@ -25,6 +25,15 @@ const POLICY = {
   "ads.paid": { lvl: 3, n: "Bezahlte Werbung starten" },
   "prod.write": { lvl: 3, n: "Produktive Vivalink-Datenbank oder -App ändern" },
   "service.paid": { lvl: 3, n: "Kostenpflichtigen Dienst aktivieren" },
+  "chat.task.add": { lvl: 1, n: "Aufgabe aus dem KI-Chat anlegen (mit Rückgängig)" },
+  "chat.task.done": { lvl: 1, n: "Aufgabe aus dem KI-Chat abhaken (mit Rückgängig)" },
+  "chat.drafts": { lvl: 1, n: "Instagram-Entwürfe aus dem KI-Chat vorbereiten (nur Entwürfe, mit Rückgängig)" },
+  "chat.memory": { lvl: 2, n: "Information aus dem KI-Chat ins Gedächtnis übernehmen" },
+  "chat.task.delete": { lvl: 2, n: "Aufgabe aus dem KI-Chat löschen" },
+  "chat.delete": { lvl: 2, n: "Chat löschen" },
+  "ki.settings": { lvl: 2, n: "KI-Einstellungen und Datenfreigaben ändern" },
+  "voice.start": { lvl: 2, n: "Sprachmodus starten (Mikrofon)" },
+  "voice.stop": { lvl: 0, n: "Sprachmodus beenden" },
 };
 const LVL = ["automatisch", "automatisch mit Rückgängig-Punkt", "nur nach deiner Freigabe", "nie automatisch"];
 let ACTIONS = [];

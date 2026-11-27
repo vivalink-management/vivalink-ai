@@ -1,7 +1,7 @@
 /* Service Worker: lädt zuerst aus dem Netz (immer aktuelle Version), offline aus dem Speicher.
    Alle Netzabrufe umgehen den Browser-Zwischenspeicher (GitHub Pages erlaubt bis zu 10 Minuten),
    damit nach einem Update nie alte und neue Dateien gemischt oder veraltet offline gespeichert werden. */
-const VERSION = "2.10.0";
+const VERSION = "2.11.0";
 const CH = "vivalink-"; // Test-Build: "vivalink-test-"
 const C = CH + VERSION;
 // Nur eigene, veraltete Offline-Speicher löschen. Die echte App und die Testversion berühren sich nie.
@@ -37,6 +37,9 @@ const F = [
   "js/sync.js",
   "js/autonomy.js",
   "js/kpi.js",
+  "js/assistant.js",
+  "js/chat.js",
+  "js/voice.js",
   "js/app.js",
 ];
 self.addEventListener("install", (e) => {
