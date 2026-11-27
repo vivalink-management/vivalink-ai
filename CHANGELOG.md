@@ -25,6 +25,7 @@
   - Neue Anweisungen an das Modell: Rückfragen verstehen, nichts wiederholen, eigene konkrete Empfehlungen (Begründung, erster Schritt, Erfolgsmessung), Kennzeichnung Fakt/Annahme/Empfehlung.
   - Der Verlauf geht ohne Hinweiszeilen an das Modell.
   - Nach reinen Aufträgen meldet die App das geprüfte Ergebnis selbst.
+- **Synchronisierung:** Eine Änderung während einer laufenden Synchronisierung (z. B. der automatischen Abholung nach dem Koppeln) wird jetzt direkt danach hochgeladen; ein ausdrückliches Synchronisieren wartet auf den laufenden Durchgang, statt „Läuft bereits“ zu melden (vorher blieb die Änderung bis zum nächsten Anlass nur auf diesem Gerät).
 - **Sprachmodus-Protokoll ohne Inhalte** (KI-Einstellungen) für Gerätetests.
 - **Tests:**
   - Praxisfehler reproduziert; sie schlagen mit 2.11.1 fehl.

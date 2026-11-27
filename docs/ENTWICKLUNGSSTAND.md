@@ -111,7 +111,8 @@ Stand: 27.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
   - Wiederholungen: neue Systemanweisung, sauberer Verlauf, kurze Sprachantworten.
   - Live-Gespräch (künstliche Daten, ca. 430 Neurons): keine Aufgabe bei Fragen, genau eine bei Auftrag, kurze Sprachantwort. Grenze: Llama 3.3 70B greift bei Empfehlungen teils auf App-Hinweise zurück statt auf eigene Ideen (Anweisung und Werkzeugbeschreibung angepasst).
   - WebKit (GitHub Actions) fand zusätzlich eine Lücke im Wiederholschutz (Antwort sichtbar, aber noch nicht gespeichert) – behoben, Test deterministisch.
-  - Ergebnis: lokal 642 bestanden, GitHub Actions mit WebKit iPhone/iPad grün (PR #11).
+  - „Tests / test (push)“ schlug einmal fehl (WebKit iPad, Zusammenführungs-Test): echter kleiner Synchronisierungsfehler – eine Änderung während einer laufenden Synchronisierung wurde nicht nachgereicht. Behoben in `js/sync.js`, gezielter Test `tests/sync-laufend.spec.mjs` (schlägt ohne Behebung fehl).
+  - Ergebnis: lokal 645 bestanden, GitHub Actions mit WebKit iPhone/iPad grün (PR #11).
   - Tests: `tests/praxis.spec.mjs` (schlagen mit 2.11.1 fehl), `sprachfluss`, `absicht`, `update-2112`, `voice-fakes.mjs`; Live: `live-ki-gespraech` (Workflow-Eingabe `gespraech=ja`).
 - **Offen:**
   - Freigabe der Veröffentlichung 2.12.0 (PR); danach Gerätetest (Anleitung in `docs/KI-CHAT.md`).; für die Fehlerbehebung nicht mehr zwingend, da der Worker die Form von 2.11.0 annimmt.
