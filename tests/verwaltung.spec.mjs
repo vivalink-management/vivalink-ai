@@ -22,7 +22,9 @@ let env, fnPort, tok503;
 test.beforeAll(async ({}, info) => {
   test.setTimeout(240_000); // erster Start lädt Deno und postgres.js
   fnPort = 8740 + info.parallelIndex;
-  env = await startEnv({ pgPort: 54400 + info.parallelIndex, fnPort });
+  // Port unterhalb des Bereichs, den Linux für ausgehende Verbindungen vergibt (32768–60999) – dort konnte zufällig eine
+  // andere Verbindung genau diesen Port belegen („Address already in use“ in GitHub Actions)
+  env = await startEnv({ pgPort: 25400 + info.parallelIndex, fnPort });
 });
 test.afterAll(async () => env && (await env.stop()));
 
@@ -185,7 +187,7 @@ test("Fehlerhafte oder gefährliche Zuordnungen: kaputte Auswertung wird übersp
   expect(() => grantsSql({ reg_total: { source: "public.x;--", date: "d", value: "v" } })).toThrow();
   // Eigener Repo-Zugang (gleiche Logik wie die Edge Function) mit absichtlich fehlerhafter Zuordnung
   await env.sql.unsafe("create view public.admin_mail_view as select current_date as day, email as wert from public.profiles; grant select on public.admin_mail_view to management_ai;");
-  const sql = postgres(`postgres://postgres@127.0.0.1:${54400 + info.parallelIndex}/postgres`, { max: 1, onnotice: () => {} });
+  const sql = postgres(`postgres://postgres@127.0.0.1:${25400 + info.parallelIndex}/postgres`, { max: 1, onnotice: () => {} });
   const errs = [];
   const repo = pgRepo(sql, { reg_total: TEST_MAPPING.reg_total, reg_week: { source: "public.gibt_es_nicht", date: "day", value: "x" }, active_users: { source: "public.admin_mail_view", date: "day", value: "wert" } }, KPI_KEYS, { onError: (k) => errs.push(k) });
   const out = buildKpis(await repo.aggregates(), Date.now(), await repo.meta());
@@ -340,7 +342,7 @@ test("Zweite Bestandsaufnahme (nur Positivlisten): kein Programmcode, keine unbe
 test("Probelauf: ausdrückliche Transaktion mit ROLLBACK; leere Kennzahlen sind kein Fehler; Ereignistrigger nach Zuordnung und Inhalt geprüft; nur feste Fehlercodes", async ({}, info) => {
   serverOnly(info);
   test.setTimeout(120_000);
-  const port = 54400 + info.parallelIndex;
+  const port = 25400 + info.parallelIndex;
   const fresh = async () => {
     await env.sql.unsafe("drop database if exists probe with (force)");
     await env.sql.unsafe("create database probe");
@@ -573,7 +575,7 @@ test("Datenbankzugang der Edge Function: jede Operation nur als management_ai; o
   serverOnly(info);
   // Alle Abfragen mitschneiden, die die Gegenstelle über ihre Verbindung schickt (gleiche Logik wie in der Edge Function)
   const seen = [];
-  const port = 54400 + info.parallelIndex;
+  const port = 25400 + info.parallelIndex;
   // gleiche Verbindungsoptionen wie in index.ts (prepare: false, fetch_types: false)
   const sql = postgres(`postgres://postgres@127.0.0.1:${port}/postgres`, { prepare: false, fetch_types: false, max: 1, onnotice: () => {}, debug: (_c, q) => seen.push(q.replace(/\s+/g, " ").trim()) });
   const repo = pgRepo(sql, TEST_MAPPING, KPI_KEYS);
@@ -783,7 +785,7 @@ test("Ohne gültigen Gerätezugang keine Kennzahlen – auch bei ausgeschalteter
 test("Einrichtung: COMMIT nur bei vollständigem Erfolg; bei jedem Fehler bleibt nichts zurück; danach vollständig rückbaubar", async ({}, info) => {
   serverOnly(info);
   test.setTimeout(120_000);
-  const port = 54400 + info.parallelIndex;
+  const port = 25400 + info.parallelIndex;
   const roleBefore = (await env.sql`select count(*)::int n from pg_roles where rolname = 'management_ai'`)[0].n;
   // Die Rolle ist clusterweit; für diesen Test eine eigene Datenbank ohne Rolle simulieren geht nicht – daher prüfen wir
   // in einer frischen Datenbank, in der das Schema fehlt, und erlauben die vorhandene Rolle nur, wenn sie aus env stammt.
@@ -938,7 +940,7 @@ test("Einrichtung: COMMIT nur bei vollständigem Erfolg; bei jedem Fehler bleibt
 test("Änderung einer bestehenden Anbindung (additiv): gekoppelte Geräte bleiben, COMMIT nur bei Erfolg, Fehlerfälle, Rückbau der Änderung", async ({}, info) => {
   serverOnly(info);
   test.setTimeout(120_000);
-  const port = 54400 + info.parallelIndex;
+  const port = 25400 + info.parallelIndex;
   await env.sql.unsafe("drop database if exists erw with (force)");
   await env.sql.unsafe("create database erw");
   const db = postgres(`postgres://postgres@127.0.0.1:${port}/erw`, { max: 1, onnotice: () => {} });
