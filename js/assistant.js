@@ -56,7 +56,7 @@ const TOOLS = {
   },
   massnahmen: {
     cat: "kennzahlen",
-    d: "Empfohlene nächste Maßnahmen zu den wichtigsten Befunden (Empfehlungen, keine Entscheidungen)",
+    d: "Hinweise der App-Regeln zu Befunden (z. B. überfällige Aufgaben, fehlende Werte) – ergänzen deine eigenen fachlichen Empfehlungen, ersetzen sie nicht",
     run() {
       const F = findings().slice(0, 3);
       const B = [];
