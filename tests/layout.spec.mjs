@@ -260,6 +260,11 @@ for (const small of [false, 375, 320]) {
       await page.evaluate(() => ((VO.hint = "Vorlesen reagiert gerade nicht – die Antwort steht im Chat (🔊 zum Vorlesen tippen)."), (VO.lastInput = vNow() - VO_T.idle + 5000), setState("hoert")));
       await expect(page.locator('#voicebar button[data-a="voiceKeep"]')).toBeVisible();
       await check("Sprachanzeige/Vorwarnung", "#voicebar");
+      // Vorlesen nur per Tippen möglich (ab 2.12.1): großer Knopf „🔊 Antwort vorlesen“ zusätzlich zur Vorwarnung
+      await page.evaluate(() => ((VO.tapText = "Antwort"), (VO.hint = "Vorlesen reagiert gerade nicht automatisch – tippe auf „🔊 Antwort vorlesen“."), voiceBar()));
+      await expect(page.locator('#voicebar button[data-a="voiceSayTap"]')).toBeVisible();
+      await check("Sprachanzeige/Antwort vorlesen", "#voicebar");
+      await page.evaluate(() => ((VO.tapText = ""), voiceBar()));
       await page.click('#voicebar button[data-a="voiceStop"]');
       // dauerhafter Endhinweis (ab 2.12)
       await page.evaluate(() => ((VO.endInfo = { reason: "zu viele Geräusche ohne verständliche Sprache", detail: "Zur Sicherheit beendet (jede Aufnahme nutzt das kostenlose KI-Kontingent). Bitte in ruhigerer Umgebung neu starten.", at: Date.now() }), render()));

@@ -376,6 +376,7 @@ async function chatAction(a, id, b) {
   if (a === "voiceInterrupt") return voiceInterrupt(), true;
   if (a === "voiceDone") return voiceDone(), true;
   if (a === "voiceKeep") return voiceKeep(), true;
+  if (a === "voiceSayTap") return voiceSayTap(), true; // ohne Wartezeit: gilt als Bedienung (iOS)
   if (a === "voiceEndOk") return voiceEndOk(), true;
   if (a === "voiceLogCopy") {
     try {

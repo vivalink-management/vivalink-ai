@@ -1,6 +1,20 @@
 # Änderungsprotokoll
 
-## 2.12.0 (Entwicklungszweig, noch nicht veröffentlicht) – natürliches Gespräch, sichere Aufträge
+## 2.12.1 (Entwicklungszweig, noch nicht veröffentlicht) – automatisches Vorlesen auf dem iPad
+
+- **Behoben: Antworten wurden im Sprachmodus nicht automatisch vorgelesen.** Ursache:
+  - Die Sprachausgabe wurde beim Start mit einem leeren Satz (Lautstärke 0) „freigeschaltet“. iOS schaltet damit nicht frei; der Satz blieb hängen, und alle folgenden Antworten landeten stumm in der Warteschlange (Protokoll: „Ende nicht gemeldet“ nach je ca. 20 s).
+  - Zusätzlich galt `speaking = true` fälschlich als Start, obwohl es auf iOS auch „wartet in der Warteschlange“ bedeutet.
+  - Der 🔊-Knopf funktionierte, weil er die Warteschlange leert und durch Tippen gestartet wird.
+- **Jetzt:**
+  - Freischalten mit einem echten kurzen Satz beim Tippen auf „Sprechen“ („Ich höre zu.“).
+  - Hängende Warteschlange wird vor jedem Vorlesen geleert.
+  - Start nur bei echtem Start-Ereignis; alle Sätze auf einmal, Ende über Ereignis oder iOS-Status.
+  - Startet die Ausgabe nicht: ein zweiter Versuch, dann großer Knopf „🔊 Antwort vorlesen“ in der Sprachanzeige; die App hört weiter zu. Keine wiederholten stummen Versuche, keine Wartezeiten über wenige Sekunden.
+- **Protokoll:** Freigabe, Satzanzahl, tatsächlicher Start (mit Zeit), Ende (mit oder ohne Ereignis), Zeitgrenze, geleerte Warteschlange, „tippen nötig“, jeweils mit Zustand der Sprachausgabe (spricht/wartet/pausiert, Mikrofon, Audio) – ohne Inhalte.
+- **Tests:** iOS-Modell der Sprachausgabe (Freischalten nur durch Tippen, hängender leerer Satz, blockierte Warteschlange; zusätzlich „jedes Vorlesen nur nach Tippen“); Reproduktion schlägt mit 2.12.0 fehl.
+
+## 2.12.0 (veröffentlicht, PR #11) – natürliches Gespräch, sichere Aufträge
 
 - **Sprachmodus bleibt im Gespräch aktiv:**
   - Der Bildschirm bleibt an (sonst sperrt das iPad, die App geht in den Hintergrund und iOS beendet Mikrofon und Sprache).

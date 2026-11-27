@@ -352,7 +352,9 @@ test("Sprachausgabe startet nicht (iOS-Fehler): ein zweiter Versuch, dann Hinwei
   await page.evaluate(() => window.__sr[0].say("Welche Aufgaben sind offen?"));
   await expect(page.locator("#voicebar")).toContainText("ich spreche", { timeout: 5000 });
   await expect(page.locator("#voicebar")).toContainText("Vorlesen reagiert gerade nicht", { timeout: 5000 });
-  expect(await page.evaluate(() => window.__said.length)).toBe(2); // erster Satz, ein Wiederholversuch – dann nicht weiter
+  // ab 2.12.1: alle Sätze einer Antwort auf einmal; genau zwei automatische Versuche (Versuch + Wiederholung), dann nicht weiter
+  expect(await page.evaluate(() => VO_LOG.filter((e) => e.ev === "vorlesen-satz").length)).toBe(2);
+  await expect(page.locator('#voicebar button[data-a="voiceSayTap"]')).toBeVisible();
   await expect(page.locator("#voicebar")).toContainText("ich höre zu");
   await page.click('#voicebar button[data-a="voiceStop"]');
   await expect(page.locator("#voicebar")).toHaveCount(0);
