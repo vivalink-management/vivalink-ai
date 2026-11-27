@@ -29,6 +29,50 @@ Ein Assistent, ein Gesprächsverlauf: Schreiben und Sprechen landen im selben Ch
 - Kosten: Server-Erkennung nutzt das kostenlose Tageskontingent (ca. 47 Neurons je Minute Sprache). Stille wird nicht
   gesendet.
 
+## Gesprächsfluss und sichere Aufträge (ab 2.12)
+
+**Sprachmodus**
+- Ablauf: Du sprichst → Pause erkannt → Antwort im Chat → vorgelesen (kurz) → die App hört wieder zu.
+- Bildschirm: bleibt während des Sprachmodus an (Screen Wake Lock; in der installierten App ab iOS/iPadOS 18.4).
+- Ende nur durch:
+  - „Beenden“
+  - 2 Minuten ohne verständliche Eingabe (20 s vorher Countdown mit „Weiter zuhören“)
+  - App im Hintergrund oder gesperrter Bildschirm
+  - dauerhafte technische Störung: Mikrofon verweigert; Spracherkennung dreimal hintereinander gestört; acht Aufnahmen
+    hintereinander nur mit Geräuschen (Kostenschutz)
+- Jedes dieser Enden steht mit Grund und „Erneut starten“ im Chat.
+- Langsame Antworten, einzelne Fehlschläge, Geräusche und Fehlerkennungen beenden nichts.
+- Vorlesen:
+  - Vorher werden Aufnahme bzw. Erkennung beendet und kurz gewartet.
+  - Startet die Ausgabe nicht, folgt ein zweiter Versuch; danach erscheint ein Hinweis, und das Gespräch geht weiter.
+  - 🔊 an jeder Antwort liest per Tippen vor.
+- Protokoll ohne Inhalte: KI-Einstellungen › Sprachmodus-Protokoll. Bei Problemen auf dem Gerät „Protokoll kopieren“
+  und mir schicken. Es enthält keine Fragen oder Antworten, nur Ereignisse und Zeiten.
+
+**Aufträge: nur, was du ausdrücklich verlangst**
+- Die App prüft vor jeder schreibenden Aktion technisch, ob deine Nachricht ein ausdrücklicher Auftrag war. Das
+  geschieht unabhängig vom Sprachmodell.
+  - „Was empfiehlst du?“, „Welche Maßnahme würdest du umsetzen?“: nichts wird geändert; höchstens ein Vorschlag mit
+    „Ausführen“/„Verwerfen“.
+  - „Sollten wir …?“, „Wir brauchen mehr Marketing.“: unklar, also Vorschlag bzw. Rückfrage („Soll ich daraus eine
+    Aufgabe machen?“).
+  - „Leg keine Aufgabe an …“: nichts.
+  - „Lege eine Aufgabe an: …“, „Erstelle eine Aufgabe für …“, „Kannst du mir eine Aufgabe … anlegen?“,
+    „X ist erledigt“, „Bereite drei Instagram-Beiträge vor“, „Behebe die Fehler“: ausgeführt nach den bestehenden
+    Freigabestufen, mit „Rückgängig“.
+- Gedächtnis und Löschen brauchen weiterhin dein Tippen; Riskantes (Veröffentlichen, Zahlungen, Preise, Produktivsysteme)
+  geschieht nie.
+- Dubletten: Gleiches wird je Antwort zusammengefasst; eine ähnliche offene Aufgabe wird nicht erneut angelegt;
+  Doppeltippen und doppeltes Senden führen nichts doppelt aus.
+
+**Gerätetest (nur auf dem iPad/iPhone prüfbar), ca. 5 Minuten**
+1. Installierte App öffnen, KI-Chat › 🎙️ Sprechen. Drei Fragen hintereinander stellen, ohne zu tippen.
+   Erwartet: Jede Antwort wird vorgelesen, danach hört die App wieder zu; der Bildschirm bleibt an.
+2. Einmal 30 Sekunden nichts sagen: Der Sprachmodus läuft weiter. Nach etwa 1:40 erscheint der Countdown;
+   „Weiter zuhören“ tippen.
+3. Während einer Antwort „Unterbrechen“, dann neue Frage. Am Ende „Beenden“.
+4. Falls etwas nicht klappt: KI-Einstellungen › Sprachmodus-Protokoll › „Protokoll kopieren“.
+
 ## Ehrliche Einschränkungen
 
 - **Kein Sprachmodell aktiv.** Ohne KI-Modell ist es kein „ChatGPT“: freie Fragen, Diskussionen und Texte schreiben

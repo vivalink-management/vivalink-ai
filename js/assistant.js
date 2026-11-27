@@ -56,7 +56,7 @@ const TOOLS = {
   },
   massnahmen: {
     cat: "kennzahlen",
-    d: "Empfohlene nächste Maßnahmen zu den wichtigsten Befunden (Empfehlungen, keine Entscheidungen)",
+    d: "Hinweise der App-Regeln zu Befunden (z. B. überfällige Aufgaben, fehlende Werte) – ergänzen deine eigenen fachlichen Empfehlungen, ersetzen sie nicht",
     run() {
       const F = findings().slice(0, 3);
       const B = [];
@@ -159,6 +159,78 @@ const ACT_DEF = {
   "memory.add": { policy: "chat.memory", t: (a) => `Ins Gedächtnis übernehmen: „${a.title}“` },
   "task.delete": { policy: "chat.task.delete", t: (a) => `Aufgabe löschen: „${a.title}“` },
 };
+/* ---------- Absicht prüfen: technisch, vor JEDER schreibenden Aktion, unabhängig vom Sprachmodell ----------
+   Unterscheidet ausdrückliche Handlungsaufträge („Lege eine Aufgabe an …“) von Fragen („Was empfiehlst du?“), Bitten um
+   Meinung („Sollten wir …?“) und Aussagen. Nur ausdrücklich beauftragte Arten dürfen selbstständig (Stufe 1, mit
+   Rückgängig) ausgeführt werden; alles andere erscheint höchstens als Vorschlag und wird erst durch Tippen ausgeführt.
+   Freigabestufen (POLICY), Rückgängig und Verbote (RISKY, Stufe 3) gelten unverändert zusätzlich. */
+const IN_W = /^(was|welche[rsnm]?|wie|warum|wieso|weshalb|wann|wo|wer|wem|wen|woran|womit|wofür|wozu|inwiefern)\b/i;
+const IN_VERBQ = /^(ist|sind|war|hast|hat|habe|haben|gibt|gab|kann|könnte|soll|sollte|sollten|muss|müssen|darf|wird|werden|würde|würdest|wäre|meinst|findest|glaubst|weißt|kennst)\b/i;
+const IN_POLITE = /^(bitte\b|kannst du|könntest du|magst du|würdest du (mir )?bitte)/i;
+const IN_HYPO = /^(sollte[n]?|wäre|würde es|macht es sinn|lohnt (es )?sich|meinst du|findest du|hältst du|glaubst du)\b|\b(sollten wir|sollte ich|wäre es (sinnvoll|gut|besser)|was hältst du|macht es sinn|lohnt es sich)\b/i;
+const IN_NEG = /\b(keine?n?|nicht|nichts)\b[^.?!]{0,40}\b(aufgaben?|anlegen|erstellen|eintragen|ändern|speichern|ausführen|vorbereiten|entw[üu]rfe?)\b|\b(ohne|statt) (eine |neue )?aufgabe|\bnur (deine |eine |kurz )?(meinung|einschätzung|empfehlung|idee|frage)/i;
+const IN_ACT = {
+  "task.add": /(\b(leg|lege|legt|erstell|erstelle|erstellt|notier|notiere|füg|füge|trag|trage|setz|setze|mach|mache|plan|plane)\b[^.?!]{0,80}\b(aufgaben?|to-?dos?|erinnerung)\b|\b(aufgaben?|to-?dos?)\b[^.?!]{0,60}\b(an(zu)?legen|erstellen|eintragen|hinzufügen|notieren|aufnehmen)\b|\berinnere mich\b)/i,
+  "task.done": /(\b(ist|sind|habe ich|hab ich|wurde|wurden)\b[^?]{0,80}\berledigt\b|\bhake?\b[^?]{0,60}\bab\b|\b(markier|markiere|setz|setze)\b[^?]{0,60}\berledigt\b|\berledigt markieren\b)/i,
+  drafts: /(\b(bereite|bereit|erstell|erstelle|entwirf|entwerfe|schreib|schreibe|plan|plane)\b[^.?!]{0,80}(beitr[äa]g|\bposts?\b|\breels?\b|\bstor(y|ies)\b|entw[üu]rf)|(beitr[äa]ge?|\bposts?)\b[^.?!]{0,60}\b(vorbereiten|erstellen|entwerfen|schreiben)\b)/i,
+  repair: /\b(reparier|repariere|beheb|behebe|bereinig|bereinige|korrigier|korrigiere)\b|\bfehler (beheben|reparieren|bereinigen)\b/i,
+  "memory.add": /^(bitte )?(merk(e)? dir|speicher(e)? (dir|im gedächtnis)|notier(e)? dir)\b|\bins gedächtnis\b/i,
+  "task.delete": /\b(lösch|lösche|entfern|entferne)\b[^?]{0,60}\baufgabe/i,
+};
+function userIntent(text) {
+  const t = String(text || "").replace(/\s+/g, " ").trim();
+  const allow = new Set();
+  const neg = IN_NEG.test(t);
+  const polite = IN_POLITE.test(t);
+  const question = /\?\s*$/.test(t) || IN_W.test(t) || IN_VERBQ.test(t);
+  // Fragen nach Inhalten („Welche Aufgabe würdest du anlegen?“) und Bitten um Meinung sind keine Aufträge
+  const wq = IN_W.test(t) || (IN_VERBQ.test(t) && !polite);
+  const hypo = IN_HYPO.test(t);
+  if (!neg && !hypo && !wq) for (const [k, re] of Object.entries(IN_ACT)) if (re.test(t)) allow.add(k);
+  if (allow.has("task.add") && /\baufgabe/i.test(t)) allow.delete("drafts"); // „Aufgabe für eine Instagram-Kampagne“ ≠ Beitragsentwürfe
+  const kind = allow.size ? "auftrag" : neg ? "aussage" : IN_W.test(t) ? "frage" : hypo ? "unklar" : question ? "frage" : "unklar";
+  // gewünschte Anzahl („Lege zwei Aufgaben an …“), sonst eine
+  const n = (t.match(/\b(zwei|drei|vier|fünf|2|3|4|5) (neue )?(aufgaben|to-?dos)\b/i) || [])[1];
+  const count = n ? { zwei: 2, drei: 3, vier: 4, fünf: 5 }[n.toLowerCase()] || Number(n) : 1;
+  return { kind, allow, count };
+}
+/* Titel vergleichen (gegen Dubletten): Füllwörter und allgemeine Tätigkeitswörter zählen nicht */
+const TITLE_STOP = /\b(eine?[nmrs]?|der|die|das|den|dem|des|für|fuer|zu|zum|zur|und|oder|mit|bis|vom|von|im|in|am|an|auf|neue?[nmrs]?|starten|beginnen|planen|erstellen|machen|durchführen|umsetzen|vorbereiten|anlegen|aufgabe)\b/g;
+function normTitle(x) {
+  return String(x || "")
+    .toLowerCase()
+    .replace(/[„“"'.,:;!?()\[\]\-–—_/]/g, " ")
+    .replace(TITLE_STOP, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+function similarTitle(a, b) {
+  const A = normTitle(a),
+    B = normTitle(b);
+  if (!A || !B) return A === B;
+  if (A === B || A.includes(B) || B.includes(A)) return true;
+  const x = new Set(A.split(" ")),
+    y = new Set(B.split(" "));
+  const same = [...x].filter((w) => y.has(w)).length;
+  return same / Math.max(x.size, y.size) >= 0.6;
+}
+/* Gleiche oder sehr ähnliche Aufträge innerhalb einer Antwort zusammenfassen (z. B. zwei Modellaufrufe für dieselbe Aufgabe) */
+function dedupeActions(list) {
+  const out = [];
+  for (const a of list || []) {
+    const t = a.args && a.args.title;
+    const prev = out.find((o) => o.type === a.type && (a.type === "task.add" || a.type === "memory.add" ? similarTitle(o.args.title, t) : a.type === "task.done" || a.type === "task.delete" ? o.args.id === a.args.id : true));
+    if (!prev) out.push({ ...a, args: { ...a.args } });
+    else if (a.type === "task.add" && !prev.args.due && a.args.due) prev.args.due = a.args.due; // Frist übernehmen
+  }
+  return out;
+}
+/* Gibt es schon eine ähnliche offene Aufgabe bzw. einen ähnlichen aktiven Gedächtniseintrag? */
+function existingDup(x) {
+  if (x.type === "task.add") return S.tasks.find((t) => !t.deleted && !t.done && similarTitle(t.title, x.args.title)) || null;
+  if (x.type === "memory.add") return S.memory.find((m) => !m.deleted && m.active !== false && similarTitle(m.title, x.args.title)) || null;
+  return null;
+}
 /* Führt einen Auftrag aus. by: "auto" (vom Assistenten) | "gruender" (Tippen auf dem Bildschirm). Nie per Sprache freigeben. */
 async function runAction(x, by) {
   const D = ACT_DEF[x.type];
@@ -166,7 +238,9 @@ async function runAction(x, by) {
   return act(D.policy, by, async () => {
     const a = x.args;
     if (x.type === "task.add") {
-      const t = { id: uid(), title: str(a.title, 300), prio: PR[a.prio] != null ? a.prio : "mittel", area: "Chat", due: a.due || "", done: false, src: "chat" };
+      // Schutz gegen doppelte Ausführung (Wiederholversuch, doppeltes Tippen, mehrfach verarbeitete Nachricht)
+      if (x.key && S.tasks.some((y) => !y.deleted && y.srcKey === x.key)) return { ok: false, error: "bereits angelegt" };
+      const t = { id: uid(), title: str(a.title, 300), prio: PR[a.prio] != null ? a.prio : "mittel", area: "Chat", due: a.due || "", done: false, src: "chat", ...(x.key ? { srcKey: x.key } : {}) };
       touch(t);
       S.tasks.push(t);
       x.undo = { task: t.id };
@@ -197,6 +271,7 @@ async function runAction(x, by) {
       return r.ok ? { ok: true, detail: r.n + " Datenfehler behoben" } : r;
     }
     if (x.type === "memory.add") {
+      if (x.undo && x.undo.memory && S.memory.some((y) => y.id === x.undo.memory && !y.deleted)) return { ok: false, error: "bereits übernommen" };
       const n = { id: uid(), cat: CATS.includes(a.cat) ? a.cat : "Entscheidung", title: str(a.title, 200), text: str(a.text, 2000), status: "confirmed", date: today(), reason: "aus dem KI-Chat übernommen (bestätigt durch Tippen)", result: "", private: false, active: true, createdAt: Date.now() };
       touch(n);
       S.memory.push(n);
@@ -392,14 +467,28 @@ async function kiReady() {
   const sc = await kvGet("sync-config");
   return !!(kiUrl() && c.on && sc && sc.vid && sc.token && navigator.onLine !== false);
 }
-const KI_SYSTEM = `Du bist der persönliche Management-Assistent von Vivalink (Meetups für Menschen, die neue Kontakte suchen). Antworte auf Deutsch, klar und knapp.
-Regeln: Nutze für Unternehmensdaten ausschließlich die Werkzeuge. Erfinde keine Zahlen, Fakten oder Erinnerungen. Kennzeichne Aussagen als Fakt (aus Werkzeugen), Testdaten (getrennt, nie als echte Kennzahl), Annahme oder Empfehlung.
-Geschäftliche Entscheidungen trifft der Gründer. Veröffentlichungen, Zahlungen, Preise, Löschungen und Änderungen an produktiven Systemen führst du nie aus; Aufträge schlägst du über die Auftrags-Werkzeuge vor – die App prüft sie und fragt bei Bedarf nach Freigabe.
+const KI_SYSTEM = `Du bist der persönliche Management-Assistent des Gründers von Vivalink (Meetups für Menschen, die neue Kontakte suchen). Du sprichst Deutsch – natürlich, direkt und auf Augenhöhe, wie ein erfahrener Berater im Gespräch.
+Gespräch:
+- Beziehe dich auf den bisherigen Verlauf. Rückfragen wie „warum?“, „und dann?“, „welche davon?“ oder „das“ beziehen sich auf deine letzte Antwort.
+- Wiederhole keine Zahlen, Fakten oder Empfehlungen, die im Verlauf schon stehen – außer der Gründer fragt ausdrücklich danach. Baue darauf auf.
+- Beantworte genau die gestellte Frage. Keine allgemeine Lagezusammenfassung, wenn nicht danach gefragt wurde.
+Daten:
+- Unternehmensdaten nur aus den Werkzeugen. Rufe ein Werkzeug nur auf, wenn du Daten brauchst, die noch nicht im Verlauf stehen.
+- Kennzeichne Aussagen: [Fakt] (aus Werkzeugen, mit Stand), [Annahme], [Empfehlung]. Testdaten sind nie echte Kennzahlen; erwähne sie nur getrennt. Erfinde nichts; fehlen Daten, sag es.
+Empfehlungen:
+- Entwickle eigene, konkrete Vorschläge aus deinem Wissen über Community-, Event- und Social-Media-Marketing; nutze die App-Daten zur Begründung und Priorisierung. Interne Aufgabenlisten sind keine Empfehlung an sich.
+- Konkret statt allgemein: was genau, warum (Bezug auf Daten oder als Annahme gekennzeichnet), erster Schritt, woran man den Erfolg misst. Lieber eine gute Empfehlung als fünf vage.
+Handlungen:
+- Du führst nichts eigenständig aus. Eine Aufgabe legst du nur an, wenn der Gründer ausdrücklich darum bittet (z. B. „Lege eine Aufgabe an …“). Bei Fragen, Überlegungen und Empfehlungen fragst du höchstens: „Soll ich daraus eine Aufgabe machen?“
+- Geschäftliche Entscheidungen trifft der Gründer. Veröffentlichungen, Zahlungen, Preise, Löschungen und Änderungen an produktiven Systemen: nie.
 Wenn ein Werkzeug „nicht freigegeben“ meldet, sage das und arbeite ohne diese Daten.`;
-function kiToolSpecs() {
+const KI_VOICE = `Sprachmodus: Deine Antwort wird vorgelesen. Antworte in höchstens drei kurzen Sätzen (etwa 60 Wörter), ohne Aufzählungen, Überschriften, Klammern oder Sonderzeichen. Sage Kennzeichnungen in Worten („laut den Zahlen“, „vermutlich“, „ich empfehle“). Biete Details an, statt sie aufzuzählen.`;
+/* Werkzeuge je Absicht: Auftrags-Werkzeuge bekommt das Modell nur, wenn der Gründer ausdrücklich darum gebeten hat
+   (zusätzlich zur Prüfung vor der Ausführung – das Modell soll gar nicht erst „vorsorglich“ Aufgaben anlegen). */
+function kiToolSpecs(intent = { allow: new Set(["task.add", "memory.add"]) }) {
   const spec = Object.entries(TOOLS).map(([name, t]) => ({ type: "function", function: { name, description: t.d, parameters: { type: "object", properties: name === "aufgaben" ? { woche: { type: "string", enum: ["alle", "diese", "naechste"] } } : name === "gedaechtnis" ? { stichwort: { type: "string" } } : {} } } }));
-  spec.push({ type: "function", function: { name: "aufgabe_anlegen", description: "Schlägt vor, eine Aufgabe anzulegen (die App führt es mit Rückgängig aus)", parameters: { type: "object", properties: { titel: { type: "string" }, frist: { type: "string", description: "JJJJ-MM-TT oder leer" } }, required: ["titel"] } } });
-  spec.push({ type: "function", function: { name: "merken_vorschlagen", description: "Schlägt vor, eine wichtige Information ins Gedächtnis zu übernehmen (nur mit Bestätigung des Gründers)", parameters: { type: "object", properties: { titel: { type: "string" } }, required: ["titel"] } } });
+  if (intent.allow.has("task.add")) spec.push({ type: "function", function: { name: "aufgabe_anlegen", description: "Legt eine Aufgabe an – NUR wenn der Gründer in seiner letzten Nachricht ausdrücklich darum gebeten hat; je Aufgabe genau ein Aufruf", parameters: { type: "object", properties: { titel: { type: "string" }, frist: { type: "string", description: "JJJJ-MM-TT oder leer" } }, required: ["titel"] } } });
+  if (intent.allow.has("memory.add")) spec.push({ type: "function", function: { name: "merken_vorschlagen", description: "Schlägt vor, eine Information ins Gedächtnis zu übernehmen (nur mit Bestätigung des Gründers)", parameters: { type: "object", properties: { titel: { type: "string" } }, required: ["titel"] } } });
   return spec;
 }
 /* Erreichbarkeit der Gegenstelle (ohne Zugang, ohne Daten, ohne KI-Aufruf) */
@@ -457,16 +546,24 @@ function fetchOrTimeout(url, opt, isTimedOut) {
     );
   });
 }
-async function kiAnswer(chat, text, history) {
+/* Frühere KI-Antwort für den Verlauf: nur der eigentliche Antworttext (ohne Hinweise/Auftragszeilen) und eine kurze
+   Notiz zu Vorschlägen und ausgeführten Aufträgen – damit Rückfragen verstanden werden, ohne Rauschen. */
+function kiHistText(m) {
+  const t = (m.blocks || []).filter((b) => b.k === "ki").map((b) => b.t).join("\n") || m.text;
+  const acts = (m.actions || []).map((x) => (x.status === "erledigt" ? "ausgeführt: " : x.status === "vorschlag" || x.status === "offen" ? "vorgeschlagen (nicht ausgeführt): " : "nicht ausgeführt: ") + x.title);
+  return t.slice(0, 2500) + (acts.length ? "\n(" + acts.join("; ") + ")" : "");
+}
+async function kiAnswer(chat, text, history, opt = {}) {
   const cfg = await kiCfg();
-  const msgs = [{ role: "system", content: KI_SYSTEM + "\nHeute ist " + fmt(today()) + "." }];
+  const intent = opt.intent || userIntent(text);
+  const msgs = [{ role: "system", content: KI_SYSTEM + (opt.via === "voice" ? "\n" + KI_VOICE : "") + "\nHeute ist " + fmt(today()) + "." }];
   // Datensparsam: Antworten des lokalen Assistenten enthalten App-Daten (Kennzahlen, Gedächtnis …) und gehen NICHT an das
   // Modell – nur deine Fragen und frühere KI-Antworten. Aus der Kurzfassung nur die Fragen und ausgeführten Aufträge.
   if (chat.summary) {
     const q = chat.summary.split("\n").filter((l) => /^(Frage\/Auftrag|Ausgeführt)/.test(l));
     if (q.length) msgs.push({ role: "system", content: "Frühere Fragen in diesem Chat: " + q.join("; ").slice(0, 3000) });
   }
-  for (const m of history.slice(-16)) msgs.push({ role: m.role === "user" ? "user" : "assistant", content: m.role === "user" || m.engine === "ki" ? m.text.slice(0, 4000) : "(Antwort des lokalen Assistenten mit App-Daten – nicht übermittelt)" });
+  for (const m of history.slice(-14)) msgs.push({ role: m.role === "user" ? "user" : "assistant", content: m.role === "user" ? m.text.slice(0, 2000) : m.engine === "ki" ? kiHistText(m) : "(Antwort des lokalen Assistenten mit App-Daten – nicht übermittelt)" });
   msgs.push({ role: "user", content: text.slice(0, 4000) });
   const used = new Set(),
     actions = [];
@@ -478,8 +575,21 @@ async function kiAnswer(chat, text, history) {
     const last = round === ROUNDS - 1;
     const left = until - Date.now();
     if (left < 1500) throw Object.assign(new Error("Zeitüberschreitung – KI hat nicht rechtzeitig geantwortet"), { timeout: true });
-    const j = await kiCall("/v1/ki/chat", { messages: msgs, ...(last ? {} : { tools: kiToolSpecs() }) }, Math.min(KI_T.call, left));
-    const calls = last || !Array.isArray(j.tool_calls) ? [] : j.tool_calls.slice(0, 6);
+    const j = await kiCall("/v1/ki/chat", { messages: msgs, ...(last ? {} : { tools: kiToolSpecs(intent) }) }, Math.min(KI_T.call, left));
+    let calls = last || !Array.isArray(j.tool_calls) ? [] : j.tool_calls.slice(0, 6);
+    // Antworttext + nur Auftragsvorschläge (keine Datenabfrage): Text ist die Antwort, Vorschläge prüft die App
+    const ACT_TOOLS = ["aufgabe_anlegen", "merken_vorschlagen"];
+    if (calls.length && calls.every((c) => ACT_TOOLS.includes(String(c.name)))) {
+      // nur Aufträge: keine weitere Modellrunde – die App prüft und meldet das Ergebnis selbst (spart Kontingent,
+      // verhindert falsche Aussagen des Modells über das Ergebnis)
+      if (!String(j.text || "").trim()) j.text = "Ich habe deinen Auftrag geprüft – das Ergebnis siehst du hier:";
+      for (const c of calls) {
+        const args = c.arguments && typeof c.arguments === "object" ? c.arguments : {};
+        if (c.name === "aufgabe_anlegen") actions.push({ type: "task.add", args: { title: str(args.titel, 300), due: DATE_RE.test(args.frist || "") ? args.frist : "" } });
+        else actions.push({ type: "memory.add", args: { title: str(args.titel, 200), text: "", cat: "Entscheidung" } });
+      }
+      calls = [];
+    }
     if (!calls.length) {
       const t = String(j.text || "").trim();
       return { blocks: [{ k: "ki", t: t.slice(0, 8000) || "(Die KI hat keine Antwort geliefert – bitte die Frage anders stellen.)" }], actions, topic: chat.topic || null, used: [...used] };
@@ -499,26 +609,26 @@ async function kiAnswer(chat, text, history) {
         }
       } else if (name === "aufgabe_anlegen") {
         actions.push({ type: "task.add", args: { title: str(args.titel, 300), due: DATE_RE.test(args.frist || "") ? args.frist : "" } });
-        out = "Vorgeschlagen – die App legt die Aufgabe mit Rückgängig an.";
+        out = "Notiert – die App prüft den Auftrag selbst und zeigt das Ergebnis an. Nicht erneut aufrufen und nichts über das Ergebnis behaupten.";
       } else if (name === "merken_vorschlagen") {
         actions.push({ type: "memory.add", args: { title: str(args.titel, 200), text: "", cat: "Entscheidung" } });
         out = "Vorgeschlagen – wird erst nach Bestätigung durch den Gründer gespeichert.";
       } else out = "unbekanntes Werkzeug";
       results.push("### " + name + "\n" + out.slice(0, 4000));
     }
-    msgs.push({ role: "user", content: "Ergebnisse der Werkzeuge (Daten der App, nicht von mir geschrieben):\n" + results.join("\n\n") + "\n\nBeantworte jetzt meine ursprüngliche Frage auf Deutsch. Kennzeichne Fakten, Testdaten, Annahmen und Empfehlungen. Erfinde nichts." });
+    msgs.push({ role: "user", content: "Ergebnisse der Werkzeuge (Daten der App, nicht von mir geschrieben):\n" + results.join("\n\n") + "\n\nBeantworte jetzt meine letzte Frage auf Deutsch – im Zusammenhang des Gesprächs, ohne bereits Gesagtes zu wiederholen. Kennzeichne Fakten, Testdaten, Annahmen und Empfehlungen. Erfinde nichts." + (opt.via === "voice" ? " Höchstens drei kurze Sätze, sie werden vorgelesen." : "") });
   }
   return { blocks: [{ k: "hinweis", t: "Die KI hat zu viele Zwischenschritte gebraucht – bitte die Frage vereinfachen." }], actions, topic: chat.topic || null, used: [...used] };
 }
 
 /* ---------- Gemeinsamer Einstieg für Chat UND Sprachmodus ---------- */
-async function assistantAnswer(chat, text, history) {
+async function assistantAnswer(chat, text, history, opt = {}) {
   // Riskante Anliegen werden für JEDEN Motor vorab abgelehnt (lokal und KI) – kein Modell entscheidet darüber
   const isMemo = INTENTS.find((x) => x[0] === "merken")[1].test(text);
   if (!isMemo && RISKY.some(([re]) => re.test(text))) return { ...(await localAnswer(chat, text)), engine: "lokal" };
   if (await kiReady()) {
     try {
-      const r = await kiAnswer(chat, text, history);
+      const r = await kiAnswer(chat, text, history, opt);
       return { ...r, engine: "ki" };
     } catch (e) {
       logEvent("warn", "ki.answer", e.message);
@@ -538,6 +648,7 @@ function speechText(blocks) {
     .filter((b) => b.k !== "h")
     .map((b) => (b.k === "test" ? "Getrennt als Testdaten: " : b.k === "annahme" ? "Annahme: " : b.k === "empfehlung" ? "Empfehlung: " : "") + b.t)
     .join(" ")
+    .replace(/\[(Fakt|Annahme|Empfehlung|Testdaten)\]\s*/gi, "")
     .replace(/[„“"*#_]/g, "")
     .replace(/€/g, " Euro")
     .replace(/\s·\s/g, ", ")

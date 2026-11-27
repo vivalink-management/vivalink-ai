@@ -1,6 +1,38 @@
 # Änderungsprotokoll
 
-## 2.11.1 (Entwicklungszweig, noch nicht veröffentlicht) – Fehlerbehebung KI-Chat
+## 2.12.0 (Entwicklungszweig, noch nicht veröffentlicht) – natürliches Gespräch, sichere Aufträge
+
+- **Sprachmodus bleibt im Gespräch aktiv:**
+  - Der Bildschirm bleibt an (sonst sperrt das iPad, die App geht in den Hintergrund und iOS beendet Mikrofon und Sprache).
+  - Stille beendet erst nach 2 Minuten, mit Countdown und „Weiter zuhören“.
+  - Geräusche, Whisper-Fehlerkennungen („Vielen Dank.“) und langsame Antworten beenden nichts mehr und landen nicht im Chat.
+  - Jedes Ende außer „Beenden“ bleibt mit Grund und „Erneut starten“ im Chat sichtbar.
+- **Vorlesen jeder Antwort:**
+  - Mikrofon bzw. Spracherkennung werden vor dem Vorlesen freigegeben, mit kurzer Umschaltpause (iOS gibt sonst nichts oder kaum hörbar aus).
+  - Der Start wird überwacht und bei Bedarf einmal wiederholt; die Sätze werden gehalten.
+  - Im Sprachmodus kurze Antworten (höchstens ca. 3 Sätze vorgelesen, der Rest steht im Chat).
+  - 🔊 an jeder Antwort liest per Tippen vor.
+- **Keine unbeauftragten Änderungen:**
+  - Eine technische Absichtsprüfung in der App vor jeder schreibenden Aktion unterscheidet Fragen, Empfehlungen, Überlegungen, Verneinungen und ausdrückliche Aufträge.
+  - Fragen und Empfehlungen erzeugen höchstens einen Vorschlag („Ausführen“/„Verwerfen“); Unklares wird nachgefragt.
+  - Das Modell erhält das Werkzeug zum Anlegen nur bei einem ausdrücklichen Auftrag.
+- **Keine Dubletten:**
+  - Ähnliche Aufträge innerhalb einer Antwort werden zusammengefasst.
+  - Ähnliche offene Aufgaben werden nicht erneut angelegt.
+  - Schutz gegen Wiederholung, Doppeltippen und doppelten Versand.
+  - Doppeltippen auf „Ausführen“ löst nicht mehr versehentlich „Rückgängig“ aus.
+- **Gesprächsqualität:**
+  - Neue Anweisungen an das Modell: Rückfragen verstehen, nichts wiederholen, eigene konkrete Empfehlungen (Begründung, erster Schritt, Erfolgsmessung), Kennzeichnung Fakt/Annahme/Empfehlung.
+  - Der Verlauf geht ohne Hinweiszeilen an das Modell.
+  - Nach reinen Aufträgen meldet die App das geprüfte Ergebnis selbst.
+- **Synchronisierung:** Eine Änderung während einer laufenden Synchronisierung (z. B. der automatischen Abholung nach dem Koppeln) wird jetzt direkt danach hochgeladen; ein ausdrückliches Synchronisieren wartet auf den laufenden Durchgang, statt „Läuft bereits“ zu melden (vorher blieb die Änderung bis zum nächsten Anlass nur auf diesem Gerät).
+- **Sprachmodus-Protokoll ohne Inhalte** (KI-Einstellungen) für Gerätetests.
+- **Tests:**
+  - Praxisfehler reproduziert; sie schlagen mit 2.11.1 fehl.
+  - Gesprächsfluss mit fünf Fragen, Vorlesen, Unterbrechen, Fehlerfälle, Absichts-Satztabelle, Dubletten, Update/Rückbau 2.11.1 ↔ 2.12, Layout.
+  - Live-Gesprächsprüfung mit künstlichen Daten.
+
+## 2.11.1 (veröffentlicht, PR #10) – Fehlerbehebung KI-Chat
 
 - **Behoben:** „KI nicht erreichbar (503)“ bei Fragen, für die das KI-Modell App-Daten über ein Werkzeug abruft. Die Werkzeugergebnisse gehen jetzt als Klartext an das Modell (die bisherige Form lehnte Workers AI ab); der letzte Schritt erfolgt ohne Werkzeuge, damit immer eine Antwort kommt.
 - Verständlichere Hinweise: Stundenlimit, Tageskontingent, ungültiger Zugang, Fehler des KI-Dienstes mit Code.

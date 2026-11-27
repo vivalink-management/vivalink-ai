@@ -141,7 +141,7 @@ async function setup(page, o = {}) {
   await page.clock.setFixedTime(new Date("2026-03-10T09:00:00"));
   await seed(page, { state: v2State(), "sync-config": { vid: VID, token: TOK, mk: "x", kv: 1, version: 1, devices: {} }, "ki-config": { on: o.ki !== false, freigaben: { aufgaben: true } } });
   // verkürzte Zeitgrenzen (gleiche Logik, schnellere Tests)
-  await page.evaluate((t) => Object.assign(VO_T, { idle: 4000, think: 3000, stt: 1500, mic: 1000, recMax: 1500, ttsBase: 300, ttsPerChar: 0, silence: 400, ...t }), o.T || {});
+  await page.evaluate((t) => Object.assign(VO_T, { idle: 4000, idleWarn: 1500, think: 3000, stt: 1500, mic: 1000, recMax: 1500, ttsStart: 400, ttsBase: 300, ttsPerChar: 0, silence: 400, ...t }), o.T || {});
   await page.evaluate((t) => Object.assign(KI_T, t), o.KI || {});
   await page.click('nav button[data-id="ai"]');
   return { calls, errors };
@@ -177,7 +177,9 @@ test("Geräte-Erkennung endet sofort wieder (iOS, installierte App): höchstens 
   await expect.poll(() => on(page), { timeout: 8000 }).toBe(false);
   expect(await page.evaluate(() => window.__sr.length)).toBe(3); // vorher: rund vier Neustarts pro Sekunde, ohne Ende
   await expect(page.locator("#toast")).toContainText("Spracherkennung reagiert nicht");
-  await expect(page.locator("#toast")).toContainText("Diktat der Tastatur");
+  // Grund bleibt dauerhaft im Chat sichtbar (ab 2.12), mit Erklärung und „Erneut starten“
+  await expect(page.locator("#voEnd")).toContainText("Spracherkennung reagiert nicht");
+  await expect(page.locator("#voEnd")).toContainText("Diktat der Tastatur");
   await page.waitForTimeout(1500);
   expect(await page.evaluate(() => window.__sr.length)).toBe(3); // danach nichts mehr
   await responsive(page);
@@ -233,8 +235,8 @@ test("Installierte App auf dem iPad mit freigegebener KI: Server-Erkennung wird 
   expect(log).toEqual(["server"]);
 });
 
-test("Server-Erkennung hängt (Zeitüberschreitung): ein Wiederholversuch, dann Ende; „Beenden“ und Navigation funktionieren währenddessen", async ({ page }) => {
-  const { calls, errors } = await setup(page, { sr: "aus", stt: () => "haengt" });
+test("Server-Erkennung hängt (Zeitüberschreitung): begrenzte Wiederholversuche, dann Ende mit Grund; „Beenden“ und Navigation funktionieren währenddessen", async ({ page }) => {
+  const { calls, errors } = await setup(page, { sr: "aus", stt: () => "haengt", T: { sttFails: 2 } });
   await page.click('button[data-a="voiceStart"]');
   await expect(page.locator("#voicebar")).toContainText("Server-Erkennung");
   for (let i = 0; i < 2; i++) {
@@ -249,6 +251,7 @@ test("Server-Erkennung hängt (Zeitüberschreitung): ein Wiederholversuch, dann 
   await expect.poll(() => on(page), { timeout: 6000 }).toBe(false);
   expect(calls.stt).toBe(2);
   await expect(page.locator("#toast")).toContainText("Spracherkennung über den Server gestört");
+  await expect(page.locator("#voEnd")).toContainText("Spracherkennung über den Server gestört");
   expect(await page.evaluate(() => window.__mic.stops)).toBeGreaterThan(0);
   await page.waitForTimeout(1500);
   expect(calls.stt).toBe(2); // keine weiteren Versuche
@@ -256,8 +259,8 @@ test("Server-Erkennung hängt (Zeitüberschreitung): ein Wiederholversuch, dann 
   expect(errors).toEqual([]);
 });
 
-test("Server-Erkennung meldet Fehler bzw. versteht nichts: begrenzt wiederholt; „Beenden“ während des Wartens wirkt sofort", async ({ page }) => {
-  const { calls } = await setup(page, { sr: "aus", stt: (n) => (n <= 3 ? { text: "" } : "haengt") });
+test("Server-Erkennung versteht nichts (Geräusche): weiter zuhören, Sicherheitsgrenze gegen Dauergeräusche; „Beenden“ während des Wartens wirkt sofort", async ({ page }) => {
+  const { calls } = await setup(page, { sr: "aus", stt: (n) => (n <= 3 ? { text: "" } : "haengt"), T: { sttEmpty: 3, idle: 30000 } });
   await page.click('button[data-a="voiceStart"]');
   const talk = async () => {
     await expect(page.locator("#voicebar")).toContainText("ich höre zu", { timeout: 5000 });
@@ -271,7 +274,7 @@ test("Server-Erkennung meldet Fehler bzw. versteht nichts: begrenzt wiederholt; 
     await expect.poll(() => calls.stt, { timeout: 5000 }).toBe(i + 1);
   }
   await expect.poll(() => on(page), { timeout: 5000 }).toBe(false);
-  await expect(page.locator("#toast")).toContainText("nichts verstanden");
+  await expect(page.locator("#toast")).toContainText("zu viele Geräusche");
   expect(calls.stt).toBe(3);
   // neu starten; diesmal hängt die Erkennung → während „denke nach“ sofort beenden
   await page.click('button[data-a="voiceStart"]');
@@ -317,16 +320,17 @@ test("Mikrofon antwortet nicht bzw. wird verweigert: Ende mit Hinweis, App bedie
   await responsive(page);
 });
 
-test("Antwort der KI hängt: App bleibt bedienbar, Sprachmodus endet nach der Zeitgrenze, Antwort erscheint trotzdem im Chat; Daten bleiben erhalten", async ({ page }) => {
-  const { calls, errors } = await setup(page, { sr: "ok", chat: () => "haengt", KI: { call: 2000, total: 2500 }, T: { think: 1500 } });
+test("Antwort der KI hängt: App bleibt bedienbar, Sprachmodus bleibt an und hört wieder zu, Antwort erscheint trotzdem im Chat; Daten bleiben erhalten", async ({ page }) => {
+  const { calls, errors } = await setup(page, { sr: "ok", chat: () => "haengt", KI: { call: 2000, total: 2500 }, T: { think: 1500, idle: 10000 } });
   const before = await state(page);
   await page.click('button[data-a="voiceStart"]');
   await expect.poll(() => page.evaluate(() => window.__sr.length)).toBe(1);
   await page.evaluate(() => window.__sr[0].say("Wie entwickelt sich Vivalink aktuell?"));
   await expect(page.locator("#voicebar")).toContainText("denke nach");
   await responsive(page);
-  await expect.poll(() => on(page), { timeout: 5000 }).toBe(false);
-  await expect(page.locator("#toast")).toContainText("Antwort dauert zu lange");
+  // ab 2.12: kein Ende – Hinweis in der Anzeige, weiter zuhören
+  await expect(page.locator("#voicebar")).toContainText("Die Antwort dauert länger", { timeout: 5000 });
+  expect(await on(page)).toBe(true);
   // die KI-Zeitgrenze greift: lokale Antwort mit Hinweis, Senden wieder möglich
   await expect.poll(() => page.evaluate(() => S.chatMsgs.length), { timeout: 6000 }).toBe(2);
   await expect(page.locator(".msg.ai .bub").last()).toContainText("Zeitüberschreitung");
@@ -341,14 +345,14 @@ test("Antwort der KI hängt: App bleibt bedienbar, Sprachmodus endet nach der Ze
   expect(errors).toEqual([]);
 });
 
-test("Sprachausgabe meldet kein Ende (iOS-Fehler): Vorlesen bricht nach zwei Sätzen ab, App hört wieder zu; Beenden jederzeit", async ({ page }) => {
+test("Sprachausgabe startet nicht (iOS-Fehler): ein zweiter Versuch, dann Hinweis in der Anzeige, App hört wieder zu; Beenden jederzeit", async ({ page }) => {
   await setup(page, { sr: "ok", ki: false, ttsHang: true });
   await page.click('button[data-a="voiceStart"]');
   await expect.poll(() => page.evaluate(() => window.__sr.length)).toBe(1);
   await page.evaluate(() => window.__sr[0].say("Welche Aufgaben sind offen?"));
   await expect(page.locator("#voicebar")).toContainText("ich spreche", { timeout: 5000 });
-  await expect(page.locator("#toast")).toContainText("Vorlesen reagiert nicht", { timeout: 5000 });
-  expect(await page.evaluate(() => window.__said.length)).toBe(2);
+  await expect(page.locator("#voicebar")).toContainText("Vorlesen reagiert gerade nicht", { timeout: 5000 });
+  expect(await page.evaluate(() => window.__said.length)).toBe(2); // erster Satz, ein Wiederholversuch – dann nicht weiter
   await expect(page.locator("#voicebar")).toContainText("ich höre zu");
   await page.click('#voicebar button[data-a="voiceStop"]');
   await expect(page.locator("#voicebar")).toHaveCount(0);

@@ -203,7 +203,7 @@ for (const small of [false, 375, 320]) {
       await page.evaluate(async () => {
         const c = newChat("Ein ziemlich langer Chattitel zur Wochenplanung mit vielen Wörtern und mehr");
         addMsg(c, { role: "user", text: "Bereite drei Instagram-Beiträge für nächste Woche vor und erkläre mir ausführlich, warum genau diese Themen sinnvoll sind." });
-        addMsg(c, { role: "assistant", text: "x", engine: "lokal", blocks: [{ k: "h", t: "Kennzahlen" }, { k: "fakt", t: "Gesamtzahl der Registrierungen: 120 (Stand 9.3.2026, Verwaltung, ohne Testkonten) · 7 Tage: +2 (+29 %) · Ziel 150" }, { k: "test", t: "Getrennt, nicht in den Kennzahlen: 4 Testkonten, 3 Buchungen, 2 Einladungen, Zahlungen 27 €, Erstattungen 0 €." }, { k: "empfehlung", t: "Sehr lange Empfehlung ohne Leerzeichen: Einladungstextverbesserungsmaßnahmenvorschlagsliste" }], actions: [{ id: "a1", type: "memory.add", args: { title: "x" }, title: "Ins Gedächtnis übernehmen: „Eine lange Information, die wir bestätigen sollen“", lvl: 2, status: "offen", note: "Bitte auf dem Bildschirm bestätigen (nicht per Sprache)." }, { id: "a2", type: "task.add", args: {}, title: "Aufgabe anlegen: „Fotos sortieren“", lvl: 1, status: "erledigt", undo: { task: "zz" } }] });
+        addMsg(c, { role: "assistant", text: "x", engine: "lokal", blocks: [{ k: "h", t: "Kennzahlen" }, { k: "fakt", t: "Gesamtzahl der Registrierungen: 120 (Stand 9.3.2026, Verwaltung, ohne Testkonten) · 7 Tage: +2 (+29 %) · Ziel 150" }, { k: "test", t: "Getrennt, nicht in den Kennzahlen: 4 Testkonten, 3 Buchungen, 2 Einladungen, Zahlungen 27 €, Erstattungen 0 €." }, { k: "empfehlung", t: "Sehr lange Empfehlung ohne Leerzeichen: Einladungstextverbesserungsmaßnahmenvorschlagsliste" }], actions: [{ id: "a1", type: "memory.add", args: { title: "x" }, title: "Ins Gedächtnis übernehmen: „Eine lange Information, die wir bestätigen sollen“", lvl: 2, status: "offen", note: "Bitte auf dem Bildschirm bestätigen (nicht per Sprache)." }, { id: "a2", type: "task.add", args: {}, title: "Aufgabe anlegen: „Fotos sortieren“", lvl: 1, status: "erledigt", undo: { task: "zz" } }, { id: "a3", type: "task.add", args: { title: "Social-Media-Kampagne mit sehr langem Titel für die Prüfung" }, title: "Aufgabe anlegen: „Social-Media-Kampagne mit sehr langem Titel für die Prüfung“", lvl: 1, status: "vorschlag", note: "Nicht ausgeführt – das war eine Frage. Tippe auf „Ausführen“, wenn du das möchtest." }, { id: "a4", type: "task.add", args: {}, title: "Aufgabe anlegen: „Fotos“", lvl: 1, status: "doppelt", note: "Ähnlich schon vorhanden: „Fotos vom Meetup sortieren“ – nichts doppelt angelegt." }] });
         addMsg(c, { role: "user", text: "Kurz", via: "voice" });
         newChat("Zweiter Chat");
         await save();
@@ -234,6 +234,11 @@ for (const small of [false, 375, 320]) {
       await page.click('button[data-a="chatBack"]');
       await page.click('button[data-a="kiSettings"]');
       await check("KI-Einstellungen", "#sheet");
+      await page.evaluate(() => (VO_LOG = Array.from({ length: 30 }, (_, i) => ({ at: Date.now(), ev: "whisper", d: i + "00 ms, 42 Zeichen", st: "denkt", m: "server" }))));
+      await page.click('#sheet button[data-a="close"]');
+      await page.click('button[data-a="kiSettings"]');
+      await page.click("#vo-log summary");
+      await check("KI-Einstellungen/Sprachprotokoll", "#sheet");
       await page.click('#sheet button[data-a="close"]');
       await page.locator('button[data-a="voiceStart"]').first().click();
       await expect(page.locator("#voicebar")).toBeVisible();
@@ -251,7 +256,16 @@ for (const small of [false, 375, 320]) {
       await page.evaluate(() => setState("spricht"));
       await expect(page.locator('#voicebar button[data-a="voiceInterrupt"]')).toBeVisible();
       await check("Sprachanzeige/Vorlesen", "#voicebar");
+      // Hinweis und Vorwarnung mit „Weiter zuhören“ (ab 2.12)
+      await page.evaluate(() => ((VO.hint = "Vorlesen reagiert gerade nicht – die Antwort steht im Chat (🔊 zum Vorlesen tippen)."), (VO.lastInput = vNow() - VO_T.idle + 5000), setState("hoert")));
+      await expect(page.locator('#voicebar button[data-a="voiceKeep"]')).toBeVisible();
+      await check("Sprachanzeige/Vorwarnung", "#voicebar");
       await page.click('#voicebar button[data-a="voiceStop"]');
+      // dauerhafter Endhinweis (ab 2.12)
+      await page.evaluate(() => ((VO.endInfo = { reason: "zu viele Geräusche ohne verständliche Sprache", detail: "Zur Sicherheit beendet (jede Aufnahme nutzt das kostenlose KI-Kontingent). Bitte in ruhigerer Umgebung neu starten.", at: Date.now() }), render()));
+      await expect(page.locator("#voEnd")).toBeVisible();
+      await check("KI-Chat/Endhinweis Sprachmodus");
+      await page.click('#voEnd button[data-a="voiceEndOk"]');
       await openAuftraege(page);
       await check("KI-Chat/Aufträge");
       expect(found).toEqual({});

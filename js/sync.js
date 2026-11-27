@@ -11,7 +11,7 @@
 const SYNC_FORMAT = "vivalink-sync";
 const B32 = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // ohne leicht verwechselbare Zeichen
 const syncUrl = () => window.VL_SYNC_URL || ""; // wird erst nach Freigabe gesetzt (js/config.js)
-let SYNC = { busy: false, last: null, error: null };
+let SYNC = { busy: false, last: null, error: null, running: Promise.resolve(), again: false };
 /* Zustand für Befunde (synchron lesbar im Regelmotor): Kopplung, letzter Erfolg, letzter Fehler, Geräte */
 let SYNC_STATE = null;
 const loadSyncState = async () => {
@@ -381,8 +381,13 @@ async function syncOnce(t = null) {
   if (!cfg) return { ok: false, error: "Nicht eingerichtet" };
   if (cfg.revoked) return { ok: false, error: "Diese Kopplung wurde gesperrt (Schlüssel erneuert) – bitte dieses Gerät neu koppeln" };
   if (!syncUrl() && !t) return { ok: false, error: "Kein Synchronisierungs-Server freigegeben" };
+  // Läuft schon eine Synchronisierung (z. B. automatisch im Hintergrund), auf sie warten und danach selbst laufen –
+  // sonst bliebe eine gerade gemachte Änderung bis zum nächsten Anlass nur auf diesem Gerät.
+  for (let i = 0; SYNC.busy && i < 2; i++) await Promise.race([SYNC.running, new Promise((r) => setTimeout(r, 30000))]).catch(() => {});
   if (SYNC.busy) return { ok: false, error: "Läuft bereits" };
   SYNC.busy = true;
+  let doneRun;
+  SYNC.running = new Promise((r) => (doneRun = r));
   const T = transport(t);
   const rep = { pulled: 0, conflicts: 0, pushed: false };
   try {
@@ -457,14 +462,19 @@ async function syncOnce(t = null) {
     return { ok: false, error: e.message, ...rep };
   } finally {
     SYNC.busy = false;
+    doneRun();
     if (SYNC.error) SYNC.errorAt = Date.now();
     await loadSyncState().catch(() => {});
+    // während der Synchronisierung gespeicherte Änderungen gleich nachreichen
+    if (SYNC.again) (SYNC.again = false), syncSoon(1000);
   }
 }
 /* Automatisch: beim Start und kurz nach Änderungen (nur wenn eingerichtet und online) */
 let syncTimer = null;
 function syncSoon(ms = 4000) {
-  if (!syncUrl() || SYNC.busy) return;
+  if (!syncUrl()) return;
+  if (SYNC.busy) return void (SYNC.again = true); // nach dem laufenden Durchgang erneut
+
   clearTimeout(syncTimer);
   syncTimer = setTimeout(async () => {
     const c = navigator.onLine !== false && (await syncCfg());

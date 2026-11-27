@@ -1,7 +1,7 @@
 # Zentrale Entwicklungsübersicht: Vivalink Management AI
 
 **Fortsetzungsdokument für alle weiteren Entwicklungsaufträge.** Bei jedem Auftrag zuerst lesen und am Ende aktualisieren. Arbeitsweise (Tests, Gerätetests, Grenzen): **`CLAUDE.md`**.
-Stand: 27.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.10.0** (`main`, Pull Request #8; echte Kennzahlen, Testdaten getrennt; Supabase-Erweiterung, neue Edge Function und Kennzeichnung der vier Testkonten durch den Gründer erledigt – App zeigt 0 echte Nutzer) · Veröffentlicht: **2.11.0** (KI-Chat, PR #9) · Entwicklungszweig: **2.11.1** (Fehlerbehebung KI-Chat 503; nicht veröffentlicht) · Testversion „VL Test“: 2.8.3
+Stand: 27.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.10.0** (`main`, Pull Request #8; echte Kennzahlen, Testdaten getrennt; Supabase-Erweiterung, neue Edge Function und Kennzeichnung der vier Testkonten durch den Gründer erledigt – App zeigt 0 echte Nutzer) · Veröffentlicht: **2.11.1** (PR #10) · Entwicklungszweig: **2.12.0** (Gesprächsfluss, Vorlesen, Absichtsprüfung; nicht veröffentlicht) · Testversion „VL Test“: 2.8.3
 
 ## 1. Umgesetzt und getestet (noch nicht veröffentlicht)
 
@@ -103,8 +103,19 @@ Stand: 27.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
   - Kein Worker-Update nötig.
   - Dabei zwei unzuverlässige Tests repariert: Chat-Ansicht wird jetzt vor dem Speichern aktualisiert (Fingertipp ging sonst verloren); Test-Datenbank-Port 25400+ statt 54400+ (lag im Bereich für ausgehende Verbindungen). Lokal und in GitHub Actions (mit WebKit) grün.
   - Gerätetest nötig: Sprachmodus in Safari und in der installierten App auf iPad/iPhone (Mikrofonfreigabe, Wechsel Aufnahme/Wiedergabe, Stimmen).
+- ✅ 2.11.1 veröffentlicht (PR #10).
+- **2.12.0 (Praxistest des Gründers auf dem iPad, 27.11.2026) – Ursachen und Lösungen:**
+  - Selbstständiges Ende: Bildschirmsperre → App im Hintergrund → Ende; Whisper-Fehlerkennungen/Geräusche und langsame Antworten führten zu Enden bzw. Unsinnsfragen. Jetzt: Wake Lock, Stille-Grenze 2 min mit Vorwarnung, Störungen beenden nicht, dauerhafter Endhinweis.
+  - Nicht vorgelesen: Vorlesen bei offenem Mikrofon bzw. direkt nach dem Ende der Erkennung (iOS stumm); im Test 0 von 5 Antworten hörbar. Jetzt: Mikrofon frei, Umschaltpause, Startüberwachung, 🔊 per Tippen.
+  - Unbeauftragte Aufgaben: Modell rief „aufgabe_anlegen“ bei einer Frage zweimal auf; die App führte Stufe 1 ohne Prüfung aus. Jetzt: technische Absichtsprüfung (`userIntent`), Vorschläge, Dublettenschutz (`dedupeActions`, `existingDup`, `srcKey`).
+  - Wiederholungen: neue Systemanweisung, sauberer Verlauf, kurze Sprachantworten.
+  - Live-Gespräch (künstliche Daten, ca. 430 Neurons): keine Aufgabe bei Fragen, genau eine bei Auftrag, kurze Sprachantwort. Grenze: Llama 3.3 70B greift bei Empfehlungen teils auf App-Hinweise zurück statt auf eigene Ideen (Anweisung und Werkzeugbeschreibung angepasst).
+  - WebKit (GitHub Actions) fand zusätzlich eine Lücke im Wiederholschutz (Antwort sichtbar, aber noch nicht gespeichert) – behoben, Test deterministisch.
+  - „Tests / test (push)“ schlug einmal fehl (WebKit iPad, Zusammenführungs-Test): echter kleiner Synchronisierungsfehler – eine Änderung während einer laufenden Synchronisierung wurde nicht nachgereicht. Behoben in `js/sync.js`, gezielter Test `tests/sync-laufend.spec.mjs` (schlägt ohne Behebung fehl).
+  - Ergebnis: lokal 645 bestanden, GitHub Actions mit WebKit iPhone/iPad grün (PR #11).
+  - Tests: `tests/praxis.spec.mjs` (schlagen mit 2.11.1 fehl), `sprachfluss`, `absicht`, `update-2112`, `voice-fakes.mjs`; Live: `live-ki-gespraech` (Workflow-Eingabe `gespraech=ja`).
 - **Offen:**
-  - Freigabe der Veröffentlichung 2.11.1 (PR #10); für die Fehlerbehebung nicht mehr zwingend, da der Worker die Form von 2.11.0 annimmt.
+  - Freigabe der Veröffentlichung 2.12.0 (PR); danach Gerätetest (Anleitung in `docs/KI-CHAT.md`).; für die Fehlerbehebung nicht mehr zwingend, da der Worker die Form von 2.11.0 annimmt.
   - Gründer schaltet das KI-Modell auf iPad und iPhone ein (KI-Einstellungen, je Gerät) und gibt die Datenbereiche frei.
   - Gerätetest von Sprachmodus und Server-Spracherkennung in der installierten App.
 - **Gerätetests nötig:** Mikrofon und Spracherkennung in Safari bzw. in der installierten App, Stimmenqualität.

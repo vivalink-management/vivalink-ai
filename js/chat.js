@@ -16,7 +16,9 @@ kvGet("ki-config").then((c) => (KI_ON = !!(c && c.on && kiUrl()))).catch(() => {
 let chatOpen = null,
   kiTab = "chat",
   chatBusy = false,
-  chatDraft = "";
+  chatDraft = "",
+  chatLastSend = null;
+const CHAT_ACT_AT = {}; // Zeitpunkt der Ausführung je Auftrag (nur im Speicher, gegen Doppeltippen)
 
 const chatList = (T = S) => (T.chats || []).filter((c) => !c.deleted).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 const chatById = (id, T = S) => (T.chats || []).find((c) => c.id === id && !c.deleted) || null;
@@ -78,6 +80,9 @@ const lvlOf = (x) => {
 async function chatSend(text, via = "text", chatId = chatOpen) {
   text = String(text || "").trim();
   if (!text || chatBusy) return null;
+  // dieselbe Nachricht nicht doppelt verarbeiten (doppeltes Tippen, Eingabetaste + Senden, Sprache + Wiederholung):
+  // während der Bearbeitung sperrt chatBusy, kurz danach (1,5 s) wird dieselbe Nachricht ignoriert
+  if (chatLastSend && chatLastSend.text === text && chatLastSend.chat === chatId && performance.now() - chatLastSend.t < 1500) return null;
   chatBusy = true;
   let shown = false; // Ansicht zeigt bereits den Endstand
   try {
@@ -89,16 +94,27 @@ async function chatSend(text, via = "text", chatId = chatOpen) {
     touch(chat);
     if (tab === "ai") render(), chatScroll(); // erst Ansicht, dann speichern: Zustand und Anzeige stimmen immer überein
     await save();
-    const r = await assistantAnswer(chat, text, history);
+    const q = S.chatMsgs[S.chatMsgs.length - 1];
+    const intent = userIntent(text);
+    const r = await assistantAnswer(chat, text, history, { via, intent });
     const actions = [];
-    for (const a of r.actions || []) {
+    // Vor JEDER schreibenden Aktion: Dubletten zusammenfassen, Absicht prüfen, Freigabestufe prüfen
+    let autoTasks = 0;
+    for (const a of dedupeActions(r.actions).slice(0, 6)) {
+      if (!ACT_DEF[a.type]) continue;
       const x = { id: uid(), type: a.type, args: a.args, title: ACT_DEF[a.type].t(a.args), lvl: 0, status: "offen" };
       x.lvl = lvlOf(x);
-      if (x.lvl <= 1) {
+      if (x.type === "task.add") x.key = q.id + ":" + normTitle(a.args.title); // gegen doppelte Ausführung
+      const dup = existingDup(x);
+      const explicit = intent.allow.has(x.type) && !(x.type === "task.add" && autoTasks >= intent.count);
+      if (x.lvl >= 3) (x.status = "abgelehnt"), (x.note = "nie automatisch");
+      else if (dup) (x.status = "doppelt"), (x.note = "Ähnlich schon vorhanden: „" + str(dup.title, 120) + "“ – nichts doppelt angelegt.");
+      else if (x.lvl <= 1 && explicit) {
         const res = await runAction(x, "auto");
         x.status = res && res.ok ? "erledigt" : "fehler";
         if (!(res && res.ok)) x.note = (res && res.error) || "nicht möglich";
-      } else if (x.lvl >= 3) (x.status = "abgelehnt"), (x.note = "nie automatisch");
+        if (x.type === "task.add" && x.status === "erledigt") autoTasks++;
+      } else if (x.lvl <= 1) (x.status = "vorschlag"), (x.note = "Nicht ausgeführt – das war " + (intent.kind === "frage" ? "eine Frage" : "kein ausdrücklicher Auftrag") + ". Tippe auf „Ausführen“, wenn du das möchtest.");
       else x.note = via === "voice" ? "Bitte auf dem Bildschirm bestätigen (nicht per Sprache)." : "Braucht deine Bestätigung.";
       actions.push(x);
     }
@@ -108,6 +124,7 @@ async function chatSend(text, via = "text", chatId = chatOpen) {
     if (r.topic) chat.topic = r.topic;
     if (chatMsgs(chat.id).length > CHAT_SUM_AFTER && (!chat.summaryAt || Date.now() - chat.summaryAt > 36e5)) summarize(chat);
     touch(chat);
+    chatLastSend = { text, chat: chatId, t: performance.now() }; // Wiederholschutz gilt ab sofort, nicht erst nach dem Speichern
     chatBusy = false;
     shown = true;
     if (tab === "ai") render(), chatScroll(); // sofort, nicht erst nach dem Speichern (sonst geht ein schneller Fingertipp verloren)
@@ -115,6 +132,7 @@ async function chatSend(text, via = "text", chatId = chatOpen) {
     return m;
   } finally {
     if (!shown) {
+      chatLastSend = { text, chat: chatId, t: performance.now() };
       chatBusy = false;
       if (tab === "ai") render(), chatScroll();
     }
@@ -163,12 +181,18 @@ function msgHtml(m) {
   const acts = (m.actions || [])
     .map(
       (x) =>
-        `<div class="card ca"><div>${esc(x.title)}</div><div class="mut">${x.status === "erledigt" ? "✅ erledigt" + (x.undo ? "" : "") : x.status === "offen" ? "⏳ wartet auf deine Bestätigung" + (x.note ? " – " + esc(x.note) : "") : x.status === "rueckgaengig" ? "↩︎ rückgängig gemacht" : x.status === "abgelehnt" ? "⛔ abgelehnt" + (x.note ? " – " + esc(x.note) : "") : "⚠️ " + esc(x.note || "nicht ausgeführt")}</div>${
-          x.status === "offen" ? `<div class="row"><button class="p" data-a="chatAct" data-id="${esc(m.id)}" data-v="${esc(x.id)}">Bestätigen</button><button data-a="chatActNo" data-id="${esc(m.id)}" data-v="${esc(x.id)}">Ablehnen</button></div>` : x.status === "erledigt" && x.undo ? `<div class="row"><button class="s" data-a="chatUndo" data-id="${esc(m.id)}" data-v="${esc(x.id)}">Rückgängig</button></div>` : ""
+        `<div class="card ca"><div>${esc(x.title)}</div><div class="mut">${x.status === "erledigt" ? "✅ erledigt" + (x.undo ? "" : "") : x.status === "offen" ? "⏳ wartet auf deine Bestätigung" + (x.note ? " – " + esc(x.note) : "") : x.status === "vorschlag" ? "💡 Vorschlag – " + esc(x.note || "nicht ausgeführt") : x.status === "doppelt" ? "↔︎ " + esc(x.note || "schon vorhanden") : x.status === "verworfen" ? "✕ verworfen" : x.status === "laeuft" ? "⏳ wird ausgeführt …" : x.status === "rueckgaengig" ? "↩︎ rückgängig gemacht" : x.status === "abgelehnt" ? "⛔ abgelehnt" + (x.note ? " – " + esc(x.note) : "") : "⚠️ " + esc(x.note || "nicht ausgeführt")}</div>${
+          x.status === "offen" || x.status === "vorschlag" ? `<div class="row"><button class="p" data-a="chatAct" data-id="${esc(m.id)}" data-v="${esc(x.id)}">${x.status === "vorschlag" ? "Ausführen" : "Bestätigen"}</button><button data-a="chatActNo" data-id="${esc(m.id)}" data-v="${esc(x.id)}">${x.status === "vorschlag" ? "Verwerfen" : "Ablehnen"}</button></div>` : x.status === "erledigt" && x.undo ? `<div class="row"><button class="s" data-a="chatUndo" data-id="${esc(m.id)}" data-v="${esc(x.id)}">Rückgängig</button></div>` : ""
         }</div>`,
     )
     .join("");
-  return `<div class="msg ${mine ? "me" : "ai"}" data-mid="${esc(m.id)}"><div class="bub">${body}${acts}</div><div class="mmeta">${new Date(m.at).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}${m.via === "voice" ? " · 🎙️ gesprochen" : ""}${!mine && m.engine ? " · " + (m.engine === "ki" ? "KI-Modell" : "lokal") : ""} <button class="s mbtn" data-a="chatCopy" data-id="${esc(m.id)}" aria-label="Nachricht kopieren">Kopieren</button>${mine ? ` <button class="s mbtn" data-a="chatMem" data-id="${esc(m.id)}">Merken …</button>` : ""}</div></div>`;
+  return `<div class="msg ${mine ? "me" : "ai"}" data-mid="${esc(m.id)}"><div class="bub">${body}${acts}</div><div class="mmeta">${new Date(m.at).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}${m.via === "voice" ? " · 🎙️ gesprochen" : ""}${!mine && m.engine ? " · " + (m.engine === "ki" ? "KI-Modell" : "lokal") : ""} <button class="s mbtn" data-a="chatCopy" data-id="${esc(m.id)}" aria-label="Nachricht kopieren">Kopieren</button>${!mine ? ` <button class="s mbtn" data-a="chatSpeak" data-id="${esc(m.id)}" aria-label="Nachricht vorlesen">🔊</button>` : ""}${mine ? ` <button class="s mbtn" data-a="chatMem" data-id="${esc(m.id)}">Merken …</button>` : ""}</div></div>`;
+}
+/* Dauerhafter Hinweis, warum der Sprachmodus beendet wurde (nicht nur kurz eingeblendet) */
+function voEndCard() {
+  const e = typeof VO !== "undefined" && !VO.on && VO.endInfo;
+  if (!e) return "";
+  return `<div class="card rec warn" id="voEnd" role="status"><b>Sprachmodus beendet: ${esc(e.reason)}</b>${e.detail ? `<div class="mut">${esc(e.detail)}</div>` : ""}<div class="row"><button class="p" data-a="voiceStart">🎙️ Erneut starten</button><button data-a="voiceEndOk">OK</button></div></div>`;
 }
 function engineLine() {
   return `<div class="mut" id="kiEngine">${KI_ON ? "KI-Modell eingeschaltet (Workers AI) – Datenfreigaben in den Einstellungen." : "Lokaler Assistent (ohne KI-Modell): versteht feste Anliegen zu deinen Vivalink-Daten, keine freie Unterhaltung."} <button class="s" data-a="kiSettings">KI-Einstellungen</button></div>`;
@@ -178,7 +202,7 @@ function vChat() {
   if (!c) {
     chatOpen = null;
     const L = chatList();
-    return `<div class="row sp"><h1>KI-Chat</h1><button class="p" data-a="chatNew">Neuer Chat</button></div>${engineLine()}<div class="row" style="margin:8px 0"><button class="p voicebtn" data-a="voiceStart">🎙️ Sprachmodus starten</button></div>${
+    return `<div class="row sp"><h1>KI-Chat</h1><button class="p" data-a="chatNew">Neuer Chat</button></div>${engineLine()}${voEndCard()}<div class="row" style="margin:8px 0"><button class="p voicebtn" data-a="voiceStart">🎙️ Sprachmodus starten</button></div>${
       L.length
         ? L.map((x) => {
             const M = chatMsgs(x.id),
@@ -189,7 +213,7 @@ function vChat() {
     }`;
   }
   const M = chatMsgs(c.id);
-  return `<div class="row sp chathead"><button class="s" data-a="chatBack">‹ Chats</button><b class="ctitle" data-a="chatRename" data-id="${esc(c.id)}">${esc(c.title)}</b><button class="s" data-a="chatMenu" data-id="${esc(c.id)}" aria-label="Chat-Menü">…</button></div>${c.summary ? `<details class="card mut"><summary>Zusammenfassung früherer Nachrichten</summary>${mdLite(c.summary)}</details>` : ""}<div id="chatLog">${M.length ? M.map(msgHtml).join("") : '<p class="mut">Schreib eine Nachricht oder starte den Sprachmodus.</p>'}${chatBusy ? '<div class="msg ai"><div class="bub mut" id="chatTyping">… denkt nach</div></div>' : ""}<div id="chatEnd"></div></div><div class="composer"><textarea id="chatIn" rows="1" placeholder="Nachricht an deine Management AI" enterkeyhint="send">${esc(chatDraft)}</textarea><div class="row"><button class="p" data-a="chatSend" ${chatBusy ? "disabled" : ""}>Senden</button><button class="voicebtn" data-a="voiceStart" aria-label="Sprachmodus starten">🎙️ Sprechen</button></div></div>`;
+  return `<div class="row sp chathead"><button class="s" data-a="chatBack">‹ Chats</button><b class="ctitle" data-a="chatRename" data-id="${esc(c.id)}">${esc(c.title)}</b><button class="s" data-a="chatMenu" data-id="${esc(c.id)}" aria-label="Chat-Menü">…</button></div>${c.summary ? `<details class="card mut"><summary>Zusammenfassung früherer Nachrichten</summary>${mdLite(c.summary)}</details>` : ""}<div id="chatLog">${M.length ? M.map(msgHtml).join("") : '<p class="mut">Schreib eine Nachricht oder starte den Sprachmodus.</p>'}${chatBusy ? '<div class="msg ai"><div class="bub mut" id="chatTyping">… denkt nach</div></div>' : ""}<div id="chatEnd"></div></div>${voEndCard()}<div class="composer"><textarea id="chatIn" rows="1" placeholder="Nachricht an deine Management AI" enterkeyhint="send">${esc(chatDraft)}</textarea><div class="row"><button class="p" data-a="chatSend" ${chatBusy ? "disabled" : ""}>Senden</button><button class="voicebtn" data-a="voiceStart" aria-label="Sprachmodus starten">🎙️ Sprechen</button></div></div>`;
 }
 function vKi() {
   return `<div class="seg"><button class="${kiTab === "chat" ? "on" : ""}" data-a="kiTab" data-id="chat">Chat</button><button class="${kiTab === "auftraege" ? "on" : ""}" data-a="kiTab" data-id="auftraege">Aufträge an ChatGPT/Claude</button></div>${kiTab === "auftraege" ? vAi() : vChat()}`;
@@ -206,7 +230,7 @@ async function kiSettingsSheet() {
 <div class="card"><b>Welche Daten darf die KI erhalten?</b><p class="mut">Nur die angehakten Bereiche werden bei Bedarf an das KI-Modell übermittelt (ohne Namen oder Kontaktdaten; private Gedächtniseinträge nie). Der lokale Assistent sendet nichts.</p>${Object.entries(KI_CATS)
     .map(([k, n]) => `<label><input type="checkbox" class="ki-f" data-id="${k}" ${c.freigaben[k] ? "checked" : ""} ${kiUrl() && (st.ok || c.on) ? "" : "disabled"}> ${esc(n)}</label>`)
     .join("<br>")}</div>
-<div class="card"><b>Sprachmodus</b><p class="mut">${voiceInfo()}</p><label>Stimme</label><select id="vo-voice">${voiceOptions(vc.voice)}</select><label>Sprechtempo</label><select id="vo-rate">${["0.9", "1", "1.1", "1.2"].map((r) => `<option ${String(vc.rate) === r ? "selected" : ""}>${r}</option>`).join("")}</select><label><input type="checkbox" id="vo-barge" ${vc.barge ? "checked" : ""}> Unterbrechen durch Sprechen (experimentell)</label></div>
+<div class="card"><b>Sprachmodus</b><p class="mut">${voiceInfo()}</p><label>Stimme</label><select id="vo-voice">${voiceOptions(vc.voice)}</select><label>Sprechtempo</label><select id="vo-rate">${["0.9", "1", "1.1", "1.2"].map((r) => `<option ${String(vc.rate) === r ? "selected" : ""}>${r}</option>`).join("")}</select><label><input type="checkbox" id="vo-barge" ${vc.barge ? "checked" : ""}> Unterbrechen durch Sprechen (experimentell)</label><details id="vo-log"><summary>Sprachmodus-Protokoll (ohne Inhalte)</summary><p class="mut">Nur Ereignisse und Zeiten dieses Geräts (keine erkannten Texte, keine Antworten) – hilft bei Problemen auf dem iPad/iPhone.</p><pre class="vo-logp">${esc(voLogText().split("\n").slice(-60).join("\n") || "(noch leer)")}</pre><button class="s" data-a="voiceLogCopy">Protokoll kopieren</button></details></div>
 <button class="p" data-a="kiSave">Speichern</button><button data-a="close">Schließen</button>`);
 }
 async function chatAction(a, id, b) {
@@ -300,13 +324,30 @@ async function chatAction(a, id, b) {
     const m = S.chatMsgs.find((x) => x.id === id),
       x = m && (m.actions || []).find((y) => y.id === b.dataset.v);
     if (!x) return true;
-    if (a === "chatActNo") x.status = "abgelehnt";
+    // nur offene Vorschläge/Bestätigungen; während der Ausführung gesperrt (doppeltes Tippen führt nichts doppelt aus)
+    if ((a === "chatAct" || a === "chatActNo") && !["offen", "vorschlag"].includes(x.status)) return true;
+    if (a === "chatUndo" && x.status !== "erledigt") return true;
+    // Doppeltippen: der zweite Tipp landet sonst auf „Rückgängig“ an derselben Stelle
+    if (a === "chatUndo" && performance.now() - (CHAT_ACT_AT[x.id] || -1e9) < 1000) return true;
+    if (a === "chatActNo") x.status = x.status === "vorschlag" ? "verworfen" : "abgelehnt";
     else if (a === "chatUndo") {
       if (undoAction(x)) x.status = "rueckgaengig";
       logAction(ACT_DEF[x.type].policy, "gruender", true, "rückgängig");
     } else {
       // Bestätigung nur durch Tippen auf dem Bildschirm (by = "gruender"), nie aus dem Sprachmodus heraus
+      const dup = existingDup(x);
+      if (dup) {
+        x.status = "doppelt";
+        x.note = "Ähnlich schon vorhanden: „" + str(dup.title, 120) + "“ – nichts doppelt angelegt.";
+        touch(m);
+        render();
+        await save();
+        return true;
+      }
+      x.status = "laeuft";
+      if (x.type === "task.add" && !x.key) x.key = m.id + ":" + normTitle(x.args.title);
       const r = await runAction(x, "gruender");
+      CHAT_ACT_AT[x.id] = performance.now();
       x.status = r && r.ok ? "erledigt" : "fehler";
       if (!(r && r.ok)) x.note = (r && r.error) || "nicht möglich";
     }
@@ -334,6 +375,18 @@ async function chatAction(a, id, b) {
   if (a === "voiceStop") return voiceStop("beendet"), true;
   if (a === "voiceInterrupt") return voiceInterrupt(), true;
   if (a === "voiceDone") return voiceDone(), true;
+  if (a === "voiceKeep") return voiceKeep(), true;
+  if (a === "voiceEndOk") return voiceEndOk(), true;
+  if (a === "voiceLogCopy") {
+    try {
+      await navigator.clipboard.writeText(voLogText() || "(leer)");
+      toast("Protokoll kopiert (ohne Inhalte)");
+    } catch {
+      toast("Kopieren nicht möglich");
+    }
+    return true;
+  }
+  if (a === "chatSpeak") return voiceSpeakMsg(S.chatMsgs.find((x) => x.id === id)), true;
   return false;
 }
 /* Eingabe: Enter sendet (Umschalt+Enter = neue Zeile); Entwurf bleibt beim Neuzeichnen erhalten */
