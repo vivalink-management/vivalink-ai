@@ -79,6 +79,7 @@ async function chatSend(text, via = "text", chatId = chatOpen) {
   text = String(text || "").trim();
   if (!text || chatBusy) return null;
   chatBusy = true;
+  let shown = false; // Ansicht zeigt bereits den Endstand
   try {
     let chat = chatById(chatId);
     if (!chat) (chat = newChat()), (chatOpen = chat.id);
@@ -86,8 +87,8 @@ async function chatSend(text, via = "text", chatId = chatOpen) {
     addMsg(chat, { role: "user", text, via });
     if (chat.auto && history.length === 0) chat.title = chatTitleFrom(text);
     touch(chat);
+    if (tab === "ai") render(), chatScroll(); // erst Ansicht, dann speichern: Zustand und Anzeige stimmen immer überein
     await save();
-    if (tab === "ai") render(), chatScroll();
     const r = await assistantAnswer(chat, text, history);
     const actions = [];
     for (const a of r.actions || []) {
@@ -107,11 +108,16 @@ async function chatSend(text, via = "text", chatId = chatOpen) {
     if (r.topic) chat.topic = r.topic;
     if (chatMsgs(chat.id).length > CHAT_SUM_AFTER && (!chat.summaryAt || Date.now() - chat.summaryAt > 36e5)) summarize(chat);
     touch(chat);
+    chatBusy = false;
+    shown = true;
+    if (tab === "ai") render(), chatScroll(); // sofort, nicht erst nach dem Speichern (sonst geht ein schneller Fingertipp verloren)
     await save();
     return m;
   } finally {
-    chatBusy = false;
-    if (tab === "ai") render(), chatScroll();
+    if (!shown) {
+      chatBusy = false;
+      if (tab === "ai") render(), chatScroll();
+    }
   }
 }
 
