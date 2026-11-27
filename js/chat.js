@@ -326,6 +326,7 @@ async function chatAction(a, id, b) {
   if (a === "voiceStart") return voiceStart(), true;
   if (a === "voiceStop") return voiceStop("beendet"), true;
   if (a === "voiceInterrupt") return voiceInterrupt(), true;
+  if (a === "voiceDone") return voiceDone(), true;
   return false;
 }
 /* Eingabe: Enter sendet (Umschalt+Enter = neue Zeile); Entwurf bleibt beim Neuzeichnen erhalten */

@@ -10,6 +10,10 @@ on:
         description: "Zusätzlich Diagnose der Nachrichtenformen und Test der veröffentlichten App (wenige hundert kostenlose Neurons)"
         required: false
         default: "nein"
+      stt:
+        description: "Zusätzlich Spracherkennung (Whisper) mit künstlich erzeugter Sprache (wenige kostenlose Neurons)"
+        required: false
+        default: "nein"
 
 permissions:
   contents: read
@@ -26,9 +30,12 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      - run: sudo apt-get install -y espeak-ng ffmpeg
+        if: ${{ github.event.inputs.stt == 'ja' }}
       - name: Live-Prüfung KI (ohne KI-Aufruf)
-        run: npx playwright test tests/live-ki.spec.mjs tests/live-ki-funktion.spec.mjs tests/live-ki-diagnose.spec.mjs tests/live-ki-app.spec.mjs --project=chromium-desktop --reporter=list
+        run: npx playwright test tests/live-ki.spec.mjs tests/live-ki-funktion.spec.mjs tests/live-ki-diagnose.spec.mjs tests/live-ki-app.spec.mjs tests/live-ki-stt.spec.mjs --project=chromium-desktop --reporter=list
         env:
           CI: "1"
           LIVE: "1"
           LIVE_DIAG: ${{ github.event.inputs.diagnose == 'ja' && '1' || '' }}
+          LIVE_STT: ${{ github.event.inputs.stt == 'ja' && '1' || '' }}

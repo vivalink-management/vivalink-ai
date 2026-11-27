@@ -16,6 +16,19 @@ Ein Assistent, ein Gesprächsverlauf: Schreiben und Sprechen landen im selben Ch
 | Synchronisierung | über die vorhandene Ende-zu-Ende-verschlüsselte Synchronisierung. Je Chat die neuesten 80 Nachrichten, insgesamt höchstens ca. 1,5 MB Text; Älteres bleibt auf dem Gerät |
 | Offline | lokaler Assistent funktioniert ohne Internet |
 
+## Robustheit des Sprachmodus (ab 2.11.1)
+
+- Keine endlosen Wiederholungen: Geräte-Erkennung höchstens drei Neustarts; Server-Erkennung höchstens ein
+  Wiederholversuch bei Fehlern und drei leere Ergebnisse. Danach Ende mit verständlichem Hinweis.
+- Zeitgrenzen für jede Phase: Mikrofon 15 s, Aufnahme 30 s, Server-Erkennung 30 s, Antwort 75 s, Vorlesen je Satz;
+  60 s ohne Eingabe beenden den Sprachmodus.
+- „Beenden“ wirkt jederzeit, auch während „denke nach“. Danach wirkt kein alter Rückruf mehr.
+- „Fertig gesprochen“ beendet die Aufnahme sofort (wichtig, wenn iOS die Pegelmessung nicht freigibt).
+- Installierte App unter iOS/iPadOS: Mit freigegebener KI wird die Server-Erkennung genutzt, sonst die
+  Geräte-Erkennung mit Begrenzung und danach der Diktiermodus.
+- Kosten: Server-Erkennung nutzt das kostenlose Tageskontingent (ca. 47 Neurons je Minute Sprache). Stille wird nicht
+  gesendet.
+
 ## Ehrliche Einschränkungen
 
 - **Kein Sprachmodell aktiv.** Ohne KI-Modell ist es kein „ChatGPT“: freie Fragen, Diskussionen und Texte schreiben

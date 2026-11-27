@@ -413,12 +413,16 @@ async function kiStatus() {
     return { ok: false, why: "nicht erreichbar – der Worker ist noch nicht bereitgestellt" };
   }
 }
-async function kiCall(path, body) {
+/* Zeitgrenzen: jede Anfrage höchstens KI_T.call, eine ganze Antwort (bis zu drei Schritte) höchstens KI_T.total –
+   danach antwortet der lokale Assistent, und die App bleibt bedienbar. */
+const KI_T = { call: 45000, total: 60000 };
+async function kiCall(path, body, ms = KI_T.call) {
   const sc = await kvGet("sync-config");
   const ac = typeof AbortController === "function" ? new AbortController() : null;
-  const tm = ac && setTimeout(() => ac.abort(), 45000);
+  let timedOut = false;
+  const tm = setTimeout(() => ((timedOut = true), ac && ac.abort()), Math.max(1000, ms));
   try {
-    const r = await fetch(kiUrl().replace(/\/$/, "") + path, { method: "POST", cache: "no-store", headers: { authorization: "Bearer " + sc.token, "content-type": "application/json" }, body: JSON.stringify({ vault: sc.vid, ...body }), signal: ac && ac.signal });
+    const r = await fetchOrTimeout(kiUrl().replace(/\/$/, "") + path, { method: "POST", cache: "no-store", headers: { authorization: "Bearer " + sc.token, "content-type": "application/json" }, body: JSON.stringify({ vault: sc.vid, ...body }), signal: ac && ac.signal }, () => timedOut);
     const j = await r.json().catch(() => ({}));
     if (!r.ok)
       throw Object.assign(
@@ -436,9 +440,22 @@ async function kiCall(path, body) {
         { status: r.status },
       );
     return j;
+  } catch (e) {
+    if (timedOut || (e && e.name === "AbortError")) throw Object.assign(new Error("Zeitüberschreitung – KI hat nicht rechtzeitig geantwortet"), { timeout: true });
+    throw e;
   } finally {
     clearTimeout(tm);
   }
+}
+/* fetch mit Zeitgrenze, auch wenn ein Browser das Abbrechen nicht unterstützt */
+function fetchOrTimeout(url, opt, isTimedOut) {
+  return new Promise((ok, no) => {
+    const iv = setInterval(() => isTimedOut() && (clearInterval(iv), no(Object.assign(new Error("timeout"), { name: "AbortError" }))), 250);
+    fetch(url, opt).then(
+      (r) => (clearInterval(iv), ok(r)),
+      (e) => (clearInterval(iv), no(e)),
+    );
+  });
 }
 async function kiAnswer(chat, text, history) {
   const cfg = await kiCfg();
@@ -455,10 +472,13 @@ async function kiAnswer(chat, text, history) {
     actions = [];
   // Werkzeugergebnisse gehen als gewöhnliche Nachrichten an das Modell (Form, die jedes Modell von Workers AI annimmt);
   // der letzte Schritt läuft ohne Werkzeuge, damit das Modell sicher eine Antwort formuliert.
-  const ROUNDS = 3;
+  const ROUNDS = 3,
+    until = Date.now() + KI_T.total;
   for (let round = 0; round < ROUNDS; round++) {
     const last = round === ROUNDS - 1;
-    const j = await kiCall("/v1/ki/chat", { messages: msgs, ...(last ? {} : { tools: kiToolSpecs() }) });
+    const left = until - Date.now();
+    if (left < 1500) throw Object.assign(new Error("Zeitüberschreitung – KI hat nicht rechtzeitig geantwortet"), { timeout: true });
+    const j = await kiCall("/v1/ki/chat", { messages: msgs, ...(last ? {} : { tools: kiToolSpecs() }) }, Math.min(KI_T.call, left));
     const calls = last || !Array.isArray(j.tool_calls) ? [] : j.tool_calls.slice(0, 6);
     if (!calls.length) {
       const t = String(j.text || "").trim();

@@ -97,6 +97,10 @@ Stand: 27.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
 - ✅ **Worker-Aktualisierung bereitgestellt (27.11.2026, Freigabe des Gründers):** `vivalink-ki` Version b6f2a4b5-c227-4527-9be5-478c2f463960. `vivalink-sync` und `vivalink-webseite` nachweislich unverändert (Änderungszeit/Kennung vorher = nachher); Supabase und App nicht verändert.
   - Live-Prüfung danach: Form A (App 2.11.0) → 200 mit Antwort. Die **veröffentlichte App 2.11.0** (GitHub Pages, frischer Browser, künstliche Daten, `tests/live-ki-app.spec.mjs`) erhielt auf zwei Fragen mit Werkzeugaufruf vollständige KI-Antworten (Llama 3.3 70B, Kennzahlen bzw. Aufgaben abgerufen). Verbrauch 170 Neurons; Test-Zugang gesperrt.
   - Beobachtung Antwortqualität: Die zweite Antwort wiederholte Sätze der ersten. Verbesserung der Anweisungen an das Modell sinnvoll (nächster Schritt).
+- ❗ **Hänger im Sprachmodus auf dem iPad (27.11.2026, gemeldet vom Gründer)** – behoben in 2.11.1 (nicht veröffentlicht):
+  - Nachgewiesene Ursache im Code: unbegrenzter Neustart der Spracherkennung (19 Neustarts in 5 s im Test), Stille-Zeitgrenze bei jedem Neustart zurückgesetzt, Sprachanzeige bei jeder Änderung neu aufgebaut (Fingertipps gingen verloren). Auf dem iPad aktiviert jeder Neustart Mikrofon und Audiosystem neu.
+  - Lösung und Tests: `js/voice.js` (Sitzungsnummer, Grenzen, Zeitgrenzen, stabile Anzeige, „Fertig gesprochen“, Server-Erkennung in der installierten iOS-App), `KI_T` in `js/assistant.js`; `tests/voice-robust.spec.mjs` (14 Fälle; schlagen mit 2.11.0 fehl). Live-Prüfung Whisper mit künstlicher Sprache: Workflow „Live-Prüfung KI“, Eingabe `stt=ja`.
+  - Kein Worker-Update nötig.
 - **Offen:**
   - Freigabe der Veröffentlichung 2.11.1 (PR #10); für die Fehlerbehebung nicht mehr zwingend, da der Worker die Form von 2.11.0 annimmt.
   - Gründer schaltet das KI-Modell auf iPad und iPhone ein (KI-Einstellungen, je Gerät) und gibt die Datenbereiche frei.
