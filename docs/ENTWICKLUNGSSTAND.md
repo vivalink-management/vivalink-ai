@@ -1,7 +1,7 @@
 # Zentrale Entwicklungsübersicht: Vivalink Management AI
 
 **Fortsetzungsdokument für alle weiteren Entwicklungsaufträge.** Bei jedem Auftrag zuerst lesen und am Ende aktualisieren. Arbeitsweise (Tests, Gerätetests, Grenzen): **`CLAUDE.md`**.
-Stand: 27.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.10.0** (`main`, Pull Request #8; echte Kennzahlen, Testdaten getrennt; Supabase-Erweiterung, neue Edge Function und Kennzeichnung der vier Testkonten durch den Gründer erledigt – App zeigt 0 echte Nutzer) · Veröffentlicht: **2.12.0** (PR #11) · Entwicklungszweig: **2.12.1** (automatisches Vorlesen auf dem iPad; nicht veröffentlicht) · Testversion „VL Test“: 2.8.3
+Stand: 27.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.10.0** (`main`, Pull Request #8; echte Kennzahlen, Testdaten getrennt; Supabase-Erweiterung, neue Edge Function und Kennzeichnung der vier Testkonten durch den Gründer erledigt – App zeigt 0 echte Nutzer) · Veröffentlicht: **2.12.1** (PR #12) · Nächster Schritt: **Entwicklungsplan KI** (`docs/ENTWICKLUNGSPLAN-KI.md`, wartet auf Freigabe) · Testversion „VL Test“: 2.8.3
 
 ## 1. Umgesetzt und getestet (noch nicht veröffentlicht)
 
@@ -120,8 +120,10 @@ Stand: 27.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
   - Lösung: echter Freischalt-Satz beim Tippen, Warteschlange leeren, Start nur per Ereignis, Tipp-Ausweg „🔊 Antwort vorlesen“, ausführliches Protokoll ohne Inhalte.
   - Tests: `tests/vorlesen-ios.spec.mjs` (iOS-Modell in `voice-fakes.mjs`; schlägt mit 2.12.0 fehl).
   - Cloudflare-Sprachausgabe geprüft: keine kostenlose deutsche Stimme → nicht umgesetzt (Begründung in `docs/KI-CHAT.md`).
-- **Offen:**
-  - Freigabe der Veröffentlichung 2.12.1; danach Gerätetest: drei Fragen per Sprache. Erwartet: „Ich höre zu.“ beim Start, jede Antwort automatisch vorgelesen. Sonst Protokoll kopieren.; für die Fehlerbehebung nicht mehr zwingend, da der Worker die Form von 2.11.0 annimmt.
+- ✅ 2.12.1 veröffentlicht (PR #12).
+- **Entwicklungsplan KI (27.11.2026):** Analyse von Architektur und Schwachstellen und priorisierter Plan (Unternehmensprofil, Antwortmodi, Analyse-Werkzeug, Gesprächsnotizen, Modellvergleich, Eigenständigkeit) in `docs/ENTWICKLUNGSPLAN-KI.md`. Nichts umgesetzt; wartet auf Freigabe des Gründers (Abschnitt 8).
+- **Offen (vorher):**
+  - Gerätetest 2.12.1; danach Gerätetest: drei Fragen per Sprache. Erwartet: „Ich höre zu.“ beim Start, jede Antwort automatisch vorgelesen. Sonst Protokoll kopieren.; für die Fehlerbehebung nicht mehr zwingend, da der Worker die Form von 2.11.0 annimmt.
   - Gründer schaltet das KI-Modell auf iPad und iPhone ein (KI-Einstellungen, je Gerät) und gibt die Datenbereiche frei.
   - Gerätetest von Sprachmodus und Server-Spracherkennung in der installierten App.
 - **Gerätetests nötig:** Mikrofon und Spracherkennung in Safari bzw. in der installierten App, Stimmenqualität.
