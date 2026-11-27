@@ -124,14 +124,15 @@ async function chatSend(text, via = "text", chatId = chatOpen) {
     if (r.topic) chat.topic = r.topic;
     if (chatMsgs(chat.id).length > CHAT_SUM_AFTER && (!chat.summaryAt || Date.now() - chat.summaryAt > 36e5)) summarize(chat);
     touch(chat);
+    chatLastSend = { text, chat: chatId, t: performance.now() }; // Wiederholschutz gilt ab sofort, nicht erst nach dem Speichern
     chatBusy = false;
     shown = true;
     if (tab === "ai") render(), chatScroll(); // sofort, nicht erst nach dem Speichern (sonst geht ein schneller Fingertipp verloren)
     await save();
     return m;
   } finally {
-    chatLastSend = { text, chat: chatId, t: performance.now() };
     if (!shown) {
+      chatLastSend = { text, chat: chatId, t: performance.now() };
       chatBusy = false;
       if (tab === "ai") render(), chatScroll();
     }

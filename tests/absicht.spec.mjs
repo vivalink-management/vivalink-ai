@@ -89,10 +89,20 @@ test("Doppelt gesendete Nachricht (Senden zweimal, Eingabetaste + Senden) wird n
   await setupVoice(page, { ki: false });
   const n0 = (await state(page)).tasks.filter((t) => !t.deleted).length;
   await page.click('button[data-a="chatNew"]');
+  // Speichern künstlich verlangsamen: die Antwort ist schon sichtbar, aber noch nicht gespeichert (auf WebKit gefundene Lücke)
+  await page.evaluate(() => {
+    const s0 = save;
+    window.save = async (...a) => (await new Promise((r) => setTimeout(r, 400)), s0(...a));
+  });
   await page.fill("#chatIn", "Lege eine Aufgabe an: Flyer drucken");
-  await page.evaluate(() => (chatAction("chatSend"), chatAction("chatSend")));
+  // zweimal Senden; sobald die Antwort sichtbar ist (Speichern läuft noch), dieselbe Nachricht erneut
+  await page.evaluate(async () => {
+    chatAction("chatSend");
+    chatAction("chatSend");
+    while (S.chatMsgs.length < 2) await new Promise((r) => setTimeout(r, 5));
+    await chatSend("Lege eine Aufgabe an: Flyer drucken");
+  });
   await expect.poll(() => msgCount(page)).toBe(2);
-  await page.evaluate(() => chatSend("Lege eine Aufgabe an: Flyer drucken"));
   await page.waitForTimeout(300);
   expect(await msgCount(page)).toBe(2);
   expect((await state(page)).tasks.filter((t) => !t.deleted).length).toBe(n0 + 1);
