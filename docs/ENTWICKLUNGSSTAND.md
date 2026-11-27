@@ -1,7 +1,7 @@
 # Zentrale Entwicklungsübersicht: Vivalink Management AI
 
 **Fortsetzungsdokument für alle weiteren Entwicklungsaufträge.** Bei jedem Auftrag zuerst lesen und am Ende aktualisieren. Arbeitsweise (Tests, Gerätetests, Grenzen): **`CLAUDE.md`**.
-Stand: 26.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.9.0** (`main`, veröffentlicht am 26.11.2026: Verwaltungsanbindung aktiv, dazu 2.8.2/2.8.3) · Entwicklungszweig: **2.11.0** (KI-Chat und Sprachmodus; enthält 2.10.0 echte Kennzahlen/Testdaten getrennt; nicht veröffentlicht) · Testversion „VL Test“: 2.8.3
+Stand: 26.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.10.0** (`main`, Pull Request #8; echte Kennzahlen, Testdaten getrennt; Supabase-Erweiterung, neue Edge Function und Kennzeichnung der vier Testkonten durch den Gründer erledigt – App zeigt 0 echte Nutzer) · Entwicklungszweig: **2.11.0** (KI-Chat und Sprachmodus; auf Basis von 2.10.0; nicht veröffentlicht) · Testversion „VL Test“: 2.8.3
 
 ## 1. Umgesetzt und getestet (noch nicht veröffentlicht)
 
@@ -79,10 +79,13 @@ Stand: 26.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
   - Chats über die vorhandene Synchronisierung (begrenzt)
   - Datenversion 5
 - Vorbereitet, nicht bereitgestellt: Worker `vivalink-ki` (Workers AI: Llama 3.3 70B, Whisper) mit Tagesbudget 9.000 Neurons, Zugang über Tresor-Zugang, Datenfreigaben je Bereich.
+- 2.11.0 enthält bereits Adresse und Sicherheitsrichtlinie des Workers (ohne Wirkung bis zum Einschalten).
+- Datensparsamkeit: lokale Antworten nicht an das Modell; Einschalten nur nach „Verbindung prüfen“.
+- Worker gehärtet: Ausweichmodell, Vorab-Buchung, Budget 8.000, Fehlversuchsgrenze, Status ohne Daten.
 - **Offen (Freigabe Gründer):**
-  - Worker bereitstellen und Datenübertragung an Cloudflare
-  - danach `VL_KI_URL` und Sicherheitsrichtlinie
-  - Veröffentlichung 2.10/2.11
+  - Veröffentlichung 2.11.0 (neuer Pull Request)
+  - Bereitstellung des Workers `vivalink-ki`
+  - Workers-Tarif im Dashboard prüfen (kostenlos)
 - **Gerätetests nötig:** Mikrofon und Spracherkennung in Safari bzw. in der installierten App, Stimmenqualität.
 - Kostenpflichtiger Echtzeit-Sprachmodus (OpenAI Realtime) nur als Information; nichts aktiviert.
 
@@ -111,7 +114,7 @@ Stand: 26.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
     - Voraussetzungen werden geprüft, ebenso alle Rechte- und Schutzprüfungen und die Ereignistrigger vor jeder Änderung. COMMIT nur bei Erfolg.
     - Eigene Rückbau-Datei für die Erweiterung. Der Stand „2.9 + Erweiterung“ ist gleichwertig mit einer Neueinrichtung (Test).
     - Ablauf: privat `bereitstellung/UMSTELLUNG-TESTDATEN.md`.
-  - **Offen (Freigabe Gründer):** Veröffentlichung 2.10.0, danach E2-Erweiterung, neue Edge Function, Testkonten kennzeichnen (keine Neukopplung nötig);
+  - ✅ 2.10.0 veröffentlicht, E2-Erweiterung ausgeführt, neue Edge Function bereitgestellt, vier Testkonten gekennzeichnet (Gründer, 27.11.2026).
   - **Für KI-Chat / Sprachmodus (geplant):** Kennzahlen nur über `valid()`/`cur()`/`cmp()` lesen (liefern ausschließlich verifizierte Werte); Testdaten nur über `KPI_STATE.meta.testData` (Summen). So kann ein Chat keine Testdaten als echte Unternehmensdaten verwenden. früher offen: **Offen (Freigabe Gründer):** Einrichtung und Edge Function in Supabase, danach App-Version mit der Adresse der Edge Function.
   - Testkonten mit Nutzerrolle: nicht bekannt → gekennzeichnet (keine erfundenen Merkmale)
   - Einrichtung (Freigabe)

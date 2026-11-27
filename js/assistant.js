@@ -81,8 +81,10 @@ const TOOLS = {
       const od = open.filter((x) => x.due && x.due < t),
         wk = open.filter((x) => x.due && x.due >= Math.max(t, mo) && x.due <= so),
         rest = open.length - od.length - wk.length;
-      const L = (l) => l.slice(0, 6).map((x) => x.title + (x.due ? " (bis " + fmt(x.due) + ")" : "")).join("; ");
+      const L = (l, n = 6) => l.slice(0, n).map((x) => x.title + (x.due ? " (bis " + fmt(x.due) + ")" : "")).join("; ") + (l.length > n ? " … und " + (l.length - n) + " weitere" : "");
       const B = [{ k: "fakt", t: `${open.length} offene Aufgaben${od.length ? `, davon ${od.length} überfällig` : ""}.` }];
+      // ohne Zeitraum: alle offenen Aufgaben (nach Wichtigkeit und Frist geordnet)
+      if (a.woche !== "diese" && a.woche !== "naechste") return B.concat([{ k: "fakt", t: "Offen: " + L(open, 10) }]);
       if (od.length) B.push({ k: "fakt", t: "Überfällig: " + L(od) });
       if (wk.length) B.push({ k: "fakt", t: (a.woche === "naechste" ? "Nächste Woche fällig: " : "Diese Woche fällig: ") + L(wk) });
       if (rest > 0) B.push({ k: "fakt", t: rest + " weitere ohne Frist in diesem Zeitraum." });
@@ -335,7 +337,7 @@ async function localAnswer(chat, text) {
       blocks.push({ k: "hinweis", t: "Für einen ausführlichen Plan mit Begründungen: unter „Aufträge“ einen Auftrag für ChatGPT/Claude erzeugen." });
     } else if (k === "aufgaben") {
       head("Offene Aufgaben");
-      blocks.push(...TOOLS.aufgaben.run({ woche: /nächste woche/i.test(text) ? "naechste" : "diese" }));
+      blocks.push(...TOOLS.aufgaben.run({ woche: /nächste woche/i.test(text) ? "naechste" : /diese woche|bis (ende|freitag|sonntag)/i.test(text) ? "diese" : "alle" }));
     } else if (k === "meetup") {
       head("Meetup");
       blocks.push(...TOOLS.meetup.run());
@@ -395,10 +397,21 @@ Regeln: Nutze für Unternehmensdaten ausschließlich die Werkzeuge. Erfinde kein
 Geschäftliche Entscheidungen trifft der Gründer. Veröffentlichungen, Zahlungen, Preise, Löschungen und Änderungen an produktiven Systemen führst du nie aus; Aufträge schlägst du über die Auftrags-Werkzeuge vor – die App prüft sie und fragt bei Bedarf nach Freigabe.
 Wenn ein Werkzeug „nicht freigegeben“ meldet, sage das und arbeite ohne diese Daten.`;
 function kiToolSpecs() {
-  const spec = Object.entries(TOOLS).map(([name, t]) => ({ type: "function", function: { name, description: t.d, parameters: { type: "object", properties: name === "aufgaben" ? { woche: { type: "string", enum: ["diese", "naechste"] } } : name === "gedaechtnis" ? { stichwort: { type: "string" } } : {} } } }));
+  const spec = Object.entries(TOOLS).map(([name, t]) => ({ type: "function", function: { name, description: t.d, parameters: { type: "object", properties: name === "aufgaben" ? { woche: { type: "string", enum: ["alle", "diese", "naechste"] } } : name === "gedaechtnis" ? { stichwort: { type: "string" } } : {} } } }));
   spec.push({ type: "function", function: { name: "aufgabe_anlegen", description: "Schlägt vor, eine Aufgabe anzulegen (die App führt es mit Rückgängig aus)", parameters: { type: "object", properties: { titel: { type: "string" }, frist: { type: "string", description: "JJJJ-MM-TT oder leer" } }, required: ["titel"] } } });
   spec.push({ type: "function", function: { name: "merken_vorschlagen", description: "Schlägt vor, eine wichtige Information ins Gedächtnis zu übernehmen (nur mit Bestätigung des Gründers)", parameters: { type: "object", properties: { titel: { type: "string" } }, required: ["titel"] } } });
   return spec;
+}
+/* Erreichbarkeit der Gegenstelle (ohne Zugang, ohne Daten, ohne KI-Aufruf) */
+async function kiStatus() {
+  if (!kiUrl() || navigator.onLine === false) return { ok: false, why: "offline oder nicht eingerichtet" };
+  try {
+    const r = await fetch(kiUrl().replace(/\/$/, "") + "/v1/ki/status", { cache: "no-store" });
+    const j = await r.json().catch(() => ({}));
+    return r.ok && j.service === "vivalink-ki" ? { ok: true } : { ok: false, why: "nicht bereitgestellt (" + r.status + ")" };
+  } catch {
+    return { ok: false, why: "nicht erreichbar – der Worker ist noch nicht bereitgestellt" };
+  }
 }
 async function kiCall(path, body) {
   const sc = await kvGet("sync-config");
@@ -416,8 +429,13 @@ async function kiCall(path, body) {
 async function kiAnswer(chat, text, history) {
   const cfg = await kiCfg();
   const msgs = [{ role: "system", content: KI_SYSTEM + "\nHeute ist " + fmt(today()) + "." }];
-  if (chat.summary) msgs.push({ role: "system", content: "Bisherige Unterhaltung (Zusammenfassung): " + chat.summary.slice(0, 3000) });
-  for (const m of history.slice(-16)) msgs.push({ role: m.role === "user" ? "user" : "assistant", content: m.text.slice(0, 4000) });
+  // Datensparsam: Antworten des lokalen Assistenten enthalten App-Daten (Kennzahlen, Gedächtnis …) und gehen NICHT an das
+  // Modell – nur deine Fragen und frühere KI-Antworten. Aus der Kurzfassung nur die Fragen und ausgeführten Aufträge.
+  if (chat.summary) {
+    const q = chat.summary.split("\n").filter((l) => /^(Frage\/Auftrag|Ausgeführt)/.test(l));
+    if (q.length) msgs.push({ role: "system", content: "Frühere Fragen in diesem Chat: " + q.join("; ").slice(0, 3000) });
+  }
+  for (const m of history.slice(-16)) msgs.push({ role: m.role === "user" ? "user" : "assistant", content: m.role === "user" || m.engine === "ki" ? m.text.slice(0, 4000) : "(Antwort des lokalen Assistenten mit App-Daten – nicht übermittelt)" });
   msgs.push({ role: "user", content: text.slice(0, 4000) });
   const used = new Set(),
     actions = [];

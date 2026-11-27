@@ -14,7 +14,8 @@ test("Ausgelieferte Konfiguration: Adresse per HTTPS, in der Sicherheitsrichtlin
   const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
   const csp = html.match(/Content-Security-Policy" content="([^"]+)"/)[1];
   const connect = csp.split(";").map((x) => x.trim()).find((x) => x.startsWith("connect-src")).split(/\s+/).slice(1);
-  expect(connect).toEqual(["'self'", "https://vivalink-sync.hidden-art-0326.workers.dev", HOST]); // genau diese Ziele, kein Platzhalter
+  // genau diese Ziele, kein Platzhalter: Synchronisierung, Verwaltung, KI-Gegenstelle (ab 2.11, ohne Wirkung bis zum Einschalten)
+  expect(connect).toEqual(["'self'", "https://vivalink-sync.hidden-art-0326.workers.dev", HOST, "https://vivalink-ki.hidden-art-0326.workers.dev"]);
   expect(csp).toContain("default-src 'self'");
   await page.goto("/");
   await ready(page);
@@ -37,6 +38,7 @@ test("Ausgelieferte Konfiguration: Adresse per HTTPS, in der Sicherheitsrichtlin
   const testCfg = build.match(/writeFileSync\(`\$\{out\}\/js\/config\.js`, `([^`]*)`/)[1];
   expect(testCfg).toContain('VL_CHANNEL = "test"');
   expect(testCfg).not.toContain("VL_KPI_URL");
+  expect(testCfg).not.toContain("VL_KI_URL");
   expect(testCfg).not.toContain("supabase");
 });
 

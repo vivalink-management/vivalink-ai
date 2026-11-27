@@ -11,8 +11,14 @@
 - **Synchronisierung der Chats** begrenzt (80 Nachrichten je Chat, ca. 1,5 MB), Zusammenführen ohne Konflikte, Datenversion 5 mit Sicherheitskopie.
 - **KI-Gegenstelle (Cloudflare Workers AI) vorbereitet, nicht bereitgestellt:** Zugang nur für gekoppelte Geräte, Tagesbudget unter dem kostenlosen Kontingent, Datenfreigaben je Bereich.
 - **Tests:** Chat, Sprachmodus mit Attrappen, Gegenstelle, zwei Geräte über die Synchronisierung, Update/Rückbau mit 2.9.0, Layout bis 320 px.
+- **Vor der Veröffentlichung nachgeschärft:**
+  - Frühere Antworten des lokalen Assistenten gehen nicht an ein KI-Modell.
+  - Die KI-Gegenstelle wird nur auf Tippen geprüft; Einschalten nur, wenn sie erreichbar ist.
+  - Adresse und Sicherheitsrichtlinie des Workers `vivalink-ki` sind vorbereitet.
+  - Der Worker weicht auf ein zweites Modell aus, bucht vorab, begrenzt das Budget auf 8.000 und Fehlversuche je Absender.
+  - Live-Prüfung KI (manuell).
 
-## 2.10.0 (Entwicklungszweig, noch nicht veröffentlicht) – Echte Kennzahlen, Testdaten getrennt
+## 2.10.0 (veröffentlicht am 27.11.2026) – Echte Kennzahlen, Testdaten getrennt
 
 - **Nur verifizierte Werte aus der Verwaltung:** Werte gelten nur als echt, wenn die Verwaltung bestätigt, dass Testkonten ausgeschlossen sind (Kennzeichen am Wert).
   - Ältere oder ungeprüfte Werte bleiben gespeichert, fließen aber in keine Anzeige, keinen Vergleich, keine Empfehlung, kein Ziel, keinen Wochenbericht und keine Instagram-Analyse ein.

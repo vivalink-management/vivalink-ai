@@ -34,36 +34,56 @@ Ein Assistent, ein Gesprächsverlauf: Schreiben und Sprechen landen im selben Ch
 ## Vorbereitet: echtes KI-Modell ohne Zusatzkosten (braucht deine Freigabe)
 
 **Cloudflare Workers AI im vorhandenen Cloudflare-Konto**, eigener kleiner Worker `vivalink-ki`
-(`server/ki-worker.js`, `server/ki-core.mjs`, `server/ki-wrangler.toml`), nicht bereitgestellt.
+(`server/ki-worker.js`, `server/ki-core.mjs`, `server/ki-wrangler.toml`), **nicht bereitgestellt**.
 
-- **Modell:** Llama 3.3 70B (Werkzeugaufrufe auf deine App-Funktionen). Spracherkennung: Whisper large v3 turbo.
-- **Kosten:** kostenloses Kontingent von 10.000 „Neurons“ pro Tag. Der Worker begrenzt selbst auf 9.000 und lehnt
-  darüber ab. So entstehen auch im kostenpflichtigen Workers-Tarif keine Kosten.
-  - Grob: eine Chatfrage mit Werkzeugaufruf kostet etwa 300 Neurons → ca. 25–30 Fragen am Tag.
-  - Spracherkennung kostet etwa 47 Neurons je Minute.
-  - Bitte im Cloudflare-Konto prüfen, ob der kostenlose oder der kostenpflichtige Workers-Tarif aktiv ist.
-- **Zugang:** nur gekoppelte Geräte, mit demselben Tresor-Zugang wie die Synchronisierung. Kein API-Schlüssel im
-  Browser, Begrenzung je Gerät und Stunde, keine Speicherung oder Protokollierung von Inhalten.
-- **Datenschutz:** Laut Cloudflare werden Inhalte nicht zum Training verwendet. In den KI-Einstellungen gibst du
-  einzeln frei, welche Bereiche an das Modell gehen dürfen:
-  - Kennzahlen
-  - Aufgaben
-  - Meetup
-  - Instagram
-  - Gedächtnis ohne vertrauliche Einträge
-  - Technik
+- **Modelle:** zuerst Llama 3.3 70B. Ist es nicht verfügbar (außer Betrieb genommen oder nur im kostenpflichtigen
+  Tarif), weicht der Worker automatisch auf Gemma 4 26B aus; laut Cloudflare ist es im kostenlosen Tarif nutzbar.
+  Spracherkennung: Whisper large v3 turbo.
+  - Stand der Prüfung (27.11.2026): Llama-Modelle stehen nicht auf der Liste der Modelle, die seit Juli 2026 den
+    kostenpflichtigen Tarif verlangen.
+  - Unter den am 20.11.2026 abgeschalteten Sprachmodellen ist „whisper-tiny-en“, nicht das hier genutzte Modell.
+  - Der Modellkatalog ließ sich mit dem vorhandenen Zugang nicht direkt abfragen. Deshalb gibt es das Ausweichen und
+    nach der Bereitstellung eine Live-Prüfung.
+- **Kosten:** Das kostenlose Kontingent beträgt 10.000 „Neurons“ pro Tag (Rücksetzung 0 Uhr UTC).
+  - **Im kostenlosen Workers-Tarif** schlagen Anfragen über dem Kontingent fehl. Es kann dann nichts berechnet werden.
+  - **Im kostenpflichtigen Workers-Tarif** (5 $/Monat) würde zusätzlicher Verbrauch berechnet. Dagegen begrenzt
+    der Worker selbst auf **8.000** Neurons pro Tag:
+    - Er bucht die geschätzten Kosten vor jedem Aufruf.
+    - Er schätzt Modelle ohne bekannten Preis vorsichtig.
+    - Er lehnt ab, bevor das Budget überschritten würde.
+    - 2.000 Neurons Abstand fangen Schätzfehler und gleichzeitige Anfragen ab.
+  - Grenzen dieser Sicherung: Andere Nutzung von Workers AI im selben Konto kennt der Worker nicht.
+  - **Bitte einmal im Cloudflare-Dashboard prüfen, dass der kostenlose Workers-Tarif aktiv ist.** Dann ist eine
+    Berechnung ausgeschlossen.
+  - Grob reicht das Kontingent für etwa 20–25 Fragen am Tag (eine Frage mit Werkzeugaufruf ca. 300–400 Neurons).
+    Spracherkennung kostet etwa 47 Neurons je Minute.
+- **Zugang:**
+  - nur gekoppelte Geräte, mit demselben Tresor-Zugang wie die Synchronisierung (256 Bit, nur als Hash geprüft)
+  - gesperrte Tresore abgewiesen
+  - Fehlversuche je Absender begrenzt, 120 Anfragen je Gerät und Stunde
+  - nur die eigene App-Adresse
+  - kein API-Schlüssel im Browser (Workers AI ist eine Bindung des Workers)
+  - keine Speicherung oder Protokollierung von Inhalten
+- **Datensparsam:**
+  - Das Modell erhält deine Fragen und nur die Daten, die es über ein Werkzeug ausdrücklich anfordert.
+  - Das gilt nur in Bereichen, die du in den KI-Einstellungen freigegeben hast (alle zunächst aus).
+  - Frühere Antworten des lokalen Assistenten, die App-Daten enthalten, werden nicht übertragen.
+  - Vertrauliche Gedächtniseinträge nie.
+  - Laut Cloudflare werden Inhalte nicht zum Training verwendet.
+- **Sicherheit:**
+  - Riskante Anliegen werden vor jedem Modell abgelehnt.
+  - Aufträge des Modells laufen über dieselbe Freigabelogik.
+  - Bei Ausfall oder erreichtem Tageskontingent antwortet der lokale Assistent mit Hinweis.
 
-  Ohne Freigabe sagt der Assistent, dass ihm die Daten fehlen.
-- **Sicherheit:** Riskante Anliegen werden vor jedem Modell abgelehnt. Aufträge des Modells laufen über dieselbe
-  Freigabelogik. Fällt das Modell aus oder ist das Tageskontingent erreicht, antwortet der lokale Assistent mit Hinweis.
+**Einrichtung nach deiner Freigabe (in 2.11.0 bereits vorbereitet):**
+1. Ich stelle den Worker bereit (`cd server && npx -y wrangler@4.168.0 deploy -c ki-wrangler.toml`). Der
+   Cloudflare-Zugang liegt geschützt in der Claude-Umgebung.
+2. Ich starte die „Live-Prüfung KI“ (ohne KI-Aufruf).
+3. Du tippst in der App „KI-Chat › KI-Einstellungen › Verbindung prüfen“, schaltest das KI-Modell ein und hakst die
+   Bereiche an, die es nutzen darf.
 
-**Einrichtung nach Freigabe:**
-1. Den Worker bereitstellen.
-2. Seine Adresse in `js/config.js` (`VL_KI_URL`) und in die Sicherheitsrichtlinie eintragen.
-3. Neue App-Version veröffentlichen (mit Freigabe).
-4. In der App unter KI-Einstellungen einschalten und die Datenbereiche freigeben.
-
-Für den Zugang muss die Synchronisierung eingerichtet sein.
+Adresse und Sicherheitsrichtlinie sind in 2.11.0 schon eingetragen. Bis zum Einschalten sendet die App nichts dorthin.
+Für den Zugang muss die Synchronisierung eingerichtet sein (ist sie).
 
 ## Kostenpflichtige Alternative: Echtzeit-Sprachmodus (nur zur Information, nichts aktiviert)
 

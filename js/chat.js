@@ -10,6 +10,9 @@ const CHAT_SYNC_PER_CHAT = 80,
   CHAT_SYNC_BYTES = 1500000,
   CHAT_TEXT_MAX = 20000,
   CHAT_SUM_AFTER = 40;
+let KI_STAT = null; // Ergebnis von „Verbindung prüfen“ (nur auf Tippen – keine automatische Anfrage)
+let KI_ON = false; // Anzeige: KI-Modell eingeschaltet (aus ki-config, beim Start und nach dem Speichern geladen)
+kvGet("ki-config").then((c) => (KI_ON = !!(c && c.on && kiUrl()))).catch(() => {});
 let chatOpen = null,
   kiTab = "chat",
   chatBusy = false,
@@ -162,7 +165,7 @@ function msgHtml(m) {
   return `<div class="msg ${mine ? "me" : "ai"}" data-mid="${esc(m.id)}"><div class="bub">${body}${acts}</div><div class="mmeta">${new Date(m.at).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}${m.via === "voice" ? " · 🎙️ gesprochen" : ""}${!mine && m.engine ? " · " + (m.engine === "ki" ? "KI-Modell" : "lokal") : ""} <button class="s mbtn" data-a="chatCopy" data-id="${esc(m.id)}" aria-label="Nachricht kopieren">Kopieren</button>${mine ? ` <button class="s mbtn" data-a="chatMem" data-id="${esc(m.id)}">Merken …</button>` : ""}</div></div>`;
 }
 function engineLine() {
-  return `<div class="mut" id="kiEngine">${kiUrl() ? "KI-Modell vorbereitet – Einstellungen" : "Lokaler Assistent (ohne KI-Modell): versteht feste Anliegen zu deinen Vivalink-Daten, keine freie Unterhaltung."} <button class="s" data-a="kiSettings">KI-Einstellungen</button></div>`;
+  return `<div class="mut" id="kiEngine">${KI_ON ? "KI-Modell eingeschaltet (Workers AI) – Datenfreigaben in den Einstellungen." : "Lokaler Assistent (ohne KI-Modell): versteht feste Anliegen zu deinen Vivalink-Daten, keine freie Unterhaltung."} <button class="s" data-a="kiSettings">KI-Einstellungen</button></div>`;
 }
 function vChat() {
   const c = chatOpen && chatById(chatOpen);
@@ -188,13 +191,14 @@ function vKi() {
 async function kiSettingsSheet() {
   const c = await kiCfg(),
     sc = await kvGet("sync-config"),
-    vc = await voiceCfg();
+    vc = await voiceCfg(),
+    st = KI_STAT || { ok: false, why: "noch nicht geprüft" };
   sheet(`<h1>KI-Einstellungen</h1>
-<div class="card"><b>Antworten</b><p class="mut">${kiUrl() ? (c.on ? "KI-Modell eingeschaltet." : "KI-Modell bereitgestellt, aber ausgeschaltet – es antwortet der lokale Assistent.") : "Derzeit antwortet der <b>lokale Assistent ohne KI-Modell</b> (kostenlos, offline, nur auf dem Gerät). Ein echtes KI-Modell (Cloudflare Workers AI, kostenloses Tageskontingent) ist vorbereitet, aber noch nicht eingerichtet – das braucht deine Freigabe."}</p>${
-    kiUrl() ? `<label><input type="checkbox" id="ki-on" ${c.on ? "checked" : ""} ${sc ? "" : "disabled"}> KI-Modell verwenden${sc ? "" : " (erst nach Einrichtung der Synchronisierung)"}</label>` : ""
+<div class="card"><b>Antworten</b><p class="mut">${c.on ? "KI-Modell eingeschaltet (Cloudflare Workers AI, kostenloses Tageskontingent)." : "Derzeit antwortet der <b>lokale Assistent ohne KI-Modell</b> (kostenlos, offline, nur auf dem Gerät)."}</p><p class="mut" id="kiStat">${st.ok ? "✅ KI-Gegenstelle erreichbar." : "KI-Gegenstelle: " + esc(st.why) + "."} ${kiUrl() ? '<button class="s" data-a="kiCheck">Verbindung prüfen</button>' : ""}</p>${
+    kiUrl() ? `<label><input type="checkbox" id="ki-on" ${c.on ? "checked" : ""} ${sc && (st.ok || c.on) ? "" : "disabled"}> KI-Modell verwenden${sc ? (st.ok || c.on ? "" : " (erst wenn erreichbar)") : " (erst nach Einrichtung der Synchronisierung)"}</label>` : ""
   }</div>
 <div class="card"><b>Welche Daten darf die KI erhalten?</b><p class="mut">Nur die angehakten Bereiche werden bei Bedarf an das KI-Modell übermittelt (ohne Namen oder Kontaktdaten; private Gedächtniseinträge nie). Der lokale Assistent sendet nichts.</p>${Object.entries(KI_CATS)
-    .map(([k, n]) => `<label><input type="checkbox" class="ki-f" data-id="${k}" ${c.freigaben[k] ? "checked" : ""} ${kiUrl() ? "" : "disabled"}> ${esc(n)}</label>`)
+    .map(([k, n]) => `<label><input type="checkbox" class="ki-f" data-id="${k}" ${c.freigaben[k] ? "checked" : ""} ${kiUrl() && (st.ok || c.on) ? "" : "disabled"}> ${esc(n)}</label>`)
     .join("<br>")}</div>
 <div class="card"><b>Sprachmodus</b><p class="mut">${voiceInfo()}</p><label>Stimme</label><select id="vo-voice">${voiceOptions(vc.voice)}</select><label>Sprechtempo</label><select id="vo-rate">${["0.9", "1", "1.1", "1.2"].map((r) => `<option ${String(vc.rate) === r ? "selected" : ""}>${r}</option>`).join("")}</select><label><input type="checkbox" id="vo-barge" ${vc.barge ? "checked" : ""}> Unterbrechen durch Sprechen (experimentell)</label></div>
 <button class="p" data-a="kiSave">Speichern</button><button data-a="close">Schließen</button>`);
@@ -305,12 +309,14 @@ async function chatAction(a, id, b) {
     return render(), true;
   }
   if (a === "kiSettings") return kiSettingsSheet(), true;
+  if (a === "kiCheck") return (KI_STAT = await kiStatus()), kiSettingsSheet(), true;
   if (a === "kiSave") {
     const c = await kiCfg();
     if ($("#ki-on")) c.on = $("#ki-on").checked;
     c.freigaben = {};
     document.querySelectorAll(".ki-f").forEach((el) => (c.freigaben[el.dataset.id] = el.checked));
     await kvPut("ki-config", c);
+    KI_ON = !!(c.on && kiUrl());
     await kvPut("voice-config", { ...(await voiceCfg()), voice: val("vo-voice"), rate: Number(val("vo-rate")) || 1, barge: $("#vo-barge").checked });
     logAction("ki.settings", "gruender", true, "KI-Einstellungen gespeichert");
     close();

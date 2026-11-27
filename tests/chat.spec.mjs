@@ -230,12 +230,20 @@ test("Synchronisierung: begrenzter Anteil, Zusammenführen ohne Konflikte, gelö
   await context.setOffline(false);
 });
 
-test("KI-Einstellungen: ohne bereitgestellte KI ehrlich gekennzeichnet; Datenfreigaben erst mit KI möglich", async ({ page }) => {
+test("KI-Einstellungen: lokal gekennzeichnet; KI-Gegenstelle nur auf Tippen geprüft; Einschalten erst wenn erreichbar", async ({ page }) => {
+  const g = await guard(page);
   await setup(page);
   await page.click('nav button[data-id="ai"]');
   await expect(page.locator("#kiEngine")).toContainText("Lokaler Assistent (ohne KI-Modell)");
   await page.click('button[data-a="kiSettings"]');
-  await expect(page.locator("#sheet")).toContainText("noch nicht eingerichtet – das braucht deine Freigabe");
+  await expect(page.locator("#kiStat")).toContainText("noch nicht geprüft");
   expect(await page.locator(".ki-f").count()).toBe(6);
   expect(await page.locator(".ki-f:enabled").count()).toBe(0);
+  expect(await page.locator("#ki-on").isDisabled()).toBe(true);
+  expect(g.external).toEqual([]); // keine automatische Anfrage
+  // „Verbindung prüfen“: genau eine Anfrage ohne Daten an die vorgesehene Adresse; Worker noch nicht bereitgestellt
+  await page.click('button[data-a="kiCheck"]');
+  await expect(page.locator("#kiStat")).toContainText("nicht erreichbar");
+  expect(g.external).toEqual(["https://vivalink-ki.hidden-art-0326.workers.dev/v1/ki/status"]);
+  expect(await page.locator("#ki-on").isDisabled()).toBe(true);
 });
