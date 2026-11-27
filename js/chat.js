@@ -305,8 +305,9 @@ async function chatAction(a, id, b) {
       if (!(r && r.ok)) x.note = (r && r.error) || "nicht möglich";
     }
     touch(m);
+    render(); // Ansicht sofort passend zum Zustand (ein schneller nächster Fingertipp trifft die neue Ansicht)
     await save();
-    return render(), true;
+    return true;
   }
   if (a === "kiSettings") return kiSettingsSheet(), true;
   if (a === "kiCheck") return (KI_STAT = await kiStatus()), kiSettingsSheet(), true;

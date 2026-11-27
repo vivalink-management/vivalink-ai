@@ -11,6 +11,7 @@
   - Jetzt: höchstens drei Neustarts mit wachsender Pause, danach einmaliger Wechsel zur Server-Erkennung (falls freigegeben) oder Ende mit Hinweis. Die Anzeige wird nur noch aktualisiert; „Beenden“ ist jederzeit tippbar.
   - Zeitgrenzen für Mikrofon, Aufnahme (30 s), Server-Erkennung (30 s), Antwort (75 s; KI-Antwort selbst höchstens 60 s) und Vorlesen. Fehlgeschlagene oder leere Erkennung wird begrenzt wiederholt.
   - Neu: „Fertig gesprochen“ (Aufnahme sofort beenden). Installierte App unter iOS/iPadOS mit freigegebener KI nutzt die Server-Erkennung. Doppeltes Tippen auf „Sprechen“ startet nur eine Sitzung.
+  - Chat: Nach „Bestätigen“/„Rückgängig“ wird die Ansicht sofort aktualisiert (vorher erst nach dem Speichern – ein schneller nächster Fingertipp konnte verloren gehen).
   - Tests: 14 neue Fehlerfall-Tests (sofortiges Ende, Fehlerarten, hängende Erkennung/Antwort/Sprachausgabe, stilles oder blockiertes Mikrofon, Datenerhalt); Live-Prüfung der Spracherkennung mit künstlich erzeugter Sprache.
 
 ## 2.11.0 (veröffentlicht, PR #9) – KI-Chat und Sprachmodus
