@@ -138,7 +138,7 @@ test("Unterbrechen während der Antwort, Beenden gibt das Mikrofon frei, Hinterg
   });
   await expect(page.locator("#voicebar")).toHaveCount(0);
   const log = await page.evaluate(() => ACTIONS.filter((a) => a.name.startsWith("voice.")).map((a) => a.name + ":" + (a.detail || "")));
-  expect(log).toEqual(expect.arrayContaining(["voice.start:geraet", "voice.stop:beendet", "voice.stop:App im Hintergrund"]));
+  expect(log).toEqual(expect.arrayContaining(["voice.start:geraet", "voice.stop:beendet", "voice.stop:App im Hintergrund oder Bildschirm gesperrt"]));
 });
 
 test("Sicherheit per Sprache: nichts Riskantes, Gedächtnis nur nach Tippen; Mikrofon verweigert → Ende mit Hinweis", async ({ page }) => {

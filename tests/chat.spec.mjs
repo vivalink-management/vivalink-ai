@@ -154,8 +154,17 @@ test("Instagram-Entwürfe für nächste Woche nach dem vorhandenen Rhythmus; tec
   expect((await state(page)).studio.posts.filter((p) => p.source === "chat" && !p.deleted).length).toBe(0);
   await send(page, "Überprüfe, ob es technische Probleme gibt.");
   await expect(lastAi(page)).toContainText("Technische Prüfung");
-  await expect(lastAi(page).locator(".ca")).toContainText("Eindeutige Datenfehler reparieren (mit Rückgängig-Punkt)✅ erledigt");
+  // „Überprüfe …“ ist kein Reparaturauftrag (ab 2.12): Reparatur als Vorschlag, erst durch Tippen ausgeführt
+  await expect(lastAi(page).locator(".ca")).toContainText("Eindeutige Datenfehler reparieren (mit Rückgängig-Punkt)💡 Vorschlag");
+  expect((await state(page)).tasks.find((x) => x.id === "tx").after).toBe("gibt-es-nicht");
   await expect(lastAi(page).locator(".cb-h", { hasText: "Größte Probleme" })).toHaveCount(0); // technische ≠ geschäftliche Probleme
+  await lastAi(page).locator('button[data-a="chatAct"]').click();
+  await expect(lastAi(page).locator(".ca")).toContainText("Eindeutige Datenfehler reparieren (mit Rückgängig-Punkt)✅ erledigt");
+  expect((await state(page)).tasks.find((x) => x.id === "tx").after).toBe("");
+  // ausdrücklicher Auftrag „Behebe …“ wird wie bisher selbstständig ausgeführt (Stufe 1)
+  await page.evaluate(async () => (S.tasks.find((x) => x.id === "tx").after = "wieder-weg", await save()));
+  await send(page, "Behebe die technischen Fehler.");
+  await expect(lastAi(page).locator(".ca")).toContainText("✅ erledigt");
   expect((await state(page)).tasks.find((x) => x.id === "tx").after).toBe("");
 });
 

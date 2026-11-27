@@ -136,8 +136,16 @@ test("App mit KI-Modell (Attrappe): Werkzeuge liefern nur freigegebene Daten, ve
   expect(ai.calls.length).toBe(2); // beide Aufrufe vom (strengen) Modell angenommen
   expect(sent.join("")).not.toContain("kontakt@example.invalid"); // vertraulicher Eintrag nie übertragen
   expect(sent.join("")).not.toContain("Testnotiz\\u0000");
-  // Auftrag aus der KI: Aufgabe mit Rückgängig angelegt (Stufe 1) – über dieselbe Freigabelogik
-  const s = await state(page);
+  // Das Modell wollte eine Aufgabe anlegen – die Frage war aber kein Auftrag (ab 2.12): nur Vorschlag, nichts angelegt;
+  // das Auftrags-Werkzeug wurde bei der Frage gar nicht angeboten
+  let s = await state(page);
+  expect(s.tasks.find((t) => t.title === "Einladungstext verbessern")).toBeUndefined();
+  expect(s.chatMsgs.at(-1).actions[0]).toMatchObject({ type: "task.add", status: "vorschlag" });
+  expect(ai.calls.every((c) => !(c.input.tools || []).some((t) => t.function.name === "aufgabe_anlegen"))).toBe(true);
+  // durch Tippen ausgeführt – über dieselbe Freigabelogik, mit Rückgängig
+  await page.locator(".msg.ai .bub").last().locator('button[data-a="chatAct"]').click();
+  await expect(page.locator(".msg.ai .bub").last().locator(".ca")).toContainText("✅ erledigt");
+  s = await state(page);
   expect(s.tasks.find((t) => t.title === "Einladungstext verbessern")).toMatchObject({ due: "2026-03-13", src: "chat" });
   expect(s.chatMsgs.at(-1).engine).toBe("ki");
   // Riskantes erreicht die KI gar nicht
@@ -156,7 +164,7 @@ test("App mit KI-Modell (Attrappe): Werkzeuge liefern nur freigegebene Daten, ve
   // Tageskontingent erreicht → verständlicher Hinweis, lokale Antwort
   await store.put("ki:tag:" + new Date().toISOString().slice(0, 10), { neurons: BUDGET });
   ai = fakeAi([{ response: "x" }]);
-  await page.fill("#chatIn", "Welche Aufgaben sind offen?");
+  await page.fill("#chatIn", "Welche Aufgaben sind diese Woche offen?"); // andere Frage (dieselbe sofort wieder = Doppelversand, eigener Test)
   await page.click('button[data-a="chatSend"]');
   await expect.poll(() => page.evaluate(() => S.chatMsgs.length)).toBe(8);
   await expect(page.locator(".msg.ai .bub").last()).toContainText("Tageskontingent der kostenlosen KI erreicht");
