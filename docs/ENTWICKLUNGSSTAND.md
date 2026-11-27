@@ -110,6 +110,8 @@ Stand: 27.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
   - Unbeauftragte Aufgaben: Modell rief „aufgabe_anlegen“ bei einer Frage zweimal auf; die App führte Stufe 1 ohne Prüfung aus. Jetzt: technische Absichtsprüfung (`userIntent`), Vorschläge, Dublettenschutz (`dedupeActions`, `existingDup`, `srcKey`).
   - Wiederholungen: neue Systemanweisung, sauberer Verlauf, kurze Sprachantworten.
   - Live-Gespräch (künstliche Daten, ca. 430 Neurons): keine Aufgabe bei Fragen, genau eine bei Auftrag, kurze Sprachantwort. Grenze: Llama 3.3 70B greift bei Empfehlungen teils auf App-Hinweise zurück statt auf eigene Ideen (Anweisung und Werkzeugbeschreibung angepasst).
+  - WebKit (GitHub Actions) fand zusätzlich eine Lücke im Wiederholschutz (Antwort sichtbar, aber noch nicht gespeichert) – behoben, Test deterministisch.
+  - Ergebnis: lokal 642 bestanden, GitHub Actions mit WebKit iPhone/iPad grün (PR #11).
   - Tests: `tests/praxis.spec.mjs` (schlagen mit 2.11.1 fehl), `sprachfluss`, `absicht`, `update-2112`, `voice-fakes.mjs`; Live: `live-ki-gespraech` (Workflow-Eingabe `gespraech=ja`).
 - **Offen:**
   - Freigabe der Veröffentlichung 2.12.0 (PR); danach Gerätetest (Anleitung in `docs/KI-CHAT.md`).; für die Fehlerbehebung nicht mehr zwingend, da der Worker die Form von 2.11.0 annimmt.
