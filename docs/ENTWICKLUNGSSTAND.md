@@ -1,7 +1,7 @@
 # Zentrale Entwicklungsübersicht: Vivalink Management AI
 
 **Fortsetzungsdokument für alle weiteren Entwicklungsaufträge.** Bei jedem Auftrag zuerst lesen und am Ende aktualisieren. Arbeitsweise (Tests, Gerätetests, Grenzen): **`CLAUDE.md`**.
-Stand: 26.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.8.1** (`main`, veröffentlicht am 26.11.2026) · Entwicklungszweig: **Version 2.9.0** (Verwaltungsanbindung aktiv; dazu 2.8.2/2.8.3: Synchronisierungs-Hinweis, Testkonten-Kennzeichnung; noch nicht veröffentlicht)
+Stand: 26.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Version 2.9.0** (`main`, veröffentlicht am 26.11.2026: Verwaltungsanbindung aktiv, dazu 2.8.2/2.8.3) · Entwicklungszweig: **2.10.0** (echte Kennzahlen, Testdaten getrennt; nicht veröffentlicht) · Testversion „VL Test“: 2.8.3
 
 ## 1. Umgesetzt und getestet (noch nicht veröffentlicht)
 
@@ -87,7 +87,16 @@ Stand: 26.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
   - **Einrichtung 26.11.2026 abgebrochen** (Sicherheitsprüfung „Schreibrechte außerhalb des eigenen Bereichs: 3“), nichts gespeichert. Die Prüfung zählte auch Rechte, die an PUBLIC (jede Rolle) vergeben sind, ohne den Schemazugriff zu berücksichtigen. Jetzt genauer: direkt vergebene oder nutzbare Schreibrechte → Abbruch; geerbte Rechte in Schemas ohne Zugriff → je Objekt aktiv nachgewiesen, dass ein Schreibversuch abgewiesen wird. Ursache in Produktion noch zu bestätigen mit der lesenden Diagnose (privates Repository).
   - **Diagnose (26.11.2026):** Zwei Tabellen der Netzwerk-Erweiterung sind an PUBLIC beschreibbar und ihr Schema ist für alle nutzbar; eine Tabelle der Zeitplan-Erweiterung liegt in einem Schema ohne Zugriff. PUBLIC-Rechte lassen sich in PostgreSQL nicht für eine einzelne Rolle entziehen. Lösung ohne Änderung an Supabase-Rechten: Die Rolle liest nur (READ ONLY), schreibt nur über drei festgelegte Funktionen, und ein Schreibschutz bricht beim Abschluss jede Transaktion ab, die außerhalb von management_ai schreibt. Die Einrichtung prüft alle Schutzschichten; Rechte von Erweiterungen werden nur dann toleriert, sonst Abbruch.
   - ✅ **26.11.2026 produktiv eingerichtet** (GESAMT OK), Edge Function bereitgestellt, /version und 401 ohne Zugang vom Gründer bestätigt, JWT-Prüfung aus.
-  - **Offen:** Veröffentlichung 2.9.0 (Freigabe), Kopplung der Geräte, Abgleich mit dem Admin-Dashboard; früher offen: **Offen (Freigabe Gründer):** Einrichtung und Edge Function in Supabase, danach App-Version mit der Adresse der Edge Function.
+  - ✅ **2.9.0 veröffentlicht (26.11.2026)**: alle 24 Dateien auf GitHub Pages identisch mit `main`, Update 2.8.1 → 2.9.0 mit Daten geprüft.
+  - ✅ Kopplung und Abgleich durch den Gründer (26.11.2026): alle neun Kennzahlen stimmen überein. Die vier gezählten Konten sind Testkonten des Gründers.
+  - **2.10.0 vorbereitet (nicht veröffentlicht):** Testkonten werden ausdrücklich gekennzeichnet (Tabelle im eigenen Schema, nur Konto-Kennungen); Kennzahlen ohne Testkonten; Testdaten (Konten, Buchungen, Einladungen, Zahlungen, Erstattungen) getrennt in `meta.testData`. Die App verwendet Verwaltungswerte nur verifiziert (Kennzeichen `real`). Ablauf für den Gründer: privat `bereitstellung/UMSTELLUNG-TESTDATEN.md`. Reihenfolge: erst App 2.10.0, dann Server.
+  - **Additive Umstellung statt Rückbau (geprüft und getestet):** Die Änderungsdatei verändert die bestehende Anbindung (Modus „erweiterung“ im Generator), ohne Neueinrichtung.
+    - Gekoppelte Geräte, Kopplungscodes und Abrufprotokoll bleiben erhalten; die Datei weist das nach.
+    - Voraussetzungen werden geprüft, ebenso alle Rechte- und Schutzprüfungen und die Ereignistrigger vor jeder Änderung. COMMIT nur bei Erfolg.
+    - Eigene Rückbau-Datei für die Erweiterung. Der Stand „2.9 + Erweiterung“ ist gleichwertig mit einer Neueinrichtung (Test).
+    - Ablauf: privat `bereitstellung/UMSTELLUNG-TESTDATEN.md`.
+  - **Offen (Freigabe Gründer):** Veröffentlichung 2.10.0, danach E2-Erweiterung, neue Edge Function, Testkonten kennzeichnen (keine Neukopplung nötig);
+  - **Für KI-Chat / Sprachmodus (geplant):** Kennzahlen nur über `valid()`/`cur()`/`cmp()` lesen (liefern ausschließlich verifizierte Werte); Testdaten nur über `KPI_STATE.meta.testData` (Summen). So kann ein Chat keine Testdaten als echte Unternehmensdaten verwenden. früher offen: **Offen (Freigabe Gründer):** Einrichtung und Edge Function in Supabase, danach App-Version mit der Adresse der Edge Function.
   - Testkonten mit Nutzerrolle: nicht bekannt → gekennzeichnet (keine erfundenen Merkmale)
   - Einrichtung (Freigabe)
 - **Kosten** (Stand 26.11.2026, offizielle Supabase-Angaben):

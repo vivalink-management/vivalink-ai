@@ -14,11 +14,14 @@
 //   device(tokenHash) → {revokedAt} | null
 //   touch(tokenHash, now)                             calls(tokenHash, sinceMs) → Anzahl   logCall(tokenHash, now)
 //   aggregates() → [{key, date, value}]   (aus den vorhandenen Auswertungen gemäß mapping.json)
-//   meta() → {excludesTestAccounts, excludesDemoMeetups}  (vom Gründer bestätigte Angaben aus mapping.json, sonst false)
+//   meta() → {excludesTestAccounts, excludesDemoMeetups, testData?}  (excludesTestAccounts: bestätigt in mapping.json
+//            oder gekennzeichnete Testkonten vorhanden; testData: Summen der Testdaten, getrennt von den Kennzahlen)
 
 export const KPI_KEYS = ["reg_total", "reg_week", "active_users", "signups", "attend", "noshow", "invites", "invite_rate", "payments", "refunds", "inc", "exp", "meetup_days", "meetup_capacity"];
 // meetup_days: Tage bis zum nächsten Meetup (0 = heute), meetup_capacity: Plätze des nächsten Meetups – füllen die Meetup-Karte der App
 export const MAX_CALLS_PER_HOUR = 60;
+// meta.testData: Summen der gekennzeichneten Testkonten (Konten, Buchungen, Einladungen, Zahlungen €, Erstattungen €)
+export const TEST_DATA_KEYS = ["accounts", "bookings", "invitations", "payments", "refunds"];
 // Schutz vor dem Durchprobieren von Kopplungscodes: höchstens 10 Fehlversuche je 10 Minuten (insgesamt), danach 429
 export const MAX_PAIR_FAILS = 10;
 export const PAIR_FAIL_WINDOW = 600e3;
@@ -40,6 +43,10 @@ export function buildKpis(rows, now = Date.now(), meta = {}) {
     values.push({ key: r.key, date: r.date, value: Math.round(v * 100) / 100, source: "verwaltung" });
   }
   const out = { format: "vivalink-kpis", version: 1, generatedAt: new Date(now).toISOString(), meta: { excludesTestAccounts: meta.excludesTestAccounts === true, excludesDemoMeetups: meta.excludesDemoMeetups === true, timezone: "Europe/Berlin" }, values };
+  // Getrennt ausgewiesene Testdaten: genau diese fünf Summen, jeweils Zahl ≥ 0 – sonst ganz weglassen
+  const td = meta.testData;
+  if (td && typeof td === "object" && TEST_DATA_KEYS.every((k) => typeof td[k] === "number" && isFinite(td[k]) && td[k] >= 0))
+    out.meta.testData = Object.fromEntries(TEST_DATA_KEYS.map((k) => [k, Math.round(td[k] * 100) / 100]));
   // Strukturprüfung statt Textsuche: jeder Wert hat genau diese vier Felder in erlaubter Form (keine Freitexte → keine Personendaten)
   if (!values.every((x) => Object.keys(x).join() === "key,date,value,source" && KPI_KEYS.includes(x.key) && typeof x.value === "number")) throw new Error("Strukturprüfung fehlgeschlagen");
   return out;

@@ -10,7 +10,7 @@ import { createHash } from "node:crypto";
 import { startEnv, pgBin, TEST_MAPPING } from "./verwaltung/env.mjs";
 import { pgRepo, parseMapping } from "../server/kpi-pg.mjs";
 import { KPI_KEYS, buildKpis, MAX_PAIR_FAILS } from "../server/kpi-core.mjs";
-import { grantsSql, INVENTORY_SQL, factsSql, dryRunSql, eventTriggerDiagSql, ET_TERMS, ET_EXT, RUECKBAU_SQL } from "../scripts/verwaltung.mjs";
+import { grantsSql, INVENTORY_SQL, factsSql, dryRunSql, eventTriggerDiagSql, ET_TERMS, ET_EXT, RUECKBAU_SQL, FINGERPRINT_OHNE_SQL } from "../scripts/verwaltung.mjs";
 import { ready, state, kv, expectToast } from "./helpers.mjs";
 
 test.describe.configure({ mode: "serial", timeout: 120_000 });
@@ -42,7 +42,15 @@ test("Gegenstelle liefert genau die Werte der vorhandenen Auswertungen; Testkont
   const tok = await newToken();
   let j = await (await kpis(tok)).json();
   expect(Object.keys(j).sort()).toEqual(["format", "generatedAt", "meta", "values", "version"]);
-  expect(j.meta).toEqual({ excludesTestAccounts: true, excludesDemoMeetups: true, timezone: "Europe/Berlin" });
+  // Testdaten getrennt: nur Summen der Testkonten, unabhängig aus den Basistabellen berechnet
+  const testSums = async () => (await env.sql`select
+    (select count(*)::int from profiles where is_test_account) as accounts,
+    (select count(*)::int from meetup_participants mp join profiles p on p.id = mp.profile_id where p.is_test_account) as bookings,
+    (select count(*)::int from invitations i join profiles p on p.id = i.inviter_id where p.is_test_account) as invitations,
+    (select (coalesce(sum(amount_cents), 0) / 100.0)::float from payments x join profiles p on p.id = x.profile_id where p.is_test_account and kind = 'zahlung') as payments,
+    (select (coalesce(sum(amount_cents), 0) / 100.0)::float from payments x join profiles p on p.id = x.profile_id where p.is_test_account and kind = 'erstattung') as refunds`)[0];
+  expect(j.meta).toEqual({ excludesTestAccounts: true, excludesDemoMeetups: true, timezone: "Europe/Berlin", testData: await testSums() });
+  expect(j.meta.testData.accounts).toBe(12);
   // Unabhängig aus den künstlichen Basistabellen berechnet (nicht über die Views)
   const [x] = await env.sql`select
     (select count(*)::int from profiles where not is_test_account) as reg_total,
@@ -60,6 +68,8 @@ test("Gegenstelle liefert genau die Werte der vorhandenen Auswertungen; Testkont
   await env.sql`insert into meetup_participants (meetup_id, profile_id, status) select 3, id, 'angemeldet' from profiles where is_test_account`;
   j = await (await kpis(tok)).json();
   expect([valueOf(j, "reg_total"), valueOf(j, "signups")]).toEqual([x.reg_total, x.signups]);
+  expect(j.meta.testData).toEqual(await testSums());
+  expect(j.meta.testData.accounts).toBe(13);
   await env.sql`insert into profiles (full_name, email, created_at) values ('Person neu', 'pneu@example.invalid', now())`;
   j = await (await kpis(tok)).json();
   expect(valueOf(j, "reg_total")).toBe(x.reg_total + 1);
@@ -922,6 +932,106 @@ test("Einrichtung: COMMIT nur bei vollständigem Erfolg; bei jedem Fehler bleibt
   } finally {
     await db.end();
     await env.sql.unsafe("drop database if exists einr with (force)");
+  }
+});
+
+test("Änderung einer bestehenden Anbindung (additiv): gekoppelte Geräte bleiben, COMMIT nur bei Erfolg, Fehlerfälle, Rückbau der Änderung", async ({}, info) => {
+  serverOnly(info);
+  test.setTimeout(120_000);
+  const port = 54400 + info.parallelIndex;
+  await env.sql.unsafe("drop database if exists erw with (force)");
+  await env.sql.unsafe("create database erw");
+  const db = postgres(`postgres://postgres@127.0.0.1:${port}/erw`, { max: 1, onnotice: () => {} });
+  const run = async (q) => {
+    const r = await db.unsafe(q).simple();
+    const rows = (Array.isArray(r[0]) ? r : [r]).filter((x) => x.length && "Prüfung" in x[0]).pop() || [];
+    return Object.fromEntries(rows.map((x) => [x["Prüfung"], x["Ergebnis"]]));
+  };
+  const ALT = { ...TEST_MAPPING, _meta: { excludesTestAccounts: true, excludesDemoMeetups: true } }; // Stand vor der Änderung (ohne Testdaten)
+  const MERK = "management_ai.vl_erweiterung";
+  const hin = (extra = [], mapping = TEST_MAPPING) => ({ name: "Erweiterung Testdaten", merkmal: MERK, richtung: "hin", body: ["create table management_ai.vl_erweiterung (x int);\nalter table management_ai.vl_erweiterung enable row level security;", ...extra, grantsSql(mapping)] });
+  const zurueck = { name: "Rückbau der Erweiterung", merkmal: MERK, richtung: "zurueck", body: ["drop table management_ai.vl_erweiterung;\nrevoke select on public.admin_test_summary from management_ai;"] };
+  const merk = async () => (await db`select to_regclass('management_ai.vl_erweiterung') is not null as x`)[0].x;
+  const daten = async () => JSON.stringify(await db`select (select json_agg(d order by d.token_hash) from management_ai.devices d) as d, (select count(*)::int from management_ai.calls) as c, (select count(*)::int from management_ai.pair_codes) as p`);
+  const fpOhne = async () => (await db.unsafe(`select ${FINGERPRINT_OHNE_SQL} as f`))[0].f;
+  try {
+    for (const f of ["supabase-stub.sql", "supabase-eventtrigger.sql", "fixture.sql"]) await db.unsafe(readFileSync(new URL("./verwaltung/" + f, import.meta.url), "utf8"));
+    // ohne Grundeinrichtung → Abbruch ohne Änderung
+    await env.sql.unsafe("drop schema management_ai cascade; drop owned by management_ai; drop role management_ai;");
+    try {
+      let r = await run(dryRunSql(TEST_MAPPING, [], { einrichtung: true, erweiterung: hin() }));
+      expect(r["Grundeinrichtung vorhanden"]).toMatch(/^nein – ABBRUCH/);
+      expect(r["GESAMT"]).toMatch(/^PROBLEM/);
+      // Grundeinrichtung im alten Stand, ein Gerät gekoppelt (wie iPhone/iPad) und ein Abruf protokolliert
+      r = await run(dryRunSql(ALT, [], { einrichtung: true }));
+      expect(r["GESAMT"], JSON.stringify(r)).toMatch(/^OK – Anbindung eingerichtet/);
+      const code = (await db`select management_ai.new_pair_code() as c`)[0].c;
+      const h = createHash("sha256").update("vivalink-pair:" + code).digest("hex");
+      expect((await db`select management_ai.einloesen(${h}, 'iPhone', ${"a".repeat(64)}, now()) as ok`)[0].ok).toBe(true);
+      await db`select management_ai.protokollieren(${"a".repeat(64)}, now())`;
+      const d0 = await daten();
+      const fp0 = await fpOhne();
+      // 1) Probelauf der Änderung: OK, nichts bleibt
+      r = await run(dryRunSql(TEST_MAPPING, [], { erweiterung: hin() }));
+      expect(r["GESAMT"], JSON.stringify(r)).toMatch(/^OK – alles wird mit ROLLBACK/);
+      expect(r["Testdaten getrennt auswertbar"]).toBe("ja");
+      expect(r["Gekoppelte Geräte, Kopplungscodes und Abrufprotokoll unverändert"]).toBe("ja");
+      expect(await merk()).toBe(false);
+      expect(await daten()).toBe(d0);
+      // 2) Fehlerfälle: jeweils PROBLEM, nichts geändert, Geräte unverändert
+      await db.unsafe(`create function public.vl_et_y() returns event_trigger language plpgsql as $$ begin perform 1; end $$; create event trigger fremd_y on ddl_command_end execute function public.vl_et_y();`);
+      r = await run(dryRunSql(TEST_MAPPING, [], { einrichtung: true, erweiterung: hin() }));
+      expect(r["Ereignistrigger: unbekannt oder verändert"]).toMatch(/ABBRUCH E-ET/);
+      await db.unsafe("drop event trigger fremd_y; drop function public.vl_et_y();");
+      for (const [name, x, zeile, erwartet] of [
+        ["fehlerhaftes SQL", hin(["select * from management_ai.gibt_es_nicht;"]), "Erweiterung Testdaten", /^FEHLER E-EINR/],
+        ["Kennzahl nicht lesbar", hin([], { ...TEST_MAPPING, reg_week: { source: "public.admin_stats_daily", date: "day", value: "gibt_es_nicht" } }), "Kennzahl reg_week", /^FEHLER E-KZ/],
+        ["Gerätezugang verändert", hin(["update management_ai.devices set name = 'verändert';"]), "Gekoppelte Geräte, Kopplungscodes und Abrufprotokoll unverändert", /^NEIN \(PROBLEM\)/],
+        ["Abrufprotokoll gelöscht", hin(["delete from management_ai.calls;"]), "Gekoppelte Geräte, Kopplungscodes und Abrufprotokoll unverändert", /^NEIN \(PROBLEM\)/],
+        ["Änderung außerhalb von management_ai", hin(["alter table public.meetups add column vl_z int;"]), "Teilnachweis: bestehende Tabellen, Funktionen, Rollen, Rechte, Richtlinien, Trigger außerhalb von management_ai unverändert", /^NEIN \(PROBLEM\)/],
+        ["Schreibrecht für die Rolle im eigenen Bereich", hin(["grant insert on management_ai.calls to management_ai;"]), "Schutz: eigener Bereich für die Rolle nur lesbar", /^nein \(PROBLEM\)/],
+        ["Schreibschutz ausgeschaltet", hin(["alter table management_ai.devices disable trigger vl_schreibschutz;"]), "Schutz: Schreibschutz beim Abschluss jeder Transaktion aktiv", /^nein \(PROBLEM\)/],
+      ]) {
+        const mp = name === "Kennzahl nicht lesbar" ? { ...TEST_MAPPING, reg_week: { source: "public.admin_stats_daily", date: "day", value: "gibt_es_nicht" } } : TEST_MAPPING;
+        const rr = await run(dryRunSql(mp, [], { einrichtung: true, erweiterung: x }));
+        expect(rr[zeile], name + ": " + JSON.stringify(rr)).toMatch(erwartet);
+        expect(rr["GESAMT"], name).toMatch(/^PROBLEM .* nichts geändert, alle Änderungen zurückgenommen$/);
+        expect(rr["Änderung vor dem COMMIT vorhanden"], name).toBe("nein – das COMMIT speichert nichts");
+        expect(await merk(), name).toBe(false);
+        expect(await daten(), name).toBe(d0);
+        expect(await fpOhne(), name).toBe(fp0);
+      }
+      // 3) Änderung ausführen: OK, gespeichert; Geräte unverändert; Rechte und Schutz weiterhin vollständig
+      r = await run(dryRunSql(TEST_MAPPING, [], { einrichtung: true, erweiterung: hin() }));
+      expect(r["GESAMT"], JSON.stringify(r)).toBe("OK – Änderung ausgeführt (wird mit COMMIT dauerhaft gespeichert)");
+      for (const z of ["Schutz: eigener Bereich für die Rolle nur lesbar", "Schutz: Schreiben nur über drei festgelegte Funktionen (fester Suchpfad)", "Schutz: Schreibschutz beim Abschluss jeder Transaktion aktiv", "Rechte: Rolle management_ai ohne Anmeldung und ohne Sonderrechte", "Gekoppelte Geräte, Kopplungscodes und Abrufprotokoll unverändert"]) expect(r[z], z).toBe("ja");
+      expect(await merk()).toBe(true);
+      expect(await daten()).toBe(d0);
+      expect(await fpOhne()).toBe(fp0);
+      // gekoppeltes Gerät funktioniert weiter (gleicher Zugang), neue Auswertung für die Rolle lesbar
+      expect((await db`select revoked_at from management_ai.devices where token_hash = ${"a".repeat(64)}`)[0].revoked_at).toBeNull();
+      expect(await db.begin(async (t) => (await t.unsafe("set local role management_ai"), (await t.unsafe("select konten from public.admin_test_summary"))[0].konten))).toBe("12");
+      // 4) zweites Mal → bereits erfolgt, nichts verändert
+      r = await run(dryRunSql(TEST_MAPPING, [], { einrichtung: true, erweiterung: hin() }));
+      expect(r["Änderung bereits erfolgt"]).toBe("ja – nichts verändert");
+      expect(r["Änderung vor dem COMMIT vorhanden"]).toBe("nein – das COMMIT speichert nichts");
+      // 5) Rückbau der Änderung (zurück zum alten Stand), Geräte bleiben
+      r = await run(dryRunSql(ALT, [], { einrichtung: true, erweiterung: zurueck }));
+      expect(r["GESAMT"], JSON.stringify(r)).toBe("OK – Änderung ausgeführt (wird mit COMMIT dauerhaft gespeichert)");
+      expect(await merk()).toBe(false);
+      expect(await daten()).toBe(d0);
+      expect(await fpOhne()).toBe(fp0);
+      r = await run(dryRunSql(ALT, [], { einrichtung: true, erweiterung: zurueck }));
+      expect(r["Änderung bereits erfolgt"]).toBe("ja – nichts verändert");
+    } finally {
+      await db.unsafe(RUECKBAU_SQL).catch(() => {});
+      if (!(await env.sql`select count(*)::int n from pg_roles where rolname = 'management_ai'`)[0].n) await env.sql.unsafe("create role management_ai nologin");
+      await env.sql.unsafe(readFileSync(new URL("../server/supabase/migrations/20261126_management_kpis.sql", import.meta.url), "utf8"));
+      await env.sql.unsafe(grantsSql(TEST_MAPPING));
+    }
+  } finally {
+    await db.end();
+    await env.sql.unsafe("drop database if exists erw with (force)");
   }
 });
 

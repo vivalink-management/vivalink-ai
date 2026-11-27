@@ -4,7 +4,7 @@ function vHome() {
   const open = S.tasks.filter((x) => !x.done),
     act = S.memory.filter((m) => m.active),
     t = today();
-  const withVal = S.metrics.filter((m) => cur(m) || oldE(m));
+  const withVal = S.metrics.filter((m) => cur(m) || oldE(m) || m.entries.some((e) => !e.deleted && !verified(e)));
   const mets = showAllMet ? S.metrics : withVal;
   return (
     `<h1>Vivalink Management AI</h1><div class="mut">${new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" })}</div>

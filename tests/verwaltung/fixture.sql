@@ -78,3 +78,11 @@ create view public.admin_user_list as select full_name, email, phone, created_at
 
 -- Admin-Funktion mit einer Adresse im Programmcode (für den Test der Unkenntlichmachung in der zweiten Bestandsaufnahme)
 create function public.admin_kontakt() returns text language sql as $$ select 'leitung@example.invalid'::text $$;
+
+-- Getrennt ausgewiesene Testdaten (nur Summen der Testkonten, keine Einzelangaben)
+create view public.admin_test_summary as
+select (select count(*) from public.profiles where is_test_account) as konten,
+       (select count(*) from public.meetup_participants mp join public.profiles p on p.id = mp.profile_id where p.is_test_account) as buchungen,
+       (select count(*) from public.invitations i join public.profiles p on p.id = i.inviter_id where p.is_test_account) as einladungen,
+       (select coalesce(sum(amount_cents), 0) / 100.0 from public.payments x join public.profiles p on p.id = x.profile_id where p.is_test_account and kind = 'zahlung') as zahlungen_eur,
+       (select coalesce(sum(amount_cents), 0) / 100.0 from public.payments x join public.profiles p on p.id = x.profile_id where p.is_test_account and kind = 'erstattung') as erstattungen_eur;

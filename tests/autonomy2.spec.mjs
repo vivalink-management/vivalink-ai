@@ -11,8 +11,9 @@ async function setup(page, mutate) {
   if (mutate) await page.evaluate(mutate);
 }
 const ids = (page) => page.evaluate(() => findings().map((f) => f.id));
-const put = (vals, date = "2026-03-09", src = "verwaltung") =>
-  `for (const [k, v] of Object.entries(${JSON.stringify(vals)})) addVal(S.metrics.find((m) => m.key === k).id, { date: "${date}", value: v, status: "confirmed", src: "${src}" });`;
+// Werte aus der Verwaltung gelten nur als echt, wenn sie verifiziert sind (real: true = Testkonten ausgeschlossen)
+const put = (vals, date = "2026-03-09", src = "verwaltung", real = true) =>
+  `for (const [k, v] of Object.entries(${JSON.stringify(vals)})) addVal(S.metrics.find((m) => m.key === k).id, { date: "${date}", value: v, status: "confirmed", src: "${src}"${src === "verwaltung" ? ", real: " + real : ""} });`;
 
 test("Empfehlungen aus Verhältnissen: Absage-, Erstattungs-, Aktivierungs- und Annahmequote (nur mit aktuellen Werten)", async ({ page }) => {
   await setup(page, new Function(put({ noshow: 4, signups: 10, refunds: 30, payments: 150, active_users: 20, reg_total: 120, invite_rate: 12 })));
@@ -25,6 +26,19 @@ test("Empfehlungen aus Verhältnissen: Absage-, Erstattungs-, Aktivierungs- und 
   await page.evaluate(new Function(put({ noshow: 1, signups: 10, refunds: 5, payments: 150, active_users: 80, reg_total: 120, invite_rate: 35 })));
   f = await ids(page);
   expect(f.filter((x) => x.startsWith("q-"))).toEqual([]);
+});
+
+test("Nicht verifizierte Werte aus der Verwaltung (Testkonten nicht ausgeschlossen) ergeben keine Empfehlung und keine Anzeige", async ({ page }) => {
+  await setup(page, new Function(put({ noshow: 4, signups: 10, refunds: 30, payments: 150, active_users: 20, reg_total: 120, invite_rate: 12 }, "2026-03-09", "verwaltung", false)));
+  expect((await ids(page)).filter((x) => x.startsWith("q-"))).toEqual([]);
+  const r = await page.evaluate(() => ({ cur: cur(S.metrics.find((m) => m.key === "reg_total")), stored: S.metrics.find((m) => m.key === "reg_total").entries.filter((e) => e.src === "verwaltung").length, report: weeklyReport().text }));
+  expect(r.cur).toBeNull(); // nicht angezeigt …
+  expect(r.stored).toBe(1); // … aber nicht gelöscht
+  expect(r.report).not.toContain("120");
+  // dieselben Werte, nun verifiziert (gleicher Tag) → werden verwendet
+  await page.evaluate(new Function(put({ noshow: 4, signups: 10, refunds: 30, payments: 150, active_users: 20, reg_total: 120, invite_rate: 12 })));
+  for (const id of ["q-noshow", "q-refund", "q-active", "q-invite"]) expect(await ids(page), id).toContain(id);
+  expect(await page.evaluate(() => S.metrics.find((m) => m.key === "reg_total").entries.filter((e) => e.src === "verwaltung").length)).toBe(1); // kein Doppel
 });
 
 test("Veraltete Werte (über 10 Tage) ergeben keine Quoten-Empfehlung", async ({ page }) => {
@@ -73,14 +87,17 @@ test("Instagram-Entwürfe richten sich nach den Kennzahlen: Schwerpunkt im Auftr
     S.meetup = { ...S.meetup, date: "2026-03-14", place: "Testort", goal: "20", updatedAt: 1 };
     S.studio = { brand: { region: "Testregion", signup: "Registrierung über vivalink.me", colorsConfirmed: true, website: "vivalink.me" }, settings: {}, posts: [], learned: {} };
     migrate();
-    addVal(S.metrics.find((m) => m.key === "signups").id, { date: "2026-03-09", value: 6, status: "confirmed", src: "verwaltung" });
+    addVal(S.metrics.find((m) => m.key === "signups").id, { date: "2026-03-09", value: 6, status: "confirmed", src: "verwaltung", real: false });
   });
+  // nicht verifiziert (mögliche Testdaten) → kein Schwerpunkt aus Kennzahlen
+  expect(await page.evaluate(() => studioPrompt(today().slice(0, 7)))).not.toContain("braucht noch Anmeldungen");
+  await page.evaluate(() => addVal(S.metrics.find((m) => m.key === "signups").id, { date: "2026-03-09", value: 6, status: "confirmed", src: "verwaltung", real: true }));
   let p = await page.evaluate(() => studioPrompt(today().slice(0, 7)));
   expect(p).toContain("SCHWERPUNKT");
   expect(p).toContain("braucht noch Anmeldungen");
   expect(p).not.toMatch(/\b6 (von|Anmeldungen)/); // keine Anmeldezahl im Auftrag
   // gut gefüllt → nicht weiter werben
-  await page.evaluate(() => addVal(S.metrics.find((m) => m.key === "signups").id, { date: "2026-03-10", value: 21, status: "confirmed", src: "verwaltung" }));
+  await page.evaluate(() => addVal(S.metrics.find((m) => m.key === "signups").id, { date: "2026-03-10", value: 21, status: "confirmed", src: "verwaltung", real: true }));
   p = await page.evaluate(() => studioPrompt(today().slice(0, 7)));
   expect(p).toContain("gut gefüllt");
   // ohne aktuelle Kennzahlen kein Schwerpunkt-Abschnitt

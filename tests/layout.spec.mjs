@@ -160,6 +160,8 @@ for (const small of [false, 375, 320]) {
       for (const [name, cfg] of [
         ["Verwaltung/Fehler", { token: "ab".repeat(32), since: 1, last: Date.now() - 3600e3, fails: 2, lastError: { at: Date.now(), msg: "Verwaltung nicht erreichbar (503) – ein recht langer Fehlertext zum Umbrechen" } }],
         ["Verwaltung/widerrufen", { token: "ab".repeat(32), since: 1, last: 1, fails: 1, revoked: Date.now(), lastError: { at: Date.now(), msg: "Zugang widerrufen – bitte neu koppeln" } }],
+        ["Verwaltung/Testkonten nicht gekennzeichnet", { token: "ab".repeat(32), since: 1, last: Date.now(), fails: 0, lastError: null, meta: { excludesTestAccounts: false, excludesDemoMeetups: true, testData: null } }],
+        ["Verwaltung/Testdaten getrennt", { token: "ab".repeat(32), since: 1, last: Date.now(), fails: 0, lastError: null, meta: { excludesTestAccounts: true, excludesDemoMeetups: true, testData: { accounts: 1234, bookings: 56789, invitations: 4321, payments: 123456.78, refunds: 98765.43 } } }],
       ]) {
         await page.evaluate(async (c) => ((window.VL_KPI_URL = "http://127.0.0.1:4173/kpi/ok"), await kvPut("kpi-config", c)), cfg);
         await page.click('button[data-a="kpi"]');

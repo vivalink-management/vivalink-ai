@@ -1,5 +1,21 @@
 # Änderungsprotokoll
 
+## 2.10.0 (Entwicklungszweig, noch nicht veröffentlicht) – Echte Kennzahlen, Testdaten getrennt
+
+- **Nur verifizierte Werte aus der Verwaltung:** Werte gelten nur als echt, wenn die Verwaltung bestätigt, dass Testkonten ausgeschlossen sind (Kennzeichen am Wert).
+  - Ältere oder ungeprüfte Werte bleiben gespeichert, fließen aber in keine Anzeige, keinen Vergleich, keine Empfehlung, kein Ziel, keinen Wochenbericht und keine Instagram-Analyse ein.
+  - Die Karte zeigt dann einen Hinweis statt einer Zahl.
+- **Testdaten getrennt:** Die Verwaltungsansicht zeigt Testkonten, Buchungen, Einladungen, Zahlungen und Erstattungen der gekennzeichneten Testkonten als eigene Summen. Unvollständige oder fremde Angaben werden komplett abgelehnt.
+- **Hinweis**, solange Testkonten nicht gekennzeichnet sind.
+- **Gegenstelle:** liefert die Testdaten-Summen in `meta.testData` (strikt fünf Zahlen) und bestätigt den Ausschluss, sobald Testkonten gekennzeichnet sind.
+- **Umstellung ohne Rückbau:** Änderungsmodus für eine bestehende Anbindung. Gekoppelte Geräte bleiben, mit Nachweis; Probelauf, Ausführung und Rückbau der Änderung; alle Sicherheitsprüfungen wie bei der Einrichtung.
+- **Schreibzähler** der Prüfungen zählt je Tabelle nur Zunahmen (kein Fehlalarm, wenn eine Tabelle der Anbindung entfernt wird).
+- **Tests:** Update und Rückbau mit dem Originalcode von 2.9.0; Kennzeichnung auf der nachgebildeten echten Struktur; Fehlerfälle der Änderung (Ereignistrigger, Kennzahl nicht lesbar, Geräte verändert, Änderung außerhalb, Schutz abgeschaltet).
+
+## 2.9.0 (veröffentlicht am 26.11.2026) – Verwaltungsanbindung aktiv
+
+- Adresse der Edge Function eingetragen, CSP erlaubt genau diesen Host; ohne Kopplung wird nichts gesendet.
+
 ## 2.8.3 (Entwicklungszweig, noch nicht veröffentlicht) – Probelauf abgesichert, Testkonten-Hinweis
 
 - **Probelauf der Verwaltungsanbindung neu aufgebaut:**

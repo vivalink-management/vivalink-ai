@@ -20,9 +20,12 @@ const MT = [
 const VS = { confirmed: "✅ Aktuell", estimate: "💭 Schätzung", old: "🕓 Früherer Stand" };
 let SAFE = null;
 
+/* Werte aus der Verwaltung zählen nur, wenn sie als echt bestätigt sind (Testkonten ausgeschlossen). Alle Anzeigen,
+   Vergleiche, Empfehlungen, Ziele und Instagram-Analysen lesen Kennzahlen ausschließlich über valid()/cur()/cmp(). */
+const verified = (e) => e.src !== "verwaltung" || e.real === true;
 const valid = (m) =>
   m.entries
-    .filter((e) => !e.deleted && e.status !== "old" && e.date)
+    .filter((e) => !e.deleted && e.status !== "old" && e.date && verified(e))
     .sort((a, b) => a.date.localeCompare(b.date) || a.updatedAt - b.updatedAt);
 const cur = (m) => {
   const v = valid(m);
@@ -50,13 +53,14 @@ function addVal(mid, o, T = S) {
       (e) => !e.deleted && e.date === o.date && e.src === (o.src || "manual") && e.status !== "old",
     );
   if (ex) {
-    if (ex.value === o.value && ex.status === o.status && (!o.note || o.note === ex.note)) return false;
+    if (ex.value === o.value && ex.status === o.status && (!o.note || o.note === ex.note) && (o.real === undefined || ex.real === o.real)) return false;
     ex.value = o.value;
     ex.status = o.status;
+    if (o.real !== undefined) ex.real = o.real;
     ex.note = o.note || ex.note;
     touch(ex);
   } else {
-    const e = { id: uid(), date: o.date || "", value: o.value, status: o.status, src: o.src || "manual", note: o.note || "" };
+    const e = { id: uid(), date: o.date || "", value: o.value, status: o.status, src: o.src || "manual", note: o.note || "", ...(o.real !== undefined ? { real: o.real } : {}) };
     touch(e);
     m.entries.push(e);
   }
@@ -84,7 +88,7 @@ function mCardHtml(m) {
     s = "🕓 Früherer Stand (ca.), nicht aktuell. Bitte aktualisieren.";
   } else {
     v = "–";
-    s = "Noch kein Wert";
+    s = m.entries.some((e) => !e.deleted && !verified(e)) ? "Wert aus der Verwaltung enthält möglicherweise Testkonten – noch nicht verwendet" : "Noch kein Wert";
   }
   const g = m.goal !== "" && m.goal != null && c ? ` · Ziel ${num(m.goal)}` : "";
   return `<div class="card ${c ? "" : "old"}" data-a="met" data-id="${esc(m.id)}"><div class="row sp"><b>${esc(m.name)}</b><b>${v}</b></div><div class="mut">${s}${g}</div></div>`;
@@ -119,6 +123,6 @@ function metSheet(id) {
     .sort((a, b) => (b.date || "").localeCompare(a.date || "") || b.updatedAt - a.updatedAt)
     .slice(0, 12);
   sheet(
-    `<h1>${esc(m.name)}</h1>${c ? `<div class="card"><div class="mut">Veränderung</div><div>7 Tage: <b>${cs(cmp(m, 7))}</b></div><div>30 Tage: <b>${cs(cmp(m, 30))}</b></div></div>` : '<p class="mut">Noch kein aktueller Wert. Trage den ersten Wert ein.</p>'}<h2>Neuer Wert</h2><label>Wert</label><input id="v-v" inputmode="decimal"><label>Datum</label><input type="date" id="v-d" value="${today()}"><label>Wie sicher?</label><select id="v-s"><option value="confirmed">✅ Aktuell, geprüft</option><option value="estimate">💭 Schätzung</option><option value="old">🕓 Früherer Stand</option></select><label>Notiz (z. B. Maßnahme dieser Woche)</label><input id="v-n"><button class="p" data-a="saveVal" data-id="${esc(m.id)}">Wert speichern</button><label style="display:block;margin-top:14px">Ziel (optional)</label><input id="v-g" inputmode="decimal" value="${esc(m.goal)}"><button data-a="saveGoal" data-id="${esc(m.id)}">Ziel speichern</button><h2>Verlauf</h2>${L.length ? L.map((e) => `<div class="card row sp ${e.status === "old" ? "old" : ""}"><div><b>${num(e.value)}${m.unit ? " " + esc(m.unit) : ""}</b> · ${e.date ? fmt(e.date) : "ohne Datum"}<div class="mut">${VS[e.status] || ""} · ${esc(e.src)}${e.note ? " · " + esc(e.note) : ""}</div></div><button class="s" data-a="delVal" data-id="${esc(m.id)}" data-v="${esc(e.id)}">Entfernen</button></div>`).join("") : '<p class="mut">Noch keine Werte.</p>'}<button data-a="close">Schließen</button>`,
+    `<h1>${esc(m.name)}</h1>${c ? `<div class="card"><div class="mut">Veränderung</div><div>7 Tage: <b>${cs(cmp(m, 7))}</b></div><div>30 Tage: <b>${cs(cmp(m, 30))}</b></div></div>` : '<p class="mut">Noch kein aktueller Wert. Trage den ersten Wert ein.</p>'}<h2>Neuer Wert</h2><label>Wert</label><input id="v-v" inputmode="decimal"><label>Datum</label><input type="date" id="v-d" value="${today()}"><label>Wie sicher?</label><select id="v-s"><option value="confirmed">✅ Aktuell, geprüft</option><option value="estimate">💭 Schätzung</option><option value="old">🕓 Früherer Stand</option></select><label>Notiz (z. B. Maßnahme dieser Woche)</label><input id="v-n"><button class="p" data-a="saveVal" data-id="${esc(m.id)}">Wert speichern</button><label style="display:block;margin-top:14px">Ziel (optional)</label><input id="v-g" inputmode="decimal" value="${esc(m.goal)}"><button data-a="saveGoal" data-id="${esc(m.id)}">Ziel speichern</button><h2>Verlauf</h2>${L.length ? L.map((e) => `<div class="card row sp ${e.status === "old" ? "old" : ""}"><div><b>${num(e.value)}${m.unit ? " " + esc(m.unit) : ""}</b> · ${e.date ? fmt(e.date) : "ohne Datum"}<div class="mut">${VS[e.status] || ""} · ${esc(e.src)}${verified(e) ? "" : " · ⚠️ möglicherweise Testdaten, nicht verwendet"}${e.note ? " · " + esc(e.note) : ""}</div></div><button class="s" data-a="delVal" data-id="${esc(m.id)}" data-v="${esc(e.id)}">Entfernen</button></div>`).join("") : '<p class="mut">Noch keine Werte.</p>'}<button data-a="close">Schließen</button>`,
   );
 }

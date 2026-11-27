@@ -183,23 +183,67 @@ test("Vergangenes Meetup: Angaben werden archiviert, das nächste Meetup aus der
   expect(h[h.length - 1]).toMatchObject({ date: "2026-03-01", place: "Alter Ort", goal: "8", note: "Rückblick offen" });
 });
 
-test("Unsicherheit bei Testkonten wird gekennzeichnet (Verwaltung meldet „Testkonten nicht sicher ausgeschlossen“)", async ({ browser }) => {
+test("Testkonten nicht ausgeschlossen → Werte gespeichert, aber nirgends verwendet; nach Kennzeichnung echte Werte, Testdaten getrennt", async ({ browser }) => {
   const ctx = await browser.newContext({ serviceWorkers: "block" });
   await ctx.addInitScript(() => (window.VL_KPI_URL = "http://127.0.0.1:4173/kpi/ok"));
   const p = await ctx.newPage();
   await p.goto("/");
   await ready(p);
   await p.evaluate(() => kpiPair("123456"));
+  let mode = "ungekennzeichnet";
   await p.route("**/kpi/ok/kpis", async (route) => {
     const r = await route.fetch();
     const j = await r.json();
-    j.meta.excludesTestAccounts = false;
+    if (mode === "ungekennzeichnet") j.meta.excludesTestAccounts = false;
+    else j.meta.testData = { accounts: 4, bookings: 3, invitations: 2, payments: 27, refunds: 9 };
     await route.fulfill({ response: r, json: j });
   });
+  // 1) Verwaltung bestätigt den Ausschluss von Testkonten NICHT
   expect((await p.evaluate(() => kpiSync())).ok).toBe(true);
+  let r = await p.evaluate(() => {
+    const m = S.metrics.find((x) => x.key === "reg_total");
+    return { cur: cur(m), stored: m.entries.filter((e) => !e.deleted).map((e) => ({ value: e.value, real: e.real })), finding: (findings().find((f) => f.id === "sys-kpi") || {}).title, report: weeklyReport().text };
+  });
+  expect(r.cur).toBeNull(); // nicht angezeigt, nicht ausgewertet
+  expect(r.stored).toEqual([{ value: 321, real: false }]); // aber gespeichert (nichts gelöscht)
+  expect(r.finding).toBe("Verwaltung: Kennzahlen enthalten möglicherweise Testkonten");
+  expect(r.report).toContain("nicht verwendet, solange Testkonten nicht gekennzeichnet sind");
+  expect(r.report).not.toContain("321");
+  await p.click('nav button[data-id="home"]');
+  await expect(p.locator("body")).toContainText("enthält möglicherweise Testkonten – noch nicht verwendet");
   await p.click('nav button[data-id="more"]');
   await p.click('button[data-a="kpi"]');
-  await expect(p.locator("#kpTest")).toContainText("Abweichungen zum Admin-Dashboard");
-  expect(await p.evaluate(() => weeklyReport().text)).toContain("ob weitere Testkonten enthalten sind, ist nicht bekannt");
+  await expect(p.locator("#kpTest")).toContainText("noch nicht gekennzeichnet");
+  await expect(p.locator("#kpTestData")).toHaveCount(0);
+  await p.click('#sheet button[data-a="close"]');
+  // 2) Nach der Kennzeichnung: Ausschluss bestätigt, Testdaten getrennt gemeldet → derselbe Tageswert wird verifiziert
+  mode = "gekennzeichnet";
+  expect((await p.evaluate(() => kpiSync())).ok).toBe(true);
+  r = await p.evaluate(() => {
+    const m = S.metrics.find((x) => x.key === "reg_total");
+    return { cur: cur(m) && cur(m).value, stored: m.entries.filter((e) => !e.deleted).map((e) => ({ value: e.value, real: e.real })), finding: (findings().find((f) => f.id === "sys-kpi") || {}).title || null, report: weeklyReport().text };
+  });
+  expect(r.cur).toBe(321);
+  expect(r.stored).toEqual([{ value: 321, real: true }]); // kein Doppel
+  expect(r.finding).toBeNull();
+  expect(r.report).toContain("Testdaten getrennt (nicht enthalten): 4 Testkonten, 3 Buchungen");
+  await p.click('button[data-a="kpi"]');
+  await expect(p.locator("#kpTest")).toContainText("Echte Kennzahlen");
+  await expect(p.locator("#kpTestData")).toContainText("4 Testkonten · 3 Buchungen · 2 Einladungen · Zahlungen 27,00 € · Erstattungen 9,00 €");
+  // 3) Unvollständige oder fremde Testdaten-Angaben → komplette Antwort abgelehnt (Datenschutz), nichts geändert
+  for (const bad of [{ accounts: 4 }, { accounts: 4, bookings: 3, invitations: 2, payments: 27, refunds: 9, emails: 1 }, { accounts: -1, bookings: 3, invitations: 2, payments: 27, refunds: 9 }, { accounts: "4", bookings: 3, invitations: 2, payments: 27, refunds: 9 }]) {
+    await p.unroute("**/kpi/ok/kpis");
+    await p.route("**/kpi/ok/kpis", async (route) => {
+      const res = await route.fetch();
+      const j = await res.json();
+      j.meta.testData = bad;
+      j.values[0].value = 999;
+      await route.fulfill({ response: res, json: j });
+    });
+    const x = await p.evaluate(() => kpiSync());
+    expect(x.ok, JSON.stringify(bad)).toBe(false);
+    expect(x.error).toContain("nichts übernommen");
+    expect(await p.evaluate(() => cur(S.metrics.find((m) => m.key === "reg_total")).value)).toBe(321);
+  }
   await ctx.close();
 });

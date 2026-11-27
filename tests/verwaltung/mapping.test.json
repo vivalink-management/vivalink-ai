@@ -2,7 +2,8 @@
   "_hinweis": "Zuordnung für die KÜNSTLICHE Testverwaltung (tests/verwaltung/fixture.sql), nicht für die echte Verwaltung.",
   "_meta": {
     "excludesTestAccounts": true,
-    "excludesDemoMeetups": true
+    "excludesDemoMeetups": true,
+    "testdaten": "public.admin_test_summary"
   },
   "reg_total": {
     "source": "public.admin_stats_daily",
