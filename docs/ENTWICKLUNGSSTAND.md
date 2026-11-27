@@ -82,10 +82,15 @@ Stand: 26.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
 - 2.11.0 enthält bereits Adresse und Sicherheitsrichtlinie des Workers (ohne Wirkung bis zum Einschalten).
 - Datensparsamkeit: lokale Antworten nicht an das Modell; Einschalten nur nach „Verbindung prüfen“.
 - Worker gehärtet: Ausweichmodell, Vorab-Buchung, Budget 8.000, Fehlversuchsgrenze, Status ohne Daten.
-- **Offen (Freigabe Gründer):**
-  - Veröffentlichung 2.11.0 (neuer Pull Request)
-  - Bereitstellung des Workers `vivalink-ki`
-  - Workers-Tarif im Dashboard prüfen (kostenlos)
+- ✅ 2.11.0 veröffentlicht (PR #9). Der Gründer hat den Workers-Tarif „Free“ bestätigt.
+- ✅ **Worker `vivalink-ki` bereitgestellt (27.11.2026, Freigabe des Gründers):** https://vivalink-ki.hidden-art-0326.workers.dev
+  - `vivalink-sync` und `vivalink-webseite` nachweislich unverändert (Änderungszeit und Versionskennung vorher/nachher gleich).
+  - Live-Prüfung KI bestanden: Status, 401 ohne Zugang, 403 fremde Webseiten.
+  - Funktionsprüfung mit künstlichem Test-Zugang: Llama 3.3 70B antwortet im kostenlosen Tarif, Werkzeugaufrufe funktionieren.
+  - Verbrauch der Prüfung: 14 Neurons. Der Test-Zugang wurde danach gesperrt.
+- **Offen:**
+  - Gründer schaltet das KI-Modell auf iPad und iPhone ein (KI-Einstellungen, je Gerät) und gibt die Datenbereiche frei.
+  - Gerätetest von Sprachmodus und Server-Spracherkennung in der installierten App.
 - **Gerätetests nötig:** Mikrofon und Spracherkennung in Safari bzw. in der installierten App, Stimmenqualität.
 - Kostenpflichtiger Echtzeit-Sprachmodus (OpenAI Realtime) nur als Information; nichts aktiviert.
 
