@@ -25,6 +25,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npx playwright install --with-deps chromium
       - name: Live-Prüfung KI (ohne KI-Aufruf)
         run: npx playwright test tests/live-ki.spec.mjs tests/live-ki-funktion.spec.mjs tests/live-ki-diagnose.spec.mjs tests/live-ki-app.spec.mjs --project=chromium-desktop --reporter=list
         env:
