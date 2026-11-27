@@ -476,6 +476,7 @@ Daten:
 - Unternehmensdaten nur aus den Werkzeugen. Rufe ein Werkzeug nur auf, wenn du Daten brauchst, die noch nicht im Verlauf stehen.
 - Kennzeichne Aussagen: [Fakt] (aus Werkzeugen, mit Stand), [Annahme], [Empfehlung]. Testdaten sind nie echte Kennzahlen; erwähne sie nur getrennt. Erfinde nichts; fehlen Daten, sag es.
 Empfehlungen:
+- Entwickle eigene, konkrete Vorschläge aus deinem Wissen über Community-, Event- und Social-Media-Marketing; nutze die App-Daten zur Begründung und Priorisierung. Interne Aufgabenlisten sind keine Empfehlung an sich.
 - Konkret statt allgemein: was genau, warum (Bezug auf Daten oder als Annahme gekennzeichnet), erster Schritt, woran man den Erfolg misst. Lieber eine gute Empfehlung als fünf vage.
 Handlungen:
 - Du führst nichts eigenständig aus. Eine Aufgabe legst du nur an, wenn der Gründer ausdrücklich darum bittet (z. B. „Lege eine Aufgabe an …“). Bei Fragen, Überlegungen und Empfehlungen fragst du höchstens: „Soll ich daraus eine Aufgabe machen?“
@@ -578,7 +579,10 @@ async function kiAnswer(chat, text, history, opt = {}) {
     let calls = last || !Array.isArray(j.tool_calls) ? [] : j.tool_calls.slice(0, 6);
     // Antworttext + nur Auftragsvorschläge (keine Datenabfrage): Text ist die Antwort, Vorschläge prüft die App
     const ACT_TOOLS = ["aufgabe_anlegen", "merken_vorschlagen"];
-    if (calls.length && String(j.text || "").trim() && calls.every((c) => ACT_TOOLS.includes(String(c.name)))) {
+    if (calls.length && calls.every((c) => ACT_TOOLS.includes(String(c.name)))) {
+      // nur Aufträge: keine weitere Modellrunde – die App prüft und meldet das Ergebnis selbst (spart Kontingent,
+      // verhindert falsche Aussagen des Modells über das Ergebnis)
+      if (!String(j.text || "").trim()) j.text = "Ich habe deinen Auftrag geprüft – das Ergebnis siehst du hier:";
       for (const c of calls) {
         const args = c.arguments && typeof c.arguments === "object" ? c.arguments : {};
         if (c.name === "aufgabe_anlegen") actions.push({ type: "task.add", args: { title: str(args.titel, 300), due: DATE_RE.test(args.frist || "") ? args.frist : "" } });
@@ -605,7 +609,7 @@ async function kiAnswer(chat, text, history, opt = {}) {
         }
       } else if (name === "aufgabe_anlegen") {
         actions.push({ type: "task.add", args: { title: str(args.titel, 300), due: DATE_RE.test(args.frist || "") ? args.frist : "" } });
-        out = "Vorgeschlagen – die App legt die Aufgabe mit Rückgängig an.";
+        out = "Notiert – die App prüft den Auftrag selbst und zeigt das Ergebnis an. Nicht erneut aufrufen und nichts über das Ergebnis behaupten.";
       } else if (name === "merken_vorschlagen") {
         actions.push({ type: "memory.add", args: { title: str(args.titel, 200), text: "", cat: "Entscheidung" } });
         out = "Vorgeschlagen – wird erst nach Bestätigung durch den Gründer gespeichert.";
