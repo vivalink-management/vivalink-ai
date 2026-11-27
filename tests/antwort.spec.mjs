@@ -105,3 +105,16 @@ test("Kennzahlen-Werkzeug nennt den Abstand zum Ziel; Maßnahmen-Werkzeug liefer
   expect(r.ki).not.toContain("empfehlung:");
   expect(r.lokal).toContain("empfehlung:Zu „");
 });
+
+test("Genau eine Systemnachricht: Anweisungen, Profil und „bereits genannt“ zusammen (Llama berücksichtigt weitere kaum)", async ({ page }) => {
+  const { calls } = await setupVoice(page, { chat: () => ({ response: "[Fakt] Es gibt 9 neue Registrierungen pro Woche, das ist eine künstliche Testantwort mit genügend Wörtern für die Prüfung." }) });
+  await page.evaluate(async () => (profileSave("Testprofil: Kleingruppen, Donnerstag, kleines Budget.", true), await save()));
+  await page.click('button[data-a="chatNew"]');
+  await ask(page, "Wie entwickeln sich die Registrierungen?");
+  await ask(page, "Was empfiehlst du als Nächstes?");
+  const msgs = calls.inputs.at(-1).messages;
+  expect(msgs.filter((m) => m.role === "system")).toHaveLength(1);
+  expect(msgs[0].role).toBe("system");
+  for (const part of ["Antwortart Beratung", "UNTERNEHMENSPROFIL", "Testprofil: Kleingruppen", "nenne den Bezug", "bereits genannt", "Schätzungen"]) expect(msgs[0].content).toContain(part);
+});
+

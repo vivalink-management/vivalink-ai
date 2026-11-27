@@ -115,7 +115,9 @@ const TOOLS = {
       if (!u || !u.date) return [{ k: "hinweis", t: "Kein kommendes Meetup eingetragen." }];
       const s = S.metrics.find((m) => m.key === "signups"),
         c = s && cur(s);
-      return [{ k: "fakt", t: `Nächstes Meetup am ${fmt(u.date)}${u.place ? " in " + u.place : ""}${u.goal ? ", Ziel " + u.goal + " Teilnehmende" : ""}.` }].concat(c ? [{ k: c.status === "confirmed" ? "fakt" : "annahme", t: `Anmeldungen: ${nf(c.value)} (Stand ${fmt(c.date)}).` }] : []);
+      const d = Math.round((new Date(u.date + "T12:00") - new Date(today() + "T12:00")) / 864e5);
+      const rel = d > 1 ? ` (in ${d} Tagen)` : d === 1 ? " (morgen)" : d === 0 ? " (heute)" : ` (liegt ${-d} Tage zurück – kein neueres Meetup eingetragen)`;
+      return [{ k: "fakt", t: `${d < 0 ? "Zuletzt eingetragenes" : "Nächstes"} Meetup am ${fmt(u.date)}${rel}${u.place ? " in " + u.place : ""}${u.goal ? ", Ziel " + u.goal + " Teilnehmende" : ""}.` }].concat(c ? [{ k: c.status === "confirmed" ? "fakt" : "annahme", t: `Anmeldungen: ${nf(c.value)} (Stand ${fmt(c.date)}).` }] : []);
     },
   },
   instagram: {
@@ -493,6 +495,7 @@ Daten:
 - Kennzeichne Aussagen: [Fakt] (aus Werkzeugen, mit Stand), [Annahme], [Empfehlung]. Testdaten sind nie echte Kennzahlen; erwähne sie nur getrennt. Erfinde nichts; fehlen Daten, sag es.
 Empfehlungen:
 - Entwickle eigene, konkrete Vorschläge aus deinem Wissen über Community-, Event- und Social-Media-Marketing; nutze die App-Daten zur Begründung und Priorisierung. Interne Aufgabenlisten sind keine Empfehlung an sich.
+- Schätzungen (Aufwand, erwartete Wirkung, Zahlen ohne Datenquelle) sind immer [Annahme] und als grobe Einschätzung formuliert („etwa“, „vermutlich“); erfinde keine genauen Zahlen.
 - Konkret statt allgemein: was genau, warum (Bezug auf Daten oder als Annahme gekennzeichnet), erster Schritt, woran man den Erfolg misst. Lieber eine gute Empfehlung als fünf vage.
 Handlungen:
 - Du führst nichts eigenständig aus. Eine Aufgabe legst du nur an, wenn der Gründer ausdrücklich darum bittet (z. B. „Lege eine Aufgabe an …“). Bei Fragen, Überlegungen und Empfehlungen fragst du höchstens: „Soll ich daraus eine Aufgabe machen?“
@@ -630,6 +633,7 @@ function fixLabels(t, ctx) {
   const known = new Set((String(ctx).match(/\d+(?:[.,]\d+)*/g) || []).map(norm));
   let fixed = 0;
   const out = String(t)
+    .replace(/\[Erfahrungswert, kein Vivalink-Fakt\]/g, "[Annahme]")
     .split(/(?<=[.!?\n])/)
     .map((sent) => {
       if (!/\[Fakt\]/i.test(sent)) return sent;
@@ -660,18 +664,20 @@ async function kiAnswer(chat, text, history, opt = {}) {
   const mode = answerMode(text, intent);
   const voice = opt.via === "voice";
   const modeText = [MODE_TEXT[mode], voice ? MODE_VOICE[mode] : ""].filter(Boolean).join(" ");
-  const msgs = [{ role: "system", content: KI_SYSTEM + (voice ? "\n" + KI_VOICE : "") + (modeText ? "\n" + modeText : "") + "\nHeute ist " + fmt(today()) + "." }];
+  // EINE Systemnachricht (Llama 3.3 berücksichtigt weitere Systemnachrichten kaum – Live-Messung 27.11.2026)
+  const sys = [KI_SYSTEM + (voice ? "\n" + KI_VOICE : "") + (modeText ? "\n" + modeText : "") + "\nHeute ist " + fmt(today()) + "."];
   // Unternehmensprofil: nur nach Freigabe durch den Gründer (KI-Einstellungen › So versteht dich die KI)
   const profile = profileForKi();
-  if (profile) msgs.push({ role: "system", content: "UNTERNEHMENSPROFIL (vom Gründer geprüft und freigegeben – Grundlage für passgenaue Empfehlungen; was dort „noch offen“ ist, höchstens mit einer gezielten Rückfrage klären):\n" + profile });
-  if (playbookApproved()) msgs.push({ role: "system", content: "Für allgemeines Fachwissen über Community- und Event-Angebote steht das Werkzeug „wissen“ (Vivalink-Playbook) bereit. Daraus Abgeleitetes ist [Annahme] oder [Empfehlung], nie [Fakt]." });
+  if (profile) sys.push("UNTERNEHMENSPROFIL (vom Gründer geprüft und freigegeben):\n" + profile + "\nRichte jede Empfehlung an diesem Profil aus (Zielgruppe, Ziele, Rahmen wie Zeit und Budget, frühere Entscheidungen) und nenne den Bezug in einem Halbsatz. Was dort „noch offen“ ist, höchstens mit einer gezielten Rückfrage klären.");
+  if (playbookApproved()) sys.push("Für allgemeines Fachwissen über Community- und Event-Angebote steht das Werkzeug „wissen“ (Vivalink-Playbook) bereit. Daraus Abgeleitetes ist [Annahme] oder [Empfehlung], nie [Fakt].");
   const said = alreadySaid(history);
-  if (said) msgs.push({ role: "system", content: "Im Gespräch bereits genannt (nicht wiederholen, außer der Gründer fragt danach; darauf aufbauen): " + said });
+  if (said) sys.push("Im Gespräch bereits genannt (nicht wiederholen, außer der Gründer fragt danach; darauf aufbauen): " + said);
+  const msgs = [{ role: "system", content: sys.join("\n\n") }];
   // Datensparsam: Antworten des lokalen Assistenten enthalten App-Daten (Kennzahlen, Gedächtnis …) und gehen NICHT an das
   // Modell – nur deine Fragen und frühere KI-Antworten. Aus der Kurzfassung nur die Fragen und ausgeführten Aufträge.
   if (chat.summary) {
     const q = chat.summary.split("\n").filter((l) => /^(Frage\/Auftrag|Ausgeführt)/.test(l));
-    if (q.length) msgs.push({ role: "system", content: "Frühere Fragen in diesem Chat: " + q.join("; ").slice(0, 3000) });
+    if (q.length) msgs[0].content += "\n\nFrühere Fragen in diesem Chat: " + q.join("; ").slice(0, 3000);
   }
   for (const m of history.slice(-14)) msgs.push({ role: m.role === "user" ? "user" : "assistant", content: m.role === "user" ? m.text.slice(0, 2000) : m.engine === "ki" ? kiHistText(m) : "(Antwort des lokalen Assistenten mit App-Daten – nicht übermittelt)" });
   msgs.push({ role: "user", content: text.slice(0, 4000) });

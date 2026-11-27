@@ -127,6 +127,12 @@ Stand: 27.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
   - Antwortarten und Prüfungen in `js/assistant.js` (`answerMode`, `kiReview`, `fixLabels`, `repetitionScore`, `missingStructure`, `alreadySaid`).
   - Qualitäts-Testset (`tests/qualitaet-rubrik.mjs`, live: Workflow-Eingabe `qualitaet=ja`).
   - Tests: `profil`, `antwort`, `qualitaet`, `update-2130` (Fixture `legacy-v2121`), Layout.
+  - Live-Qualitätsvergleich (27.11.2026, künstliche Daten, 11 Fragen):
+    - Ergebnis: 2.12.1: 75 %, 2.13: 79 %. Beratungsstruktur deutlich besser (Optionen 0/4 → 3/4, erster Schritt 1/4 → 3/4, Erfolgsmessung 3/4 → 4/4).
+    - Profilbezug 0/4. Ursache: Profil, „bereits genannt“ und Playbook-Hinweis lagen in eigenen Systemnachrichten, die Llama kaum beachtet → jetzt eine Systemnachricht und ausdrücklicher Profilbezug.
+    - Zusätzlich behoben: unbelegte Schätzungen als Annahme kennzeichnen, Meetup-Datum mit „in X Tagen“, Playbook-Marker.
+  - ❗ Dabei wurde das Tageskontingent (8.000 Neurons) erreicht. Keine Kosten; die KI-Antworten fielen bis 1 Uhr UTC auf den lokalen Assistenten zurück. Der Live-Test schützt das Kontingent jetzt (bricht unter 5.000 verbleibenden Neurons ab, Varianten nacheinander).
+  - Erneute Live-Messung nach Rücksetzung des Kontingents.
   - Nächste Phase nach Freigabe: Gesprächsgedächtnis.
 - **Offen (vorher):**
   - Gerätetest 2.12.1; danach Gerätetest: drei Fragen per Sprache. Erwartet: „Ich höre zu.“ beim Start, jede Antwort automatisch vorgelesen. Sonst Protokoll kopieren.; für die Fehlerbehebung nicht mehr zwingend, da der Worker die Form von 2.11.0 annimmt.

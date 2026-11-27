@@ -2,6 +2,8 @@
 // einmal mit der VERÖFFENTLICHTEN App (Basis) und einmal mit der neuen App (lokal ausgeliefert, nicht veröffentlicht;
 // künstliches Testprofil und Playbook freigegeben). Künstliche Daten in frischen Browsern, vorübergehende Test-Zugänge,
 // danach gesperrt. Verbrauch: je Lauf ca. 1.500–2.500 der kostenlosen Neurons.
+// Schutz des Tageskontingents des Gründers: Die Läufe laufen nacheinander und brechen ab, sobald weniger als RESERVE
+// Neurons übrig sind (Stand der Gegenstelle). LIVE_QUALITAET_NUR=neu|basis beschränkt auf eine Variante.
 import { test, expect } from "@playwright/test";
 import { randomBytes } from "node:crypto";
 import { ready } from "./helpers.mjs";
@@ -14,9 +16,12 @@ const SYNC = "https://vivalink-sync.hidden-art-0326.workers.dev";
 const ORIGIN = "https://vivalink-management.github.io";
 test.skip(!process.env.LIVE_QUALITAET, "nur mit LIVE_QUALITAET=1");
 test.setTimeout(900_000);
+test.describe.configure({ mode: "serial" });
+const RESERVE = 5000;
+let rest = Infinity;
 const ERG = {};
 
-for (const variante of ["basis", "neu"]) {
+for (const variante of ["basis", "neu"].filter((v) => !process.env.LIVE_QUALITAET_NUR || process.env.LIVE_QUALITAET_NUR === v)) {
   test(`Live-Qualität: ${variante === "basis" ? "veröffentlichte App (Basis)" : "neue App (lokal)"}`, async ({ browser, baseURL }) => {
     const vid = randomBytes(16).toString("hex"),
       tok = randomBytes(32).toString("hex");
@@ -34,7 +39,7 @@ for (const variante of ["basis", "neu"]) {
         const body = await res.text();
         try {
           const j = JSON.parse(body);
-          if (j.usage) (neurons += j.usage.neurons || 0), aufrufe++;
+          if (j.usage) (neurons += j.usage.neurons || 0), aufrufe++, (rest = j.usage.remaining);
         } catch {}
         await route.fulfill({ status: res.status, headers: { "content-type": "application/json", "access-control-allow-origin": "*" }, body });
       });
@@ -67,6 +72,10 @@ for (const variante of ["basis", "neu"]) {
         });
         const prevs = [];
         for (const [frage, art] of gespraech) {
+          if (rest < RESERVE) {
+            console.log(`ABGEBROCHEN zum Schutz des Tageskontingents (noch ${rest} Neurons übrig) – restliche Fragen nicht gestellt`);
+            break;
+          }
           const tasks0 = await page.evaluate(() => S.tasks.filter((t) => !t.deleted).length);
           const m = await page.evaluate((q) => chatSend(q, "text"), frage);
           const tasks1 = await page.evaluate(() => S.tasks.filter((t) => !t.deleted).length);
