@@ -94,8 +94,11 @@ Stand: 27.11.2026 · Zweig `claude/vivalink-ai-audit-5jsxqp` · Produktion: **Ve
   - **Lösung 2.11.1 (App):** Werkzeugergebnisse als Klartext-Nachricht, letzter Schritt ohne Werkzeuge, verständliche Fehlermeldungen mit Code.
   - **Lösung Worker (vorbereitet, Bereitstellung braucht Freigabe):** wandelt die Form von 2.11.0 um (so funktioniert die veröffentlichte App sofort), nach Werkzeugergebnissen keine Werkzeuge mehr, grobe Fehlercodes (`modell_eingabe`, `modell_fehler`, `modell_nicht_verfuegbar`), abgelehnte Eingaben verbrauchen kein Budget; Protokoll nur Fehlercode, nie Inhalte.
   - Tests: strenge Workers-AI-Attrappe (lehnt die alte Form wie live ab), Form 2.11.0 am Worker, dreistufiger Werkzeugablauf in der App, Fehlercode-Anzeige.
+- ✅ **Worker-Aktualisierung bereitgestellt (27.11.2026, Freigabe des Gründers):** `vivalink-ki` Version b6f2a4b5-c227-4527-9be5-478c2f463960. `vivalink-sync` und `vivalink-webseite` nachweislich unverändert (Änderungszeit/Kennung vorher = nachher); Supabase und App nicht verändert.
+  - Live-Prüfung danach: Form A (App 2.11.0) → 200 mit Antwort. Die **veröffentlichte App 2.11.0** (GitHub Pages, frischer Browser, künstliche Daten, `tests/live-ki-app.spec.mjs`) erhielt auf zwei Fragen mit Werkzeugaufruf vollständige KI-Antworten (Llama 3.3 70B, Kennzahlen bzw. Aufgaben abgerufen). Verbrauch 170 Neurons; Test-Zugang gesperrt.
+  - Beobachtung Antwortqualität: Die zweite Antwort wiederholte Sätze der ersten. Verbesserung der Anweisungen an das Modell sinnvoll (nächster Schritt).
 - **Offen:**
-  - Freigabe der Worker-Aktualisierung `vivalink-ki`, danach Live-Diagnose erneut (Form A muss 200 liefern); Freigabe der Veröffentlichung 2.11.1.
+  - Freigabe der Veröffentlichung 2.11.1 (PR #10); für die Fehlerbehebung nicht mehr zwingend, da der Worker die Form von 2.11.0 annimmt.
   - Gründer schaltet das KI-Modell auf iPad und iPhone ein (KI-Einstellungen, je Gerät) und gibt die Datenbereiche frei.
   - Gerätetest von Sprachmodus und Server-Spracherkennung in der installierten App.
 - **Gerätetests nötig:** Mikrofon und Spracherkennung in Safari bzw. in der installierten App, Stimmenqualität.
