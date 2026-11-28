@@ -1,6 +1,29 @@
 # Änderungsprotokoll
 
-## 2.12.1 (Entwicklungszweig, noch nicht veröffentlicht) – automatisches Vorlesen auf dem iPad
+## 2.13.0 (Entwicklungszweig, noch nicht veröffentlicht) – Phase 1: Unternehmensverständnis und Antwortqualität
+
+- **Unternehmensprofil („So versteht dich die KI“, KI-Einstellungen):**
+  - Der Entwurf entsteht auf dem Gerät aus den Marken-Angaben im Studio und aus bestätigten, nicht vertraulichen Gedächtniseinträgen; Fehlendes steht als „noch offen“ drin.
+  - Du prüfst, bearbeitest und gibst frei; erst danach geht das Profil bei jeder Frage an die KI.
+  - Jede Änderung macht es wieder zum Entwurf; die Freigabe lässt sich jederzeit zurücknehmen.
+  - Gespeichert und synchronisiert als Gedächtniseintrag im Bereich „KI“.
+- **Vivalink-Playbook (Entwurf, Version 1):**
+  - Allgemeine Erfahrungswerte für Community- und Event-Angebote (Trichter, Erstbesuch, Nichterscheinen, Wiederkehr, Instagram, Kooperationen, Experimente, Prioritäten, typische Fehler) – keine Vivalink-Fakten.
+  - Die KI schlägt nur nach Freigabe darin nach (Werkzeug „wissen“) und kennzeichnet daraus Abgeleitetes als Annahme oder Empfehlung.
+  - Lesefassung: `docs/VIVALINK-PLAYBOOK.md`.
+- **Antwortarten:**
+  - Kurzfrage, Analyse, Beratung, Technik werden technisch erkannt.
+  - Beratung mit fester Struktur: Lage, 2–3 Optionen mit Aufwand, Wirkung und Risiko, Empfehlung mit Begründung, erster Schritt, Erfolgsmessung, gezielte Rückfrage bei fehlender Information.
+  - Im Sprachmodus nur Empfehlung und erster Schritt.
+- **Prüfungen nach der Antwort:**
+  - „[Fakt]“ mit nicht belegter Zahl wird zu „[Annahme]“.
+  - Starke Wiederholung oder unvollständige Beratung lösen genau einen Nachfass-Aufruf aus (nicht im Sprachmodus); er wird nur übernommen, wenn er besser ist.
+  - Bereits genannte Zahlen gehen als Hinweis an das Modell.
+- **Werkzeuge:** Kennzahlen mit Abstand zum Ziel; „Maßnahmen“ liefert der KI Befunde mit Daten und möglichen Ursachen statt fertiger Regeltexte (lokaler Assistent unverändert).
+- **Qualitäts-Testset:** 11 realistische Fragen in 4 Gesprächen mit regelbasierter Bewertung; live (künstliche Daten) als Vergleich veröffentlichte App ↔ neue App; wiederverwendbar für den Modellvergleich.
+- **Unverändert:** Sprachmodus, Freigaberegeln, Absichtsprüfung, Datenformat (Version 5).
+
+## 2.12.1 (veröffentlicht, PR #12) – automatisches Vorlesen auf dem iPad
 
 - **Behoben: Antworten wurden im Sprachmodus nicht automatisch vorgelesen.** Ursache:
   - Die Sprachausgabe wurde beim Start mit einem leeren Satz (Lautstärke 0) „freigeschaltet“. iOS schaltet damit nicht frei; der Satz blieb hängen, und alle folgenden Antworten landeten stumm in der Warteschlange (Protokoll: „Ende nicht gemeldet“ nach je ca. 20 s).

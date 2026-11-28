@@ -49,6 +49,18 @@ Ein Assistent, ein Gesprächsverlauf: Schreiben und Sprechen landen im selben Ch
 - Protokoll ohne Inhalte: KI-Einstellungen › Sprachmodus-Protokoll. Bei Problemen auf dem Gerät „Protokoll kopieren“
   und mir schicken. Es enthält keine Fragen oder Antworten, nur Ereignisse und Zeiten.
 
+**So versteht dich die KI (ab 2.13)**
+- Unternehmensprofil:
+  - KI-Einstellungen › „Profil und Playbook prüfen“ › „Entwurf aus vorhandenen Daten“ → prüfen, ergänzen → „Geprüft – freigeben“.
+  - Nur freigegeben geht es an die KI (höchstens 1.500 Zeichen, ca. +11 Neurons je Aufruf).
+  - Vertrauliche Einträge nie.
+- Vivalink-Playbook: allgemeines Fachwissen (Entwurf, `docs/VIVALINK-PLAYBOOK.md`); nach Freigabe schlägt die KI bei Bedarf darin
+  nach.
+- Antwortarten:
+  - Beratungsfragen („Was würdest du tun?“, „Welche Maßnahme zuerst?“) werden strukturiert beantwortet: Optionen,
+    Empfehlung mit Begründung, erster Schritt, Erfolgsmessung.
+  - Fehlt das, folgt genau ein Nachfass-Aufruf (nicht im Sprachmodus).
+
 **Automatisches Vorlesen auf iPhone/iPad (ab 2.12.1)**
 - iOS erlaubt die Sprachausgabe einer Web-App erst nach einer Bedienung. Beim Tippen auf „Sprechen“ sagt die App
   deshalb kurz „Ich höre zu.“ – damit ist das Vorlesen für das Gespräch freigeschaltet.

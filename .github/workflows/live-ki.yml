@@ -14,6 +14,10 @@ on:
         description: "Zusätzlich Gesprächsqualität der neuen App-Version (lokal, künstliche Daten, wenige hundert kostenlose Neurons)"
         required: false
         default: "nein"
+      qualitaet:
+        description: "Zusätzlich Qualitäts-Testset: veröffentlichte App gegen neue App (künstliche Daten, ca. 3.000–5.000 kostenlose Neurons)"
+        required: false
+        default: "nein"
       stt:
         description: "Zusätzlich Spracherkennung (Whisper) mit künstlich erzeugter Sprache (wenige kostenlose Neurons)"
         required: false
@@ -25,7 +29,7 @@ permissions:
 jobs:
   live:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -37,10 +41,11 @@ jobs:
       - run: sudo apt-get install -y espeak-ng ffmpeg
         if: ${{ github.event.inputs.stt == 'ja' }}
       - name: Live-Prüfung KI (ohne KI-Aufruf)
-        run: npx playwright test tests/live-ki.spec.mjs tests/live-ki-funktion.spec.mjs tests/live-ki-diagnose.spec.mjs tests/live-ki-app.spec.mjs tests/live-ki-stt.spec.mjs tests/live-ki-gespraech.spec.mjs --project=chromium-desktop --reporter=list
+        run: npx playwright test tests/live-ki.spec.mjs tests/live-ki-funktion.spec.mjs tests/live-ki-diagnose.spec.mjs tests/live-ki-app.spec.mjs tests/live-ki-stt.spec.mjs tests/live-ki-gespraech.spec.mjs tests/live-ki-qualitaet.spec.mjs --project=chromium-desktop --reporter=list
         env:
           CI: "1"
           LIVE: "1"
           LIVE_DIAG: ${{ github.event.inputs.diagnose == 'ja' && '1' || '' }}
           LIVE_STT: ${{ github.event.inputs.stt == 'ja' && '1' || '' }}
           LIVE_GESPRAECH: ${{ github.event.inputs.gespraech == 'ja' && '1' || '' }}
+          LIVE_QUALITAET: ${{ github.event.inputs.qualitaet == 'ja' && '1' || '' }}

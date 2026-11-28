@@ -36,7 +36,10 @@ const TOOLS = {
           mo = cmp(m, 30);
         const src = c.src === "verwaltung" ? "Verwaltung, ohne Testkonten" : c.src === "manual" ? "eigene Eingabe" : c.src;
         const k = c.status === "confirmed" ? "fakt" : "annahme";
-        B.push({ k, t: `${m.name}: ${nf(c.value, m.unit)} (Stand ${fmt(c.date)}, ${src}${c.status === "estimate" ? ", Einschätzung" : ""})${w ? " · 7 Tage: " + cs(w) : ""}${mo ? " · 30 Tage: " + cs(mo) : ""}${m.goal !== "" && m.goal != null ? " · Ziel " + nf(m.goal, m.unit) : ""}` });
+        const goal = m.goal !== "" && m.goal != null ? Number(m.goal) : null;
+        const dir = (MT.find((x) => x.k === m.key) || {}).d;
+        const gap = goal != null && isFinite(goal) && dir !== "neutral" ? (dir === "down" ? c.value - goal : goal - c.value) : null;
+        B.push({ k, t: `${m.name}: ${nf(c.value, m.unit)} (Stand ${fmt(c.date)}, ${src}${c.status === "estimate" ? ", Einschätzung" : ""})${w ? " · 7 Tage: " + cs(w) : ""}${mo ? " · 30 Tage: " + cs(mo) : ""}${goal != null ? " · Ziel " + nf(goal, m.unit) + (gap == null ? "" : gap > 0 ? " (noch " + nf(gap, m.unit) + " entfernt)" : " (erreicht)") : ""}` });
       }
       const unv = S.metrics.filter((m) => !cur(m) && m.entries.some((e) => !e.deleted && !verified(e))).map((m) => m.name);
       if (unv.length) B.push({ k: "hinweis", t: "Nicht verwendet (möglicherweise mit Testkonten): " + unv.join(", ") + "." });
@@ -57,16 +60,29 @@ const TOOLS = {
   massnahmen: {
     cat: "kennzahlen",
     d: "Hinweise der App-Regeln zu Befunden (z. B. überfällige Aufgaben, fehlende Werte) – ergänzen deine eigenen fachlichen Empfehlungen, ersetzen sie nicht",
-    run() {
+    run(a = {}, o = {}) {
+      // Lokaler Assistent: Empfehlungen der App-Regeln wie bisher
+      if (!o.ki) {
+        const B = [];
+        for (const f of findings().slice(0, 3)) {
+          const m = enrich(f).measures.slice(0, 2).map((x) => x.t);
+          if (m.length) B.push({ k: "empfehlung", t: `Zu „${f.title}“: ${m.join("; ")}` });
+        }
+        if (!B.length) B.push({ k: "hinweis", t: "Keine konkreten Maßnahmen ableitbar – es liegen keine offenen Befunde vor." });
+        B.push({ k: "hinweis", t: "Geschäftliche Entscheidungen triffst du; ich bereite nur vor." });
+        return B;
+      }
+      // KI: Rohstoff für eigene Empfehlungen – Befund mit Daten und möglichen Ursachen; feste Regeltexte nur als Hinweis
       const F = findings().slice(0, 3);
       const B = [];
       for (const f of F) {
         const e = enrich(f);
+        B.push({ k: f.kind === "fakt" ? "fakt" : "annahme", t: `Befund: ${f.title}${f.why && f.why.length ? " – Daten: " + f.why.join(" ") : ""}` });
+        if (e.causes.length) B.push({ k: "annahme", t: "Mögliche Ursachen: " + e.causes.slice(0, 3).join("; ") });
         const m = e.measures.slice(0, 2).map((x) => x.t);
-        if (m.length) B.push({ k: "empfehlung", t: `Zu „${f.title}“: ${m.join("; ")}` });
+        if (m.length) B.push({ k: "hinweis", t: "Regel-Hinweis der App (kein Ersatz für eine eigene Empfehlung): " + m.join("; ") });
       }
-      if (!B.length) B.push({ k: "hinweis", t: "Keine konkreten Maßnahmen ableitbar – es liegen keine offenen Befunde vor." });
-      B.push({ k: "hinweis", t: "Geschäftliche Entscheidungen triffst du; ich bereite nur vor." });
+      if (!B.length) B.push({ k: "hinweis", t: "Keine offenen Befunde der App-Regeln." });
       return B;
     },
   },
@@ -99,7 +115,9 @@ const TOOLS = {
       if (!u || !u.date) return [{ k: "hinweis", t: "Kein kommendes Meetup eingetragen." }];
       const s = S.metrics.find((m) => m.key === "signups"),
         c = s && cur(s);
-      return [{ k: "fakt", t: `Nächstes Meetup am ${fmt(u.date)}${u.place ? " in " + u.place : ""}${u.goal ? ", Ziel " + u.goal + " Teilnehmende" : ""}.` }].concat(c ? [{ k: c.status === "confirmed" ? "fakt" : "annahme", t: `Anmeldungen: ${nf(c.value)} (Stand ${fmt(c.date)}).` }] : []);
+      const d = Math.round((new Date(u.date + "T12:00") - new Date(today() + "T12:00")) / 864e5);
+      const rel = d > 1 ? ` (in ${d} Tagen)` : d === 1 ? " (morgen)" : d === 0 ? " (heute)" : ` (liegt ${-d} Tage zurück – kein neueres Meetup eingetragen)`;
+      return [{ k: "fakt", t: `${d < 0 ? "Zuletzt eingetragenes" : "Nächstes"} Meetup am ${fmt(u.date)}${rel}${u.place ? " in " + u.place : ""}${u.goal ? ", Ziel " + u.goal + " Teilnehmende" : ""}.` }].concat(c ? [{ k: c.status === "confirmed" ? "fakt" : "annahme", t: `Anmeldungen: ${nf(c.value)} (Stand ${fmt(c.date)}).` }] : []);
     },
   },
   instagram: {
@@ -477,6 +495,7 @@ Daten:
 - Kennzeichne Aussagen: [Fakt] (aus Werkzeugen, mit Stand), [Annahme], [Empfehlung]. Testdaten sind nie echte Kennzahlen; erwähne sie nur getrennt. Erfinde nichts; fehlen Daten, sag es.
 Empfehlungen:
 - Entwickle eigene, konkrete Vorschläge aus deinem Wissen über Community-, Event- und Social-Media-Marketing; nutze die App-Daten zur Begründung und Priorisierung. Interne Aufgabenlisten sind keine Empfehlung an sich.
+- Schätzungen (Aufwand, erwartete Wirkung, Zahlen ohne Datenquelle) sind immer [Annahme] und als grobe Einschätzung formuliert („etwa“, „vermutlich“); erfinde keine genauen Zahlen.
 - Konkret statt allgemein: was genau, warum (Bezug auf Daten oder als Annahme gekennzeichnet), erster Schritt, woran man den Erfolg misst. Lieber eine gute Empfehlung als fünf vage.
 Handlungen:
 - Du führst nichts eigenständig aus. Eine Aufgabe legst du nur an, wenn der Gründer ausdrücklich darum bittet (z. B. „Lege eine Aufgabe an …“). Bei Fragen, Überlegungen und Empfehlungen fragst du höchstens: „Soll ich daraus eine Aufgabe machen?“
@@ -487,6 +506,7 @@ const KI_VOICE = `Sprachmodus: Deine Antwort wird vorgelesen. Antworte in höchs
    (zusätzlich zur Prüfung vor der Ausführung – das Modell soll gar nicht erst „vorsorglich“ Aufgaben anlegen). */
 function kiToolSpecs(intent = { allow: new Set(["task.add", "memory.add"]) }) {
   const spec = Object.entries(TOOLS).map(([name, t]) => ({ type: "function", function: { name, description: t.d, parameters: { type: "object", properties: name === "aufgaben" ? { woche: { type: "string", enum: ["alle", "diese", "naechste"] } } : name === "gedaechtnis" ? { stichwort: { type: "string" } } : {} } } }));
+  if (playbookApproved()) spec.push({ type: "function", function: { name: "wissen", description: "Vivalink-Playbook: allgemeine Erfahrungswerte zu Community- und Event-Angeboten (keine Vivalink-Fakten)", parameters: { type: "object", properties: { thema: { type: "string", enum: PLAYBOOK.sections.map((x) => x.id) } } } } });
   if (intent.allow.has("task.add")) spec.push({ type: "function", function: { name: "aufgabe_anlegen", description: "Legt eine Aufgabe an – NUR wenn der Gründer in seiner letzten Nachricht ausdrücklich darum gebeten hat; je Aufgabe genau ein Aufruf", parameters: { type: "object", properties: { titel: { type: "string" }, frist: { type: "string", description: "JJJJ-MM-TT oder leer" } }, required: ["titel"] } } });
   if (intent.allow.has("memory.add")) spec.push({ type: "function", function: { name: "merken_vorschlagen", description: "Schlägt vor, eine Information ins Gedächtnis zu übernehmen (nur mit Bestätigung des Gründers)", parameters: { type: "object", properties: { titel: { type: "string" } }, required: ["titel"] } } });
   return spec;
@@ -548,6 +568,91 @@ function fetchOrTimeout(url, opt, isTimedOut) {
 }
 /* Frühere KI-Antwort für den Verlauf: nur der eigentliche Antworttext (ohne Hinweise/Auftragszeilen) und eine kurze
    Notiz zu Vorschlägen und ausgeführten Aufträgen – damit Rückfragen verstanden werden, ohne Rauschen. */
+/* ---------- Antwortarten (technisch erkannt, wie die Absichtsprüfung) ---------- */
+const MODE_RE = {
+  technik: /techni|fehler|absturz|abgestürzt|hängt|lädt nicht|funktioniert nicht|synchronisier|verbindung|anbindung|worker|sprachmodus|mikrofon/i,
+  beratung: /empfiehl|empfehl|was (soll|sollte|sollten|würdest|könnten|kann|können) (ich|wir|du)|welche (konkrete )?(maßnahme|strategie|option|idee)|wie (kann|können|könnten|sollten|soll) (ich|wir)\b.*(mehr|gewinn|steiger|verbesser|erreich|schaff)|lohnt|sinnvoll|priorit|als erstes|strategie|idee|vorschl|was tun|nächste(n)? schritt/i,
+  analyse: /wie (entwickel|läuft|steht|sieht)|warum|wieso|analys|vergleich|trend|entwicklung|ursache|woran liegt|was bedeutet/i,
+  kurz: /^(wie viele|wie hoch|wann|wo |wer |ist |sind |gibt es|haben wir|hat |welche[rs]? (ist|sind|termin)|stand)/i,
+};
+function answerMode(text, intent = userIntent(text)) {
+  const t = String(text || "").trim();
+  if (intent.kind === "auftrag") return "gespraech";
+  if (MODE_RE.technik.test(t)) return "technik";
+  if (MODE_RE.beratung.test(t)) return "beratung";
+  if (MODE_RE.analyse.test(t)) return "analyse";
+  if (t.length < 90 && MODE_RE.kurz.test(t)) return "kurz";
+  return "gespraech";
+}
+const MODE_TEXT = {
+  kurz: "Antwortart Kurzfrage: 1 bis 3 Sätze, nur das Gefragte (Zahlen mit Stand).",
+  analyse: "Antwortart Analyse: Lage (Fakten mit Stand) → Entwicklung → mögliche Ursachen (als Annahme) → was das bedeutet. Höchstens etwa 180 Wörter.",
+  beratung:
+    "Antwortart Beratung – gliedere so: 1) Lage in 1–2 Sätzen (nur Neues). 2) Zwei bis drei konkrete Optionen mit Aufwand, erwarteter Wirkung und Risiko. 3) Deine Empfehlung mit Begründung (Bezug auf Daten oder Profil, sonst als Annahme). 4) Erster konkreter Schritt für diese Woche. 5) Woran wir den Erfolg nach 2–4 Wochen messen. Fehlt eine wichtige Information, nenne sie und stelle genau eine gezielte Rückfrage. Entscheiden tut der Gründer.",
+  technik: "Antwortart Technik: Zustand → wahrscheinliche Ursache → was die App selbst beheben kann → was der Gründer tun muss (konkrete Schritte).",
+  gespraech: "",
+};
+const MODE_VOICE = { beratung: "Im Sprachmodus: nur deine Empfehlung mit kurzer Begründung und den ersten Schritt; Optionen nur auf Nachfrage." };
+/* Prüfungen nach der Antwort (ohne Modell, ohne Kosten) */
+const shingles = (t) => {
+  const w = String(t || "")
+    .toLowerCase()
+    .replace(/\[(fakt|annahme|empfehlung|testdaten)\]/g, " ")
+    .split(/[^0-9a-zäöüß]+/)
+    .filter(Boolean);
+  const S_ = new Set();
+  for (let i = 0; i + 2 < w.length; i++) S_.add(w[i] + " " + w[i + 1] + " " + w[i + 2]);
+  return S_;
+};
+/* Anteil der neuen Antwort, der wörtlich schon in einer früheren Antwort stand (0…1) */
+function repetitionScore(t, prevs) {
+  const A = shingles(t);
+  if (A.size < 12) return 0;
+  let best = 0;
+  for (const p of prevs) {
+    const B = shingles(p);
+    let n = 0;
+    for (const x of A) if (B.has(x)) n++;
+    best = Math.max(best, n / A.size);
+  }
+  return best;
+}
+/* Beratung: was an der Struktur fehlt */
+function missingStructure(t) {
+  const miss = [];
+  const opts = (t.match(/\b(option|alternative|variante|möglichkeit)/gi) || []).length + (t.match(/(^|\n)\s*(\d[.)]|[a-c]\)|-\s)/g) || []).length;
+  if (opts < 2) miss.push("zwei bis drei Optionen mit Aufwand, Wirkung und Risiko");
+  if (!/weil|\bda\b|denn|deshalb|daher|begründ|grund/i.test(t)) miss.push("eine Begründung der Empfehlung");
+  if (!/erste[rn]? schritt|als erstes|zuerst|diese woche|morgen|sofort|starte/i.test(t)) miss.push("den ersten konkreten Schritt");
+  if (!/mess|erfolg|kennzahl|woran|nach (zwei|drei|vier|2|3|4) wochen|prüf/i.test(t)) miss.push("woran der Erfolg gemessen wird");
+  return miss;
+}
+/* „[Fakt]“ nur, wenn die genannten Zahlen in Werkzeugergebnissen, Profil oder Verlauf vorkommen – sonst „[Annahme]“ */
+function fixLabels(t, ctx) {
+  const norm = (x) => x.replace(/\./g, "").replace(",", ".");
+  const known = new Set((String(ctx).match(/\d+(?:[.,]\d+)*/g) || []).map(norm));
+  let fixed = 0;
+  const out = String(t)
+    .replace(/\[Erfahrungswert, kein Vivalink-Fakt\]/g, "[Annahme]")
+    .split(/(?<=[.!?\n])/)
+    .map((sent) => {
+      if (!/\[Fakt\]/i.test(sent)) return sent;
+      const nums = (sent.match(/\d+(?:[.,]\d+)*/g) || []).map(norm);
+      if (nums.length && !nums.some((n) => known.has(n))) return fixed++, sent.replace(/\[Fakt\]/gi, "[Annahme]");
+      return sent;
+    })
+    .join("");
+  return { text: out, fixed };
+}
+/* Im Gespräch bereits genannte Zahlen (aus den letzten KI-Antworten) – damit sie nicht wiederholt werden */
+function alreadySaid(history) {
+  const prev = history.filter((m) => m.role === "assistant" && m.engine === "ki").slice(-3);
+  const L = [];
+  for (const m of prev)
+    for (const s of kiHistText(m).split(/(?<=[.!?\n])/))
+      if (/\d/.test(s) && s.trim().length > 8) L.push(s.replace(/\[(Fakt|Annahme|Empfehlung|Testdaten)\]/gi, "").trim());
+  return [...new Set(L)].join(" ").slice(0, 500);
+}
 function kiHistText(m) {
   const t = (m.blocks || []).filter((b) => b.k === "ki").map((b) => b.t).join("\n") || m.text;
   const acts = (m.actions || []).map((x) => (x.status === "erledigt" ? "ausgeführt: " : x.status === "vorschlag" || x.status === "offen" ? "vorgeschlagen (nicht ausgeführt): " : "nicht ausgeführt: ") + x.title);
@@ -556,17 +661,29 @@ function kiHistText(m) {
 async function kiAnswer(chat, text, history, opt = {}) {
   const cfg = await kiCfg();
   const intent = opt.intent || userIntent(text);
-  const msgs = [{ role: "system", content: KI_SYSTEM + (opt.via === "voice" ? "\n" + KI_VOICE : "") + "\nHeute ist " + fmt(today()) + "." }];
+  const mode = answerMode(text, intent);
+  const voice = opt.via === "voice";
+  const modeText = [MODE_TEXT[mode], voice ? MODE_VOICE[mode] : ""].filter(Boolean).join(" ");
+  // EINE Systemnachricht (Llama 3.3 berücksichtigt weitere Systemnachrichten kaum – Live-Messung 27.11.2026)
+  const sys = [KI_SYSTEM + (voice ? "\n" + KI_VOICE : "") + (modeText ? "\n" + modeText : "") + "\nHeute ist " + fmt(today()) + "."];
+  // Unternehmensprofil: nur nach Freigabe durch den Gründer (KI-Einstellungen › So versteht dich die KI)
+  const profile = profileForKi();
+  if (profile) sys.push("UNTERNEHMENSPROFIL (vom Gründer geprüft und freigegeben):\n" + profile + "\nRichte jede Empfehlung an diesem Profil aus (Zielgruppe, Ziele, Rahmen wie Zeit und Budget, frühere Entscheidungen) und nenne den Bezug in einem Halbsatz. Was dort „noch offen“ ist, höchstens mit einer gezielten Rückfrage klären.");
+  if (playbookApproved()) sys.push("Für allgemeines Fachwissen über Community- und Event-Angebote steht das Werkzeug „wissen“ (Vivalink-Playbook) bereit. Daraus Abgeleitetes ist [Annahme] oder [Empfehlung], nie [Fakt].");
+  const said = alreadySaid(history);
+  if (said) sys.push("Im Gespräch bereits genannt (nicht wiederholen, außer der Gründer fragt danach; darauf aufbauen): " + said);
+  const msgs = [{ role: "system", content: sys.join("\n\n") }];
   // Datensparsam: Antworten des lokalen Assistenten enthalten App-Daten (Kennzahlen, Gedächtnis …) und gehen NICHT an das
   // Modell – nur deine Fragen und frühere KI-Antworten. Aus der Kurzfassung nur die Fragen und ausgeführten Aufträge.
   if (chat.summary) {
     const q = chat.summary.split("\n").filter((l) => /^(Frage\/Auftrag|Ausgeführt)/.test(l));
-    if (q.length) msgs.push({ role: "system", content: "Frühere Fragen in diesem Chat: " + q.join("; ").slice(0, 3000) });
+    if (q.length) msgs[0].content += "\n\nFrühere Fragen in diesem Chat: " + q.join("; ").slice(0, 3000);
   }
   for (const m of history.slice(-14)) msgs.push({ role: m.role === "user" ? "user" : "assistant", content: m.role === "user" ? m.text.slice(0, 2000) : m.engine === "ki" ? kiHistText(m) : "(Antwort des lokalen Assistenten mit App-Daten – nicht übermittelt)" });
   msgs.push({ role: "user", content: text.slice(0, 4000) });
   const used = new Set(),
-    actions = [];
+    actions = [],
+    toolOut = [];
   // Werkzeugergebnisse gehen als gewöhnliche Nachrichten an das Modell (Form, die jedes Modell von Workers AI annimmt);
   // der letzte Schritt läuft ohne Werkzeuge, damit das Modell sicher eine Antwort formuliert.
   const ROUNDS = 3,
@@ -591,8 +708,10 @@ async function kiAnswer(chat, text, history, opt = {}) {
       calls = [];
     }
     if (!calls.length) {
-      const t = String(j.text || "").trim();
-      return { blocks: [{ k: "ki", t: t.slice(0, 8000) || "(Die KI hat keine Antwort geliefert – bitte die Frage anders stellen.)" }], actions, topic: chat.topic || null, used: [...used] };
+      let t = String(j.text || "").trim();
+      if (!t) return { blocks: [{ k: "ki", t: "(Die KI hat keine Antwort geliefert – bitte die Frage anders stellen.)" }], actions, topic: chat.topic || null, used: [...used], mode };
+      t = await kiReview(t, { msgs, mode, voice, history, until, ctx: [toolOut.join("\n"), profile, ...history.map((m) => m.text)].join("\n"), hasActions: actions.length > 0 });
+      return { blocks: [{ k: "ki", t: t.slice(0, 8000) }], actions, topic: chat.topic || null, used: [...used], mode };
     }
     msgs.push({ role: "assistant", content: "(Ich rufe Werkzeuge auf: " + calls.map((c) => String(c.name || "")).join(", ") + ")" });
     const results = [];
@@ -600,11 +719,14 @@ async function kiAnswer(chat, text, history, opt = {}) {
       const name = String(c.name || ""),
         args = c.arguments && typeof c.arguments === "object" ? c.arguments : {};
       let out;
-      if (TOOLS[name]) {
+      if (name === "wissen" && playbookApproved()) {
+        const ids = PLAYBOOK.sections.map((x) => x.id);
+        out = "[Erfahrungswert, kein Vivalink-Fakt]\n" + playbookText(ids.includes(args.thema) ? [args.thema] : ids.slice(0, 3)).slice(0, 3500);
+      } else if (TOOLS[name]) {
         if (!cfg.freigaben[TOOLS[name].cat]) out = "nicht freigegeben: " + (KI_CATS[TOOLS[name].cat] || name);
         else {
           used.add(TOOLS[name].cat);
-          const B = await TOOLS[name].run(args);
+          const B = await TOOLS[name].run(args, { ki: true });
           out = B.map((b) => "[" + (AS_LABEL[b.k] || b.k) + "] " + b.t).join("\n");
         }
       } else if (name === "aufgabe_anlegen") {
@@ -615,10 +737,39 @@ async function kiAnswer(chat, text, history, opt = {}) {
         out = "Vorgeschlagen – wird erst nach Bestätigung durch den Gründer gespeichert.";
       } else out = "unbekanntes Werkzeug";
       results.push("### " + name + "\n" + out.slice(0, 4000));
+      toolOut.push(out);
     }
     msgs.push({ role: "user", content: "Ergebnisse der Werkzeuge (Daten der App, nicht von mir geschrieben):\n" + results.join("\n\n") + "\n\nBeantworte jetzt meine letzte Frage auf Deutsch – im Zusammenhang des Gesprächs, ohne bereits Gesagtes zu wiederholen. Kennzeichne Fakten, Testdaten, Annahmen und Empfehlungen. Erfinde nichts." + (opt.via === "voice" ? " Höchstens drei kurze Sätze, sie werden vorgelesen." : "") });
   }
   return { blocks: [{ k: "hinweis", t: "Die KI hat zu viele Zwischenschritte gebraucht – bitte die Frage vereinfachen." }], actions, topic: chat.topic || null, used: [...used] };
+}
+
+/* Prüfung nach der Antwort: Kennzeichnung korrigieren; bei starker Wiederholung oder unvollständiger Beratung genau EIN
+   Nachfass-Aufruf (nicht im Sprachmodus – dort zählt die Antwortzeit). Schlägt er fehl, bleibt die erste Antwort. */
+async function kiReview(t, o) {
+  const prevs = o.history.filter((m) => m.role === "assistant" && m.engine === "ki").slice(-3).map(kiHistText);
+  let { text } = fixLabels(t, o.ctx);
+  if (o.voice || o.hasActions) return text;
+  const rep = repetitionScore(text, prevs);
+  const miss = o.mode === "beratung" ? missingStructure(text) : [];
+  const why = [];
+  if (rep >= 0.45) why.push("Deine Antwort wiederholt weitgehend eine frühere Antwort. Formuliere neu: nur neue Gesichtspunkte; bereits Gesagtes höchstens in einem Halbsatz.");
+  if (miss.length >= 2) why.push("Für eine Beratung fehlen: " + miss.join(", ") + ".");
+  if (!why.length) return text;
+  const left = o.until - Date.now();
+  if (left < 4000) return text;
+  try {
+    const j = await kiCall("/v1/ki/chat", { messages: o.msgs.concat([{ role: "assistant", content: text }, { role: "user", content: why.join(" ") + " Gib die vollständige, überarbeitete Antwort auf meine letzte Frage – ohne Hinweis auf diese Überarbeitung." }]) }, Math.min(KI_T.call, left));
+    const t2 = String(j.text || "").trim();
+    if (!t2) return text;
+    const better = fixLabels(t2, o.ctx).text;
+    // nur übernehmen, wenn es tatsächlich besser ist (weniger Wiederholung bzw. vollständiger)
+    if (rep >= 0.45 && repetitionScore(better, prevs) >= rep) return text;
+    if (miss.length >= 2 && missingStructure(better).length >= miss.length) return text;
+    return better;
+  } catch {
+    return text;
+  }
 }
 
 /* ---------- Gemeinsamer Einstieg für Chat UND Sprachmodus ---------- */

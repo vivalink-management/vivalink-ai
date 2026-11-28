@@ -234,6 +234,14 @@ for (const small of [false, 375, 320]) {
       await page.click('button[data-a="chatBack"]');
       await page.click('button[data-a="kiSettings"]');
       await check("KI-Einstellungen", "#sheet");
+      // Unternehmensprofil und Playbook (ab 2.13): langer Entwurf, geöffneter Playbook-Text
+      await page.click('#sheet button[data-a="kiProfil"]');
+      await page.click('#sheet button[data-a="kiPfDraft"]');
+      await page.fill("#pf-text", "Angebot und Besonderheit: " + "sehr langer Testtext ohne Leerzeichen Kleingruppentreffenvorbereitungsablaufbeschreibung ".repeat(12));
+      await page.click("#pbText summary");
+      await check("KI-Einstellungen/Profil und Playbook", "#sheet");
+      await page.click('#sheet button[data-a="close"]');
+      await page.click('button[data-a="kiSettings"]');
       await page.evaluate(() => (VO_LOG = Array.from({ length: 30 }, (_, i) => ({ at: Date.now(), ev: "whisper", d: i + "00 ms, 42 Zeichen", st: "denkt", m: "server" }))));
       await page.click('#sheet button[data-a="close"]');
       await page.click('button[data-a="kiSettings"]');

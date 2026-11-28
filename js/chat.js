@@ -227,6 +227,7 @@ async function kiSettingsSheet() {
 <div class="card"><b>Antworten</b><p class="mut">${c.on ? "KI-Modell eingeschaltet (Cloudflare Workers AI, kostenloses Tageskontingent)." : "Derzeit antwortet der <b>lokale Assistent ohne KI-Modell</b> (kostenlos, offline, nur auf dem Gerät)."}</p><p class="mut" id="kiStat">${st.ok ? "✅ KI-Gegenstelle erreichbar." : "KI-Gegenstelle: " + esc(st.why) + "."} ${kiUrl() ? '<button class="s" data-a="kiCheck">Verbindung prüfen</button>' : ""}</p>${
     kiUrl() ? `<label><input type="checkbox" id="ki-on" ${c.on ? "checked" : ""} ${sc && (st.ok || c.on) ? "" : "disabled"}> KI-Modell verwenden${sc ? (st.ok || c.on ? "" : " (erst wenn erreichbar)") : " (erst nach Einrichtung der Synchronisierung)"}</label>` : ""
   }</div>
+<div class="card"><b>So versteht dich die KI</b><p class="mut" id="kiPfLine">Unternehmensprofil: ${profileForKi() ? "✅ freigegeben" : profileEntry() ? "📝 Entwurf (noch nicht aktiv)" : "noch keins"} · Playbook: ${playbookApproved() ? "✅ freigegeben" : "📝 Entwurf (noch nicht aktiv)"}</p><button data-a="kiProfil">Profil und Playbook prüfen</button></div>
 <div class="card"><b>Welche Daten darf die KI erhalten?</b><p class="mut">Nur die angehakten Bereiche werden bei Bedarf an das KI-Modell übermittelt (ohne Namen oder Kontaktdaten; private Gedächtniseinträge nie). Der lokale Assistent sendet nichts.</p>${Object.entries(KI_CATS)
     .map(([k, n]) => `<label><input type="checkbox" class="ki-f" data-id="${k}" ${c.freigaben[k] ? "checked" : ""} ${kiUrl() && (st.ok || c.on) ? "" : "disabled"}> ${esc(n)}</label>`)
     .join("<br>")}</div>
@@ -356,6 +357,7 @@ async function chatAction(a, id, b) {
     await save();
     return true;
   }
+  if (/^ki(Profil|Pf|Pb)/.test(a)) return kiProfileAction(a);
   if (a === "kiSettings") return kiSettingsSheet(), true;
   if (a === "kiCheck") return (KI_STAT = await kiStatus()), kiSettingsSheet(), true;
   if (a === "kiSave") {
